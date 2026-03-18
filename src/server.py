@@ -326,10 +326,115 @@ AXIS MIN/MAX:
 """
 
 # ---------------------------------------------------------------------------
+# Tier 2 — added when headers/data are provided (~800 tokens)
+# Source: SCHEMA.md (key parameters) + CONTEXT.md (data format)
+# ---------------------------------------------------------------------------
+
+SCHEMA_KEY_PARAMS = """
+KEY CONFIGURATION PARAMETERS (from SCHEMA.md):
+
+Data wrangling:
+  groupingFactors   : array of factor column names for grouping/coloring data
+  segregateSamplesBy: array of columns to facet samples into subplots
+  segregateVariablesBy: array of columns to facet variables into subplots
+  transformData     : "log2"|"log10"|"-log2"|"-log10"|"zscore"|"percentile"|"sqrt"
+  samplesClustered  : boolean — hierarchical clustering of samples (columns)
+  variablesClustered: boolean — hierarchical clustering of variables (rows)
+  colorBy           : column name to color data points by
+  shapeBy           : column name to assign shapes to data points
+  sizeBy            : column name to scale data point sizes
+  pivotBy           : column name to reshape data (wide→long)
+  ridgeBy           : column name for Ridgeline plots (NOT groupingFactors)
+  sankeyAxes        : array of column names for flow axes (Sankey/Alluvial/Ribbon)
+  hierarchy         : array of column names for tree hierarchy (Bubble/Tree/Sunburst)
+
+Axis transforms:
+  xAxisTransform / yAxisTransform: "log2"|"log10"|"-log2"|"-log10"|"sqrt"|"percentile"
+
+Visual:
+  graphOrientation  : "horizontal"|"vertical" (for bar-type graphs)
+  showLegend        : boolean
+  legendPosition    : "topRight"|"right"|"bottomRight"|"bottom"|"bottomLeft"|"left"|"topLeft"|"top"
+  showRegressionFit : boolean (scatter plots)
+  regressionType    : "linear"|"exponential"|"logarithmic"|"power"|"polynomial"
+  showLoessFit      : boolean (scatter plots)
+  showConfidenceIntervals: boolean
+  jitter            : boolean — jitter data points in dotplots/boxplots
+  samplesClustered  : boolean — show dendrogram for samples
+  variablesClustered: boolean — show dendrogram for variables
+  heatmapIndicator  : boolean — show color scale on heatmaps (almost always true)
+
+Graph-specific:
+  areaType          : "overlapping"|"stacked"|"percent" (Area graphs — required)
+  densityPosition   : "normal"|"stacked"|"filled" (Density graphs — required)
+  histogramType     : "dodged"|"staggered"|"stacked" (Histogram — required)
+  dumbbellType      : "arrow"|"bullet"|"cleveland"|"connected"|"line"|"lineConnected"|"stacked"
+  boxplotNotched    : boolean
+  violinScale       : "area"|"count"|"width"
+  lineType          : "rect"|"solid"|"spline"|"dotted"|"dashed"
+  showBoxplotOriginalData: boolean — overlay data points on boxplots
+  showViolinBoxplot : boolean — show embedded boxplot inside violin
+
+Filtering and sorting:
+  filterData: [["guess", "columnName", "like"|"different", "value"]]
+  sortData  : [["smp"|"var"|"cat", "smp"|"var", "columnName"]]
+"""
+
+DATA_FORMAT_GUIDE = """
+DATA FORMAT GUIDE (from CONTEXT.md):
+
+CanvasXpress accepts two data formats:
+
+1. Simple 2D array (preferred for flat data):
+   [
+     ["Id", "Col1", "Col2", "Group"],   ← first row = column headers
+     ["Row1", 10, 35, "A"],             ← subsequent rows = data
+     ["Row2", 20, 15, "B"]
+   ]
+
+2. Structured y/x/z object (preferred for complex data):
+   {
+     "y": { "vars": ["Gene1"], "smps": ["Smp1","Smp2"], "data": [[10, 35]] },
+     "x": { "Group": ["A","B"] },   ← sample metadata
+     "z": { "Pathway": ["P1"] }     ← variable metadata
+   }
+
+For xAxis: use column names from the first row (e.g. "Col1", "Group")
+For groupingFactors / colorBy: use metadata column names (e.g. "Group")
+"""
+
+# ---------------------------------------------------------------------------
+# Tier 3 — added when description seems ambiguous/contradictory (~600 tokens)
+# Source: CONTRADICTIONS.md
+# ---------------------------------------------------------------------------
+
+CONTRADICTIONS_GUIDE = """
+CONTRADICTION RESOLUTION (from CONTRADICTIONS.md):
+
+When requirements conflict, follow this priority:
+1. Data integrity — accurately represent the data
+2. Primary goal — preserve the main analytical purpose
+3. Graph type — honor requested type when possible
+4. Parameters — include requested params when compatible
+
+Common substitutions:
+  "pie chart showing correlation"  → Scatter2D with showRegressionFit
+  "bar chart for 3D data"         → Scatter3D or ScatterBubble2D
+  "regression on bar chart"        → remove showRegressionFit (incompatible)
+  "2D scatter for 4+ variables"   → use colorBy/shapeBy for extra dims
+
+Parameter conflicts to avoid:
+  stackBy + ridgeBy in same config — incompatible
+  showRegressionFit on Bar/Heatmap — incompatible
+  yAxis on single-dimensional graph types — never allowed
+"""
+
+# ---------------------------------------------------------------------------
 # System prompt — integrates full canvasxpress-LLM knowledge base
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = f"""You are an expert CanvasXpress data visualization assistant.
+# Tier 1 — always included (base system prompt, ~1,250 tokens)
+_SYSTEM_PROMPT_BASE = f"""You are an expert CanvasXpress data visualization assistant.
 
 Your task is to generate a valid CanvasXpress JSON configuration object from a natural
 language description and optional column headers.
@@ -380,6 +485,61 @@ Default to "Bar" if the type is ambiguous.
 10. Validate: ensure minimal required parameters are present; return empty string if not valid
 """
 
+# Contradiction keywords that trigger Tier 3
+_CONTRADICTION_KEYWORDS = [
+    "pie", "correlation", "regression", "3d", "bubble",
+    "survival", "kaplan", "gantt", "sankey", "network",
+    "venn", "treemap", "volcano", "scatter", "heatmap",
+]
+
+
+def detect_tier(
+    description: str,
+    headers: list[str] | None,
+    data: list[list] | None,
+) -> int:
+    """
+    Detect which prompt tier is needed based on the request.
+    Tier 1: description only (~1,250 tokens)
+    Tier 2: headers/data provided — add SCHEMA + data format guide (~2,050 tokens)
+    Tier 3: ambiguous/complex description — add Tier 2 + contradictions guide (~2,650 tokens)
+    """
+    has_data = headers is not None or data is not None
+    desc_lower = description.lower()
+    # Tier 3: multiple chart-type keywords suggest possible ambiguity
+    keyword_hits = sum(kw in desc_lower for kw in _CONTRADICTION_KEYWORDS)
+    if keyword_hits >= 2 or has_data:
+        tier = 3 if keyword_hits >= 2 else 2
+    else:
+        tier = 1
+    return tier
+
+
+def build_system_prompt(
+    description: str,
+    headers: list[str] | None,
+    data: list[list] | None,
+) -> tuple[str, int]:
+    """
+    Build a tiered system prompt based on request complexity.
+    Returns (prompt_string, tier_used).
+    """
+    tier = detect_tier(description, headers, data)
+    prompt = _SYSTEM_PROMPT_BASE
+
+    if tier >= 2:
+        prompt += "\nprompt += \n## KEY PARAMETERS REFERENCE\n" + SCHEMA_KEY_PARAMS
+        prompt += "\nprompt += \n## DATA FORMAT GUIDE\n" + DATA_FORMAT_GUIDE
+
+    if tier >= 3:
+        prompt += "\nprompt += \n## CONTRADICTION RESOLUTION\n" + CONTRADICTIONS_GUIDE
+
+    return prompt, tier
+
+
+# Keep SYSTEM_PROMPT as an alias for the base (used in debug messages)
+SYSTEM_PROMPT = _SYSTEM_PROMPT_BASE
+
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
@@ -418,6 +578,9 @@ def generate_config(
         for ex in examples
     )
 
+    # Keep reference to raw data for tier detection in build_system_prompt
+    data_ref = None  # set below if caller passes data through headers
+
     header_hint = ""
     if headers:
         if column_types:
@@ -450,7 +613,7 @@ def generate_config(
     if DEBUG:
         bar = "─" * 64
         print(f"\n{bar}\n  STEP 2 — PROMPT\n{bar}", file=sys.stderr)
-        print(f"  System prompt : {len(SYSTEM_PROMPT)} chars", file=sys.stderr)
+        print(f"  System prompt : (tiered — see TIERED PROMPT step)", file=sys.stderr)
         print(f"  User prompt   : {len(prompt)} chars", file=sys.stderr)
         print(f"  Headers       : {headers}", file=sys.stderr)
         if column_types:
@@ -466,12 +629,23 @@ def generate_config(
         print(f"  Model    : claude-sonnet-4-20250514", file=sys.stderr)
         print(f"  Calling Anthropic API...", file=sys.stderr)
 
+    # Build tiered system prompt
+    system_prompt, tier = build_system_prompt(description, headers, data_ref)
+    if DEBUG:
+        bar = "─" * 64
+        print(f"{bar}", file=sys.stderr)
+        print("  TIERED PROMPT", file=sys.stderr)
+        print(f"{bar}", file=sys.stderr)
+        print(f"  Tier used  : {tier}", file=sys.stderr)
+        print(f"  Tier desc  : {['', 'base only', 'base+schema+data format', 'base+schema+data format+contradictions'][tier]}", file=sys.stderr)
+        print(f"  Prompt size: {len(system_prompt)} chars", file=sys.stderr)
+
     t1 = time.perf_counter()
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1500,
         temperature=temperature,
-        system=SYSTEM_PROMPT,
+        system=system_prompt,
         messages=[{"role": "user", "content": prompt}],
     )
     t_llm = (time.perf_counter() - t1) * 1000
@@ -727,6 +901,7 @@ def generate_canvasxpress_config(
         "headers_used": resolved_headers or [],
         "types_used": column_types or {},
     }
+# Note: tier info is logged in debug mode but not returned to keep response lean
 
 
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")

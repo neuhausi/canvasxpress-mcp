@@ -19,9 +19,9 @@ JSON config object. No CanvasXpress expertise required.
 
 1. Your description is matched against few-shot examples using **semantic vector search** (sqlite-vec)
 2. The top 6 most relevant examples are included as context (RAG)
-3. The full **canvasxpress-LLM knowledge base** is embedded in the system prompt (RULES, SCHEMA, DECISION-TREE, MINIMAL-PARAMETERS)
+3. A **tiered system prompt** is built based on request complexity — adding more knowledge base content only when needed (see below)
 4. Claude generates a validated CanvasXpress JSON config
-5. If headers are provided, all column references in the config are **validated** against them
+5. If headers/data are provided, all column references are **validated** against them
 6. The config is returned ready to pass to `new CanvasXpress()`
 
 ---
@@ -265,12 +265,14 @@ sqlite-vec semantic search (~10ms retrieval regardless of corpus size).
 
 All prompt content sourced from **[neuhausi/canvasxpress-LLM](https://github.com/neuhausi/canvasxpress-LLM)**:
 
-| File | Used for |
-|------|----------|
-| `RULES.md` | Axis rules, decoration rules, sorting constraints |
-| `SCHEMA.md` | Full parameter definitions, types, options, defaults |
-| `DECISION-TREE.md` | Graph type selection logic |
-| `MINIMAL-PARAMETERS.md` | Required parameters per graph type |
+| File | Tier | Used for |
+|------|------|----------|
+| `RULES.md` | 1 | Axis rules, decoration rules, sorting constraints |
+| `DECISION-TREE.md` | 1 | Graph type selection logic |
+| `MINIMAL-PARAMETERS.md` | 1 | Required parameters per graph type |
+| `SCHEMA.md` | 2 | Key parameter definitions (groupingFactors, transforms, visual params) |
+| `CONTEXT.md` | 2 | Data format guide (2D array vs y/x/z structure) |
+| `CONTRADICTIONS.md` | 3 | Contradiction resolution strategies |
 
 ### How the knowledge base is utilized
 
@@ -281,39 +283,99 @@ See `knowledge_base_flow.svg` in this folder to open it in a browser.
 
 There are two distinct paths:
 
-**Static path — loaded once at startup into `SYSTEM_PROMPT`:**
+**Path 1 — hardcoded into `server.py` as Python string variables:**
 
-The four markdown files (`RULES.md`, `SCHEMA.md`, `DECISION-TREE.md`, `MINIMAL-PARAMETERS.md`)
-are copied verbatim into Python string variables (`GRAPH_TYPE_CATEGORIES`, `MINIMAL_PARAMETERS`,
-`DECISION_TREE`, `GRAPH_SPECIFIC_RULES`, `VALID_COLOR_SCHEMES`, `VALID_THEMES`) and then
-baked into a single `SYSTEM_PROMPT` f-string at module load time. This happens once — before
-any request arrives. Every call to the Anthropic API sends this same ~5,000-character string
-as the `system` argument, giving Claude the full ruleset on every request.
+The content from the four `canvasxpress-LLM` files (`RULES.md`, `SCHEMA.md`,
+`DECISION-TREE.md`, `MINIMAL-PARAMETERS.md`) was manually copied into `server.py`
+as Python string variables during development:
 
-**Dynamic path — per request via semantic retrieval:**
+```python
+# In server.py — these are hardcoded string variables, not file reads
+GRAPH_TYPE_CATEGORIES = """
+SINGLE-DIMENSIONAL GRAPH TYPES (use xAxis only, never yAxis):
+  Alluvial, Area, Bar, Boxplot ...
+"""
 
-`few_shot_examples.json` is handled differently. At startup, `build_index.py` embeds every
-example description into a 384-dimensional vector and stores them in `embeddings.db` (sqlite-vec).
-On each request, the user's description is embedded and the 6 nearest neighbours are retrieved
-by cosine similarity (~10ms). Those 6 examples are injected into the **user message** — not
-the system prompt — so each request gets the most relevant examples for that specific query.
+MINIMAL_PARAMETERS = """
+MINIMAL REQUIRED PARAMETERS PER GRAPH TYPE:
+  Bar: graphType, xAxis
+  Boxplot: graphType, groupingFactors, xAxis ...
+"""
+
+DECISION_TREE = """
+ONE-DIMENSIONAL DATA:
+  Compare categories → Bar (default), Lollipop ...
+"""
+
+GRAPH_SPECIFIC_RULES = """
+AXIS RULES (CRITICAL):
+  Single-Dimensional types: use xAxis ONLY — NEVER include yAxis ...
+"""
+```
+
+These variables are then baked into a **base system prompt** (`_SYSTEM_PROMPT_BASE`)
+at module load time via a Python f-string. This is **Tier 1** — always sent.
+
+**Tiered prompt system — `build_system_prompt()` builds the right prompt per request:**
+
+| Tier | Tokens | Triggered when | Content added |
+|------|--------|----------------|---------------|
+| 1 | ~1,250 | Always (base) | Graph types, decision tree, minimal params, axis rules, color schemes |
+| 2 | ~2,050 | `headers` or `data` provided | + SCHEMA.md key parameters + CONTEXT.md data format guide |
+| 3 | ~2,650 | 2+ chart-type keywords in description | + CONTRADICTIONS.md resolution strategies |
+
+This avoids paying the full token cost on every request — a simple description with no data
+stays at Tier 1, while complex requests with data and ambiguous descriptions escalate to Tier 3.
+
+```python
+def detect_tier(description, headers, data) -> int:
+    has_data = headers is not None or data is not None
+    keyword_hits = sum(kw in description.lower() for kw in CONTRADICTION_KEYWORDS)
+    if keyword_hits >= 2:  return 3   # ambiguous — add contradiction resolution
+    if has_data:           return 2   # data provided — add schema + data format
+    return 1                          # description only — base prompt only
+```
+
+**Cost comparison per request:**
+
+| Scenario | Tier | Input tokens | vs old single prompt |
+|----------|------|-------------|----------------------|
+| `"clustered heatmap"` | 1 | ~5,000 | same |
+| `"heatmap"` + headers | 2 | ~5,800 | +16% |
+| `"scatter with regression"` + data | 3 | ~6,400 | +28% |
+| Old "everything" approach | — | ~22,000 | baseline to avoid |
+
+**Path 2 — per request via semantic vector search:**
+
+`few_shot_examples.json` is handled differently. At startup, `build_index.py`
+embeds every example description into a 384-dimensional vector and stores them
+in `embeddings.db` (sqlite-vec). On each request, the user's description is
+embedded and the 6 nearest neighbours are retrieved by cosine similarity (~10ms).
+Those 6 examples go into the **user message** — not the system prompt — so each
+request gets the most relevant examples for that specific query.
 
 **Per-request flow:**
 ```
-User input (description + headers + column_types)
+User input (description + headers + data + column_types)
     │
-    ├─► retrieve_examples()   ← sqlite-vec cosine search → top-6 examples
+    ├─► detect_tier()              ← Tier 1 / 2 / 3 based on inputs
     │
-    ├─► build user prompt     ← 6 examples + description + column hint
+    ├─► build_system_prompt()      ← assembles tiered prompt (1,250–2,650 tokens)
     │
-    ├─► Anthropic API call    ← system=SYSTEM_PROMPT, messages=[user prompt]
+    ├─► retrieve_examples()        ← sqlite-vec cosine search → top-6 examples
     │
-    ├─► parse JSON response   ← strip fences, parse, handle empty
+    ├─► build user prompt          ← 6 examples + description + column hint
     │
-    └─► validate_config_headers() ← check column refs against provided headers
+    ├─► Anthropic API call         ← system=tiered prompt, messages=[user prompt]
+    │
+    ├─► parse JSON response        ← strip fences, parse, handle empty
+    │
+    └─► validate_config_headers()  ← check column refs against provided headers
             │
             └─► return {config, valid, warnings, headers_used, types_used}
 ```
+
+In debug mode (`CX_DEBUG=1`) each request prints which tier was selected and why.
 
 ---
 
