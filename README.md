@@ -272,6 +272,49 @@ All prompt content sourced from **[neuhausi/canvasxpress-LLM](https://github.com
 | `DECISION-TREE.md` | Graph type selection logic |
 | `MINIMAL-PARAMETERS.md` | Required parameters per graph type |
 
+### How the knowledge base is utilized
+
+The diagram below shows exactly how each part of the knowledge base is used on every request.
+See `knowledge_base_flow.svg` in this folder to open it in a browser.
+
+![Knowledge base flow](knowledge_base_flow.svg)
+
+There are two distinct paths:
+
+**Static path — loaded once at startup into `SYSTEM_PROMPT`:**
+
+The four markdown files (`RULES.md`, `SCHEMA.md`, `DECISION-TREE.md`, `MINIMAL-PARAMETERS.md`)
+are copied verbatim into Python string variables (`GRAPH_TYPE_CATEGORIES`, `MINIMAL_PARAMETERS`,
+`DECISION_TREE`, `GRAPH_SPECIFIC_RULES`, `VALID_COLOR_SCHEMES`, `VALID_THEMES`) and then
+baked into a single `SYSTEM_PROMPT` f-string at module load time. This happens once — before
+any request arrives. Every call to the Anthropic API sends this same ~5,000-character string
+as the `system` argument, giving Claude the full ruleset on every request.
+
+**Dynamic path — per request via semantic retrieval:**
+
+`few_shot_examples.json` is handled differently. At startup, `build_index.py` embeds every
+example description into a 384-dimensional vector and stores them in `embeddings.db` (sqlite-vec).
+On each request, the user's description is embedded and the 6 nearest neighbours are retrieved
+by cosine similarity (~10ms). Those 6 examples are injected into the **user message** — not
+the system prompt — so each request gets the most relevant examples for that specific query.
+
+**Per-request flow:**
+```
+User input (description + headers + column_types)
+    │
+    ├─► retrieve_examples()   ← sqlite-vec cosine search → top-6 examples
+    │
+    ├─► build user prompt     ← 6 examples + description + column hint
+    │
+    ├─► Anthropic API call    ← system=SYSTEM_PROMPT, messages=[user prompt]
+    │
+    ├─► parse JSON response   ← strip fences, parse, handle empty
+    │
+    └─► validate_config_headers() ← check column refs against provided headers
+            │
+            └─► return {config, valid, warnings, headers_used, types_used}
+```
+
 ---
 
 ## Project structure
