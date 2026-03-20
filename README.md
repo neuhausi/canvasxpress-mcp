@@ -2,8 +2,8 @@
 
 Natural language → CanvasXpress JSON configs, served over HTTP on port 8100.
 
-Describe a chart in plain English and get back a ready-to-use CanvasXpress
-JSON config object. No CanvasXpress expertise required.
+Describe a chart in plain English. Get back a ready-to-use CanvasXpress JSON config
+object ready to pass directly to `new CanvasXpress()`. No CanvasXpress expertise required.
 
 ```
 "Clustered heatmap with RdBu colors and dendrograms on both axes"
@@ -13,16 +13,47 @@ JSON config object. No CanvasXpress expertise required.
 "PCA scatter plot colored by Treatment with regression ellipses"
 ```
 
+Supports four LLM backends: **Anthropic API**, **Amazon Bedrock**, **Ollama** (local),
+and **OpenAI-compatible** APIs including corporate gateways.
+
 ---
 
 ## How it works
 
+![Knowledge base flow](knowledge_base_flow.svg)
+
 1. Your description is matched against few-shot examples using **semantic vector search** (sqlite-vec)
 2. The top 6 most relevant examples are included as context (RAG)
-3. A **tiered system prompt** is built based on request complexity — adding more knowledge base content only when needed (see below)
-4. Claude generates a validated CanvasXpress JSON config
+3. A **tiered system prompt** is assembled from the canvasxpress-LLM knowledge base — only the content relevant to your request is included
+4. The configured LLM generates a validated CanvasXpress JSON config
 5. If headers/data are provided, all column references are **validated** against them
 6. The config is returned ready to pass to `new CanvasXpress()`
+
+---
+
+## Project structure
+
+```
+canvasxpress-mcp/
+│
+├── src/
+│   ├── server.py           — FastMCP HTTP server (main entry point)
+│   └── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI)
+│
+├── data/
+│   ├── few_shot_examples.json  — RAG examples (add more to improve accuracy)
+│   └── embeddings.db           — sqlite-vec vector index (built by build_index.py)
+│
+├── build_index.py          — builds the vector index from few_shot_examples.json
+│
+├── test_client.py          — Python test client
+├── test_client.pl          — Perl test client
+├── test_client.mjs         — Node.js test client (Node 18+)
+│
+├── knowledge_base_flow.svg — architecture diagram
+├── requirements.txt
+└── README.md
+```
 
 ---
 
@@ -38,19 +69,22 @@ pip install -r requirements.txt
 
 ### 2. Build the vector index (one-time)
 
+Embeds the few-shot examples for semantic retrieval:
+
 ```bash
 python build_index.py
 ```
 
-Embeds all examples in `data/few_shot_examples.json` into `data/embeddings.db`.
-Re-run whenever you update the examples file.
+Re-run whenever you add or change `data/few_shot_examples.json`. If you skip this
+step the server still works — it falls back to text-similarity matching and logs a warning.
 
-> If you skip this step the server still works — it falls back to text similarity
-> matching and logs a warning.
+### 3. Configure your LLM provider
 
-### 3. Set your Anthropic API key
+Choose one of the four supported providers and set the required environment variables.
+See the [LLM providers](#llm-providers) section for full details.
 
 ```bash
+# Quickstart — Anthropic (default)
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
@@ -68,9 +102,7 @@ Server starts at: `http://localhost:8100/mcp`
 MCP_PORT=9000 python src/server.py
 ```
 
-Server starts at: `http://localhost:9000/mcp`
-
-Then point your test clients at the new port:
+Then point test clients at the new port:
 
 ```bash
 MCP_URL=http://localhost:9000/mcp python test_client.py
@@ -78,150 +110,241 @@ MCP_URL=http://localhost:9000/mcp perl test_client.pl
 MCP_URL=http://localhost:9000/mcp node test_client.mjs
 ```
 
----
+### 5. Debug mode
 
-## Debug mode
-
-To see the full reasoning trace for every request — retrieval results, prompt,
-token usage, raw LLM response, parsed config, and header validation:
+See the full reasoning trace per request — provider, model, tier selection, retrieved
+examples, prompt size, token usage, raw LLM response, and column validation:
 
 ```bash
 CX_DEBUG=1 python src/server.py
 ```
 
-Each request prints 6 steps to stderr:
+Each request prints 6 labelled steps to stderr:
 
 ```
-── STEP 1 — RETRIEVAL ──  query matched, 6 examples in 8ms
-── STEP 2 — PROMPT ──     system 4821 chars, user 2103 chars
-── STEP 3 — LLM CALL ──   1243ms, 3847 input tokens, 89 output tokens
-── STEP 4 — RAW RESPONSE  {"graphType": "Violin", ...}
-── STEP 5 — PARSED CONFIG graphType: Violin, keys: [...]
-── STEP 6 — VALIDATION ── ✅ All column references valid
+── STEP 1 — RETRIEVAL ──   query matched, 6 examples in 8ms
+── STEP 2 — PROMPT ──      system 4821 chars, user 2103 chars
+── TIERED PROMPT ──        Tier 2 (base+schema+data)  GraphType: Heatmap
+── STEP 3 — LLM CALL ──    Provider: bedrock  Model: anthropic.claude-sonnet-...
+                            Latency: 1243ms  Input: 3847 tokens  Output: 89 tokens
+── STEP 4 — RAW RESPONSE   {"graphType": "Heatmap", ...}
+── STEP 5 — PARSED CONFIG  graphType: Heatmap, keys: [...]
+── STEP 6 — VALIDATION ──  ✅ All column references valid
 ```
 
 ---
 
-## Test clients
+## LLM providers
 
-Three test clients are included. Each accepts an optional description and either
-**comma-separated headers** or a **JSON array of arrays** (first row = column names).
+The provider is selected via the `LLM_PROVIDER` environment variable. All provider
+switching is handled in `src/llm_providers.py` — `server.py` is unchanged regardless
+of which backend is active.
 
-All three clients accept the same arguments in any order after the description:
-- A **comma-separated string** → treated as column headers
-- A **JSON array of arrays** → treated as data (first row = headers)
-- A **JSON object** → treated as `column_types` mapping
+### Anthropic (default)
 
-### Python
+Direct access to the Anthropic API.
 
 ```bash
-# Default — built-in sample data + types
-python test_client.py
-
-# Headers only
-python test_client.py "Violin plot by cell type" "Gene,CellType,Expression"
-
-# Headers + column types
-python test_client.py "Scatter plot" "Gene,Expression,Treatment" '{"Gene":"string","Expression":"numeric","Treatment":"factor"}'
-
-# Full data array
-python test_client.py "Heatmap" '[["Gene","S1","S2","Treatment"],["BRCA1",1.2,3.4,"Control"]]'
-
-# Data array + column types
-python test_client.py "Heatmap" '[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]' '{"Gene":"string","S1":"numeric","Treatment":"factor"}'
+export LLM_PROVIDER=anthropic          # optional — this is the default
+export ANTHROPIC_API_KEY="sk-ant-..."
+export LLM_MODEL=claude-sonnet-4-20250514  # optional — this is the default
+python src/server.py
 ```
 
-### Perl
+No extra dependencies required beyond `requirements.txt`.
+
+### Amazon Bedrock
+
+Access Anthropic models through your AWS account via the Bedrock Converse API.
+Uses your existing AWS credentials — IAM roles, SSO profiles, and temporary
+credentials are all supported via the standard boto3 credential chain.
 
 ```bash
-# Default — built-in sample data + types
-perl test_client.pl
+pip install boto3
 
-# Headers only
-perl test_client.pl "Volcano plot" "Gene,log2FC,pValue"
+export LLM_PROVIDER=bedrock
+export AWS_REGION=us-east-1
 
-# Headers + column types
-perl test_client.pl "Scatter plot" "Gene,Expression,Treatment" '{"Gene":"string","Expression":"numeric","Treatment":"factor"}'
+# Option A — explicit credentials
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...       # if using temporary credentials
 
-# Full data array + types
-perl test_client.pl "Heatmap" '[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]' '{"Gene":"string","S1":"numeric","Treatment":"factor"}'
+# Option B — use an IAM role or SSO profile (no explicit keys needed)
+# aws sso login --profile my-profile
+# export AWS_PROFILE=my-profile
+
+python src/server.py
 ```
 
-### Node.js
+**Available Bedrock model IDs:**
+
+| Model | Bedrock model ID |
+|-------|-----------------|
+| Claude Sonnet 4.5 (default) | `anthropic.claude-sonnet-4-5-20251001-v1:0` |
+| Claude Opus 4.5 | `anthropic.claude-opus-4-5-20251001-v1:0` |
+| Claude Haiku 4.5 | `anthropic.claude-haiku-4-5-20251001-v1:0` |
 
 ```bash
-# Default — built-in sample data + types
-node test_client.mjs
+# Override the model
+export LLM_MODEL=anthropic.claude-opus-4-5-20251001-v1:0
+```
 
-# Headers only
-node test_client.mjs "Scatter plot by Treatment" "Gene,Sample1,Treatment"
+### Ollama (local)
 
-# Headers + column types
-node test_client.mjs "Scatter plot" "Gene,Expression,Treatment" '{"Gene":"string","Expression":"numeric","Treatment":"factor"}'
+Run any model locally via [Ollama](https://ollama.com). No API keys, no network
+dependency, no data leaves your machine.
 
-# Full data array + types
-node test_client.mjs "Heatmap" '[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]' '{"Gene":"string","S1":"numeric","Treatment":"factor"}'
+```bash
+# Install Ollama from https://ollama.com, then:
+ollama serve                  # start the Ollama daemon
+ollama pull llama3.2          # pull a model (one-time)
+
+export LLM_PROVIDER=ollama
+export LLM_MODEL=llama3.2     # or any model you have pulled
+python src/server.py
+```
+
+`httpx` is already in `requirements.txt` so no extra install is needed.
+
+**Custom Ollama host:**
+
+```bash
+export OLLAMA_BASE_URL=http://my-ollama-server:11434
+```
+
+**Other models to try:**
+
+```bash
+ollama pull mistral
+ollama pull codellama
+ollama pull gemma3
+```
+
+Note: smaller local models will generally produce less accurate CanvasXpress configs
+than Claude. For best results use `llama3.2` (8B) or larger.
+
+### OpenAI / corporate gateway
+
+Any OpenAI-compatible API — including your company's internal gateway, Azure OpenAI,
+or OpenAI directly. Set `OPENAI_BASE_URL` to point at your gateway instead of
+`api.openai.com`.
+
+```bash
+pip install openai
+
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY="your-gateway-token"
+export OPENAI_BASE_URL="https://api.your-company.com/openai/v1"
+export LLM_MODEL=gpt-4o
+python src/server.py
+```
+
+**OpenAI directly:**
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY="sk-..."
+export LLM_MODEL=gpt-4o        # or o3, gpt-4o-mini, etc.
+python src/server.py
+```
+
+**Azure OpenAI:**
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY="your-azure-key"
+export OPENAI_BASE_URL="https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT/v1"
+export LLM_MODEL=gpt-4o
+python src/server.py
+```
+
+**Optional organisation ID:**
+
+```bash
+export OPENAI_ORG="org-..."
 ```
 
 ---
 
-## Response format
+## Configuration reference
 
-All clients return the same structure:
+### Core settings
 
-```json
-{
-  "config": {
-    "graphType": "Heatmap",
-    "xAxis": ["Gene"],
-    "samplesClustered": true,
-    "variablesClustered": true,
-    "colorScheme": "RdBu",
-    "heatmapIndicator": true
-  },
-  "valid": true,
-  "warnings": [],
-  "invalid_refs": {},
-  "headers_used": ["Gene", "Sample1", "Sample2", "Treatment"],
-  "types_used": {"Gene": "string", "Sample1": "numeric", "Sample2": "numeric", "Treatment": "factor"}
-}
-```
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `MCP_HOST` | `0.0.0.0` | Bind host |
+| `MCP_PORT` | `8100` | Port |
+| `CX_DEBUG` | `0` | Set to `1` for full per-request debug trace |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model for the vector index |
 
-| Field | Description |
-|-------|-------------|
-| `config` | The CanvasXpress JSON config — pass directly to `new CanvasXpress()` |
-| `valid` | `true` if all column references exist in the provided columns |
-| `warnings` | List of column validation warnings (empty if valid) |
-| `invalid_refs` | Map of config key → missing column names |
-| `headers_used` | The column names actually used for validation (extracted from `data` row 0, or from `headers`) |
-| `types_used` | The `column_types` dict that was passed in (if provided) |
+### LLM provider settings
 
----
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `LLM_PROVIDER` | `anthropic` | Active provider: `anthropic`, `bedrock`, `ollama`, `openai` |
+| `LLM_MODEL` | *(provider default)* | Model ID — overrides the provider default |
 
-## Tools
+### Anthropic
 
-| Tool | Description |
-|------|-------------|
-| `generate_canvasxpress_config` | Main tool — plain English + headers → validated JSON config |
-| `list_chart_types` | All 70+ chart types organised by category |
-| `explain_config_property` | Explains any CanvasXpress config property |
-| `get_minimal_parameters` | Required parameters for a given graph type |
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `ANTHROPIC_API_KEY` | — | **Required** |
 
-### `generate_canvasxpress_config` arguments
+### Amazon Bedrock
 
-| Argument | Type | Required | Description |
-|----------|------|----------|-------------|
-| `description` | string | ✅ | Plain English chart description |
-| `headers` | string[] | ❌ | Column names — e.g. `["Gene","Sample1","Treatment"]` |
-| `data` | array[][] | ❌ | CSV-style array of arrays — first row must be column headers. Takes precedence over `headers` if both supplied |
-| `column_types` | object | ❌ | Map of column name → type. Valid types: `"string"`, `"numeric"`, `"factor"`, `"date"`. Guides axis assignment — numerics → `yAxis`, factors → `groupingFactors`/`colorBy`, dates → time axis |
-| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `AWS_REGION` | `us-east-1` | AWS region where Bedrock is enabled |
+| `AWS_ACCESS_KEY_ID` | — | Explicit key (or use IAM role / SSO) |
+| `AWS_SECRET_ACCESS_KEY` | — | Explicit secret |
+| `AWS_SESSION_TOKEN` | — | For temporary credentials |
+| `AWS_PROFILE` | — | Named AWS profile |
+
+### Ollama
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+
+### OpenAI / gateway
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `OPENAI_API_KEY` | — | **Required** — your API key or gateway token |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for corporate gateways or Azure |
+| `OPENAI_ORG` | — | Optional organisation ID |
 
 ---
 
-## Adding more few-shot examples
+## Knowledge base
 
-Edit `data/few_shot_examples.json` — each example needs a `description` and a `config`:
+All prompt content sourced from **[neuhausi/canvasxpress-LLM](https://github.com/neuhausi/canvasxpress-LLM)**,
+organised into a tiered system that adds content only when needed:
+
+| File | Tier | Triggered when | Content |
+|------|------|----------------|---------|
+| `RULES.md` | 1 | Always | Axis rules, decoration rules, sorting constraints |
+| `DECISION-TREE.md` | 1 | Always | Graph type selection logic |
+| `MINIMAL-PARAMETERS.md` | 1 | Always | Required parameters per graph type |
+| `SCHEMA.md` | 2 | `headers` or `data` provided | Key parameter definitions |
+| `CONTEXT.md` | 2 | `headers` or `data` provided | Data format guide (2D array vs y/x/z) |
+| `CONTRADICTIONS.md` | 3 | 2+ chart-type keywords in description | Contradiction resolution strategies |
+
+**Token cost per request:**
+
+| Scenario | Tier | Input tokens |
+|----------|------|-------------|
+| `"clustered heatmap"` (no data) | 1 | ~5,000 |
+| `"heatmap"` + headers | 2 | ~5,800 |
+| `"scatter with regression"` + data | 3 | ~6,400 |
+
+---
+
+## Few-shot examples
+
+The `data/few_shot_examples.json` file contains examples used for RAG retrieval.
+Each example needs a `description` and a `config`:
 
 ```json
 {
@@ -238,160 +361,186 @@ Edit `data/few_shot_examples.json` — each example needs a `description` and a 
 }
 ```
 
-Then rebuild the index:
+After adding examples, rebuild the index:
 
 ```bash
 python build_index.py
 ```
 
-The server scales to 3,000+ examples with no performance impact thanks to
-sqlite-vec semantic search (~10ms retrieval regardless of corpus size).
+The server scales to 3,000+ examples with no performance impact (~10ms retrieval).
 
 ---
 
-## Configuration
+## Test clients
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Required. Your Anthropic API key |
-| `MCP_HOST` | `0.0.0.0` | Host to bind to |
-| `MCP_PORT` | `8100` | Port to listen on |
-| `CX_DEBUG` | `0` | Set to `1` to enable debug trace output |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model for indexing |
+All three clients accept the same arguments after the description, in any order:
+- A **comma-separated string** → column headers
+- A **JSON array of arrays** → data (first row = headers)
+- A **JSON object** → column types (`string`/`numeric`/`factor`/`date`)
+
+### Python
+
+```bash
+# Default — built-in sample data + types
+python test_client.py
+
+# Headers only
+python test_client.py "Violin plot by cell type" "Gene,CellType,Expression"
+
+# Headers + column types
+python test_client.py "Scatter plot" "Gene,Expr,Treatment" \
+  '{"Gene":"string","Expr":"numeric","Treatment":"factor"}'
+
+# Full data array + types
+python test_client.py "Heatmap" \
+  '[["Gene","S1","S2","Treatment"],["BRCA1",1.2,3.4,"Control"]]' \
+  '{"Gene":"string","S1":"numeric","S2":"numeric","Treatment":"factor"}'
+```
+
+### Perl
+
+```bash
+# requires: cpan LWP::UserAgent JSON
+perl test_client.pl
+perl test_client.pl "Volcano plot" "Gene,log2FC,pValue"
+perl test_client.pl "Scatter plot" "Gene,Expr,Treatment" \
+  '{"Gene":"string","Expr":"numeric","Treatment":"factor"}'
+```
+
+### Node.js
+
+```bash
+# requires: Node 18+  and  npm install @modelcontextprotocol/sdk
+node test_client.mjs
+node test_client.mjs "Scatter plot by Treatment" "Gene,Sample1,Treatment"
+node test_client.mjs "Heatmap" \
+  '[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]' \
+  '{"Gene":"string","S1":"numeric","Treatment":"factor"}'
+```
 
 ---
 
-## Knowledge base
+## Response format
 
-All prompt content sourced from **[neuhausi/canvasxpress-LLM](https://github.com/neuhausi/canvasxpress-LLM)**:
+```json
+{
+  "config": {
+    "graphType": "Heatmap",
+    "xAxis": ["Gene"],
+    "samplesClustered": true,
+    "variablesClustered": true,
+    "colorScheme": "RdBu",
+    "heatmapIndicator": true
+  },
+  "valid": true,
+  "warnings": [],
+  "invalid_refs": {},
+  "headers_used": ["Gene", "Sample1", "Sample2", "Treatment"],
+  "types_used": {"Gene": "string", "Sample1": "numeric", "Treatment": "factor"}
+}
+```
 
-| File | Tier | Used for |
-|------|------|----------|
-| `RULES.md` | 1 | Axis rules, decoration rules, sorting constraints |
-| `DECISION-TREE.md` | 1 | Graph type selection logic |
-| `MINIMAL-PARAMETERS.md` | 1 | Required parameters per graph type |
-| `SCHEMA.md` | 2 | Key parameter definitions (groupingFactors, transforms, visual params) |
-| `CONTEXT.md` | 2 | Data format guide (2D array vs y/x/z structure) |
-| `CONTRADICTIONS.md` | 3 | Contradiction resolution strategies |
+| Field | Description |
+|-------|-------------|
+| `config` | CanvasXpress JSON config — pass directly to `new CanvasXpress()` |
+| `valid` | `true` if all column references exist in the provided columns |
+| `warnings` | Column validation warnings (empty if valid) |
+| `invalid_refs` | Map of config key → missing column names |
+| `headers_used` | Column names used for validation |
+| `types_used` | Column types passed in (if provided) |
 
-### How the knowledge base is utilized
+---
 
-The diagram below shows exactly how each part of the knowledge base is used on every request.
-See `knowledge_base_flow.svg` in this folder to open it in a browser.
+## MCP tools
 
-![Knowledge base flow](knowledge_base_flow.svg)
+| Tool | Description |
+|------|-------------|
+| `generate_canvasxpress_config` | Plain English + optional data/headers/types → validated JSON config |
+| `modify_canvasxpress_config` | Modify an existing config using a plain English instruction |
+| `list_chart_types` | All 70+ chart types organised by category |
+| `explain_config_property` | Explains any CanvasXpress config property |
+| `get_minimal_parameters` | Required parameters for a given graph type |
 
-There are two distinct paths:
+### `generate_canvasxpress_config` arguments
 
-**Path 1 — hardcoded into `server.py` as Python string variables:**
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `description` | string | ✅ | Plain English chart description |
+| `headers` | string[] | ❌ | Column names from your dataset |
+| `data` | array[][] | ❌ | CSV-style data array — first row = headers. Overrides `headers` |
+| `column_types` | object | ❌ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
+| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
 
-The content from the four `canvasxpress-LLM` files (`RULES.md`, `SCHEMA.md`,
-`DECISION-TREE.md`, `MINIMAL-PARAMETERS.md`) was manually copied into `server.py`
-as Python string variables during development:
+---
+
+### `modify_canvasxpress_config`
+
+Pass an existing config and a plain English instruction describing what to change.
+The full config is preserved except for the modifications you request.
+
+**Arguments:**
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `config` | object | ✅ | The existing CanvasXpress JSON config to modify |
+| `instruction` | string | ✅ | Plain English description of the change to apply |
+| `headers` | string[] | ❌ | Column names — used to validate any new column references |
+| `data` | array[][] | ❌ | CSV-style data array — first row = headers. Overrides `headers` |
+| `column_types` | object | ❌ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
+| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+
+**Response** includes all the same fields as `generate_canvasxpress_config`, plus a `changes` field:
+
+```json
+{
+  "config":       { "graphType": "Heatmap", "title": "My Heatmap", "colorScheme": "Tableau", ... },
+  "valid":        true,
+  "warnings":     [],
+  "invalid_refs": {},
+  "headers_used": [],
+  "types_used":   {},
+  "changes": {
+    "added":   ["title"],
+    "removed": [],
+    "changed": ["colorScheme"]
+  }
+}
+```
+
+**Example instructions:**
+
+```
+"add a title My Heatmap"
+"change the color scheme to Tableau"
+"remove the legend"
+"set the x-axis title to Fold Change"
+"switch to dark theme"
+"add groupingFactors for the Treatment column"
+"enable hierarchical clustering on both axes"
+"set y-axis min to 0 and max to 100"
+"add a horizontal reference line at y = 1.5"
+"change graphType from Bar to Lollipop"
+"remove the colorScheme and theme parameters"
+```
+
+**Usage example:**
 
 ```python
-# In server.py — these are hardcoded string variables, not file reads
-GRAPH_TYPE_CATEGORIES = """
-SINGLE-DIMENSIONAL GRAPH TYPES (use xAxis only, never yAxis):
-  Alluvial, Area, Bar, Boxplot ...
-"""
+# Start with a generated config
+result = generate_canvasxpress_config(
+    description="clustered heatmap of gene expression",
+    headers=["Gene", "S1", "S2", "S3", "Treatment"],
+)
+config = result["config"]
+# {"graphType": "Heatmap", "xAxis": ["Gene"], "samplesClustered": true, ...}
 
-MINIMAL_PARAMETERS = """
-MINIMAL REQUIRED PARAMETERS PER GRAPH TYPE:
-  Bar: graphType, xAxis
-  Boxplot: graphType, groupingFactors, xAxis ...
-"""
-
-DECISION_TREE = """
-ONE-DIMENSIONAL DATA:
-  Compare categories → Bar (default), Lollipop ...
-"""
-
-GRAPH_SPECIFIC_RULES = """
-AXIS RULES (CRITICAL):
-  Single-Dimensional types: use xAxis ONLY — NEVER include yAxis ...
-"""
-```
-
-These variables are then baked into a **base system prompt** (`_SYSTEM_PROMPT_BASE`)
-at module load time via a Python f-string. This is **Tier 1** — always sent.
-
-**Tiered prompt system — `build_system_prompt()` builds the right prompt per request:**
-
-| Tier | Tokens | Triggered when | Content added |
-|------|--------|----------------|---------------|
-| 1 | ~1,250 | Always (base) | Graph types, decision tree, minimal params, axis rules, color schemes |
-| 2 | ~2,050 | `headers` or `data` provided | + SCHEMA.md key parameters + CONTEXT.md data format guide |
-| 3 | ~2,650 | 2+ chart-type keywords in description | + CONTRADICTIONS.md resolution strategies |
-
-This avoids paying the full token cost on every request — a simple description with no data
-stays at Tier 1, while complex requests with data and ambiguous descriptions escalate to Tier 3.
-
-```python
-def detect_tier(description, headers, data) -> int:
-    has_data = headers is not None or data is not None
-    keyword_hits = sum(kw in description.lower() for kw in CONTRADICTION_KEYWORDS)
-    if keyword_hits >= 2:  return 3   # ambiguous — add contradiction resolution
-    if has_data:           return 2   # data provided — add schema + data format
-    return 1                          # description only — base prompt only
-```
-
-**Cost comparison per request:**
-
-| Scenario | Tier | Input tokens | vs old single prompt |
-|----------|------|-------------|----------------------|
-| `"clustered heatmap"` | 1 | ~5,000 | same |
-| `"heatmap"` + headers | 2 | ~5,800 | +16% |
-| `"scatter with regression"` + data | 3 | ~6,400 | +28% |
-| Old "everything" approach | — | ~22,000 | baseline to avoid |
-
-**Path 2 — per request via semantic vector search:**
-
-`few_shot_examples.json` is handled differently. At startup, `build_index.py`
-embeds every example description into a 384-dimensional vector and stores them
-in `embeddings.db` (sqlite-vec). On each request, the user's description is
-embedded and the 6 nearest neighbours are retrieved by cosine similarity (~10ms).
-Those 6 examples go into the **user message** — not the system prompt — so each
-request gets the most relevant examples for that specific query.
-
-**Per-request flow:**
-```
-User input (description + headers + data + column_types)
-    │
-    ├─► detect_tier()              ← Tier 1 / 2 / 3 based on inputs
-    │
-    ├─► build_system_prompt()      ← assembles tiered prompt (1,250–2,650 tokens)
-    │
-    ├─► retrieve_examples()        ← sqlite-vec cosine search → top-6 examples
-    │
-    ├─► build user prompt          ← 6 examples + description + column hint
-    │
-    ├─► Anthropic API call         ← system=tiered prompt, messages=[user prompt]
-    │
-    ├─► parse JSON response        ← strip fences, parse, handle empty
-    │
-    └─► validate_config_headers()  ← check column refs against provided headers
-            │
-            └─► return {config, valid, warnings, headers_used, types_used}
-```
-
-In debug mode (`CX_DEBUG=1`) each request prints which tier was selected and why.
-
----
-
-## Project structure
-
-```
-canvasxpress-mcp/
-├── src/
-│   └── server.py               # FastMCP HTTP server
-├── data/
-│   ├── few_shot_examples.json  # Few-shot examples (add more here)
-│   └── embeddings.db           # sqlite-vec index (built by build_index.py)
-├── build_index.py              # One-time vector index builder
-├── test_client.py              # Python test client
-├── test_client.pl              # Perl test client
-├── test_client.mjs             # Node.js test client (Node 18+)
-├── requirements.txt
-└── README.md
+# Now modify it
+modified = modify_canvasxpress_config(
+    config=config,
+    instruction="change the color scheme to Spectral and add a title Expression Heatmap",
+)
+# modified["config"] = {"graphType": "Heatmap", "xAxis": ["Gene"],
+#                       "samplesClustered": true, "colorScheme": "Spectral",
+#                       "title": "Expression Heatmap", ...}
+# modified["changes"] = {"added": ["title"], "removed": [], "changed": ["colorScheme"]}
 ```

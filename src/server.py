@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CanvasXpress MCP Server — HTTP Transport
+CanvasXpress MCP Server v4 — HTTP Transport
 =============================================
 All v3 improvements plus fast local vector search:
   - sqlite-vec + sentence-transformers for semantic retrieval
@@ -27,8 +27,8 @@ from typing import Optional
 
 import numpy as np
 import sqlite_vec
-import anthropic
 from fastmcp import FastMCP
+from llm_providers import complete as llm_complete, provider_info, PROVIDER, MODEL
 from sentence_transformers import SentenceTransformer
 
 # ---------------------------------------------------------------------------
@@ -170,271 +170,98 @@ def retrieve_examples(query: str, top_k: int = 6) -> list[dict]:
 _load_vector_index()
 
 # ---------------------------------------------------------------------------
-# Knowledge base — sourced from neuhausi/canvasxpress-LLM
+# Knowledge DB — SQLite-backed, graph-type-aware prompt context
 # ---------------------------------------------------------------------------
 
-GRAPH_TYPE_CATEGORIES = """
-SINGLE-DIMENSIONAL GRAPH TYPES (use xAxis only, never yAxis):
-  Alluvial, Area, Bar, Boxplot, Bin, Binplot, Bubble, Bullet, CDF, Chord,
-  Circular, Cleveland, Correlation, Density, Distribution, Donut, Dotplot,
-  Dumbbell, Gantt, Heatmap, Hex, Hexplot, Histogram, Line, Lollipop, Meter,
-  ParallelCoordinates, Pie, QQ, Quantile, Radar, Ribbon, Ridgeline, Sankey,
-  Stacked, StackedPercent, TagCloud, Tornado, Tree, Treemap, Violin, Venn, Waterfall, WordCloud
+# Graph type keyword detection
+_GRAPH_TYPE_KEYWORDS: dict[str, str] = {
+    "heatmap": "Heatmap", "heat map": "Heatmap",
+    "scatter": "Scatter2D", "scatter plot": "Scatter2D", "scatterplot": "Scatter2D",
+    "pca": "Scatter2D", "umap": "Scatter2D", "tsne": "Scatter2D", "t-sne": "Scatter2D",
+    "volcano": "Volcano",
+    "bar chart": "Bar", "bar graph": "Bar", "barplot": "Bar", "bar plot": "Bar",
+    "boxplot": "Boxplot", "box plot": "Boxplot",
+    "violin": "Violin",
+    "line chart": "Line", "line graph": "Line", "line plot": "Line",
+    "3d scatter": "Scatter3D", "scatter 3d": "Scatter3D",
+    "histogram": "Histogram",
+    "density": "Density",
+    "sankey": "Sankey", "alluvial": "Alluvial",
+    "network": "Network",
+    "venn": "Venn",
+    "treemap": "Treemap", "tree map": "Treemap",
+    "survival": "KaplanMeier", "kaplan": "KaplanMeier",
+    "pie chart": "Pie", "donut": "Donut",
+    "area chart": "Area", "area plot": "Area",
+    "lollipop": "Lollipop", "waterfall": "Waterfall",
+    "correlation": "Correlation",
+    "bubble": "ScatterBubble2D",
+    "ridgeline": "Ridgeline", "ridge": "Ridgeline",
+    "gantt": "Gantt", "tornado": "Tornado",
+}
 
-COMBINED GRAPH TYPES (use xAxis + xAxis2, never yAxis):
-  AreaLine, BarLine, DotLine, Pareto, StackedLine, StackedPercentLine
+# Contradiction keywords - 2+ hits triggers Tier 3
+_CONTRADICTION_KEYWORDS = [
+    "pie", "correlation", "regression", "3d", "bubble",
+    "survival", "kaplan", "gantt", "sankey", "network",
+    "venn", "treemap", "volcano", "scatter", "heatmap",
+]
 
-MULTI-DIMENSIONAL GRAPH TYPES (require both xAxis and yAxis):
-  Bump, Contour, Scatter2D, Scatter3D, ScatterBubble2D, Spaghetti, Streamgraph, Volcano
 
-GRAPH TYPES REQUIRING x/y DECORATION PARAMS:
-  Bin, Binplot, CDF, Contour, Density, Hex, Hexplot, Histogram, KaplanMeier,
-  QQ, Quantile, Ridgeline, Scatter2D, ScatterBubble2D, Spaghetti, Streamgraph, Volcano
+def detect_graph_type(description: str) -> Optional[str]:
+    """Infer likely graph type from description using keyword matching."""
+    desc_lower = description.lower()
+    for kw in sorted(_GRAPH_TYPE_KEYWORDS, key=len, reverse=True):
+        if kw in desc_lower:
+            return _GRAPH_TYPE_KEYWORDS[kw]
+    return None
 
-GRAPH TYPES REQUIRING VALUE DECORATION PARAMS:
-  Area, AreaLine, Bar, BarLine, Boxplot, DotLine, Dotplot, Line, Lollipop,
-  Pareto, Stacked, StackedLine, StackedPercent, StackedPercentLine, Violin, Waterfall
-"""
 
-MINIMAL_PARAMETERS = """
-MINIMAL REQUIRED PARAMETERS PER GRAPH TYPE:
-  Alluvial: graphType, sankeyAxes, xAxis
-  Area: graphType, xAxis
-  AreaLine: graphType, xAxis, xAxis2
-  Bar: graphType, xAxis
-  BarLine: graphType, xAxis, xAxis2
-  Bin: graphType, xAxis
-  Binplot: graphType, xAxis
-  Boxplot: graphType, groupingFactors, xAxis
-  Bubble: graphType, hierarchy, xAxis
-  Bump: graphType, lineBy, xAxis, yAxis
-  CDF: graphType, xAxis
-  Chord: graphType, xAxis
-  Circular: graphType, xAxis
-  Cleveland: graphType, xAxis
-  Contour: graphType, xAxis, yAxis
-  Correlation: graphType, xAxis
-  Density: graphType, xAxis
-  Distribution: graphType, xAxis
-  Donut: graphType, xAxis
-  DotLine: graphType, xAxis, xAxis2
-  Dotplot: graphType, xAxis
-  Dumbbell: graphType, xAxis
-  Heatmap: graphType, xAxis
-  Histogram: graphType, xAxis
-  KaplanMeier: graphType, xAxis, yAxis
-  Line: graphType, xAxis
-  Lollipop: graphType, xAxis
-  Network: graphType
-  ParallelCoordinates: graphType, xAxis
-  Pareto: graphType, xAxis, xAxis2
-  Pie: graphType, xAxis
-  QQ: graphType, xAxis
-  Quantile: graphType, xAxis
-  Radar: graphType, xAxis
-  Ribbon: graphType, sankeyAxes, xAxis
-  Ridgeline: graphType, ridgeBy, xAxis
-  Sankey: graphType, sankeyAxes, xAxis
-  Scatter2D: graphType, xAxis, yAxis
-  Scatter3D: graphType, xAxis, yAxis, zAxis
-  ScatterBubble2D: graphType, xAxis, yAxis, zAxis
-  Spaghetti: colorBy, graphType, xAxis, yAxis
-  Stacked: graphType, xAxis
-  StackedLine: graphType, xAxis, xAxis2
-  StackedPercent: graphType, xAxis
-  StackedPercentLine: graphType, xAxis, xAxis2
-  Streamgraph: graphType, xAxis, yAxis
-  Sunburst: graphType, hierarchy
-  TagCloud: colorBy, graphType, xAxis
-  TimeSeries: graphType, xAxis, yAxis
-  Tornado: graphType, xAxis
-  Tree: graphType, hierarchy, xAxis
-  Treemap: graphType, groupingFactors, xAxis
-  Venn: graphType, vennGroups, xAxis
-  Violin: graphType, groupingFactors, xAxis
-  Volcano: graphType, xAxis, yAxis
-  Waterfall: graphType, xAxis
-  WordCloud: colorBy, graphType, xAxis
-"""
+def detect_tier(
+    description: str,
+    headers: list[str] | None,
+    data: list[list] | None,
+) -> int:
+    """Detect which prompt tier to use (1, 2, or 3)."""
+    has_data = headers is not None or data is not None
+    keyword_hits = sum(kw in description.lower() for kw in _CONTRADICTION_KEYWORDS)
+    if keyword_hits >= 2:
+        return 3
+    if has_data:
+        return 2
+    return 1
 
-DECISION_TREE = """
-GRAPH TYPE SELECTION DECISION TREE:
 
-ONE-DIMENSIONAL DATA:
-  Compare categories → Bar (default), Lollipop (emphasis on points), Cleveland (horizontal), Dumbbell (change), Waterfall (cumulative)
-  Show distribution (single) → Histogram, Density, CDF, QQ
-  Show distribution (multiple groups) → Boxplot, Violin, Dotplot, Ridgeline
-  Part-to-whole (circular) → Pie, Donut, Sunburst
-  Part-to-whole (rectangular) → Treemap, Stacked, StackedPercent
-  Ranking → Bar, Pareto (with threshold)
-  Time series → Line, Area, Streamgraph, Bump (rank changes)
+# Load knowledge DB at startup
+_knowledge_db: Optional["KnowledgeDB"] = None
+KNOWLEDGE_FILE = DATA_DIR / "knowledge.db"
 
-TWO-DIMENSIONAL DATA:
-  Correlation/relationship (continuous) → Scatter2D, ScatterBubble2D (with size), Bin/Hexplot (density), Contour
-  Correlation (categorical+continuous) → Scatter2D with colorBy, Boxplot, Violin
-  Time series multi-variable → Line, Spaghetti, Ribbon (with confidence)
-  Compare multiple metrics → BarLine, AreaLine, DotLine, Radar, ParallelCoordinates
 
-THREE-DIMENSIONAL → Scatter3D
-NETWORK → Network, Tree, Treemap, Sankey, Chord, Alluvial
-GEOGRAPHICAL → Map
-SET RELATIONSHIPS → Venn, Upset
-SPECIAL PURPOSE → Correlation (matrix), Volcano (differential expression), KaplanMeier (survival), Gantt (scheduling), Tornado
-"""
+def _load_knowledge_db() -> bool:
+    global _knowledge_db
+    if not KNOWLEDGE_FILE.exists():
+        log.warning(
+            "Knowledge DB not found at %s. Run build_knowledge_db.py to build it. "
+            "Falling back to base prompt only.", KNOWLEDGE_FILE
+        )
+        return False
+    try:
+        _knowledge_db = KnowledgeDB(KNOWLEDGE_FILE)
+        stats = _knowledge_db.get_stats()
+        log.info(
+            "Knowledge DB: %d sections (t1=%d t2=%d t3=%d)",
+            stats["total_sections"],
+            stats["by_tier"].get(1, 0),
+            stats["by_tier"].get(2, 0),
+            stats["by_tier"].get(3, 0),
+        )
+        return True
+    except Exception as e:
+        log.warning("Failed to load knowledge DB: %s. Using base prompt only.", e)
+        return False
 
-VALID_COLOR_SCHEMES = (
-    "YlGn, YlGnBu, GnBu, BuGn, PuBuGn, PuBu, BuPu, RdPu, PuRd, OrRd, YlOrRd, YlOrBr, "
-    "Purples, Blues, Greens, Oranges, Reds, Greys, PuOr, BrBG, PRGn, PiYG, RdBu, RdGy, "
-    "RdYlBu, Spectral, RdYlGn, Bootstrap, Economist, Excel, GGPlot, Solarized, PaulTol, "
-    "ColorBlind, Tableau, WallStreetJournal, Stata, BlackAndWhite, CanvasXpress"
-)
 
-VALID_THEMES = (
-    "bw, classic, cx, dark, economist, excel, ggblanket, ggplot, gray, grey, "
-    "highcharts, igray, light, linedraw, minimal, none, ptol, solarized, stata, tableau, void0, wsj"
-)
-
-GRAPH_SPECIFIC_RULES = """
-GRAPH-TYPE-SPECIFIC REQUIRED PARAMETERS:
-  Area: must include areaType ("overlapping"|"stacked"|"percent")
-  Contour: must include xAxis (col 1) AND yAxis (col 2)
-  Density: must include densityPosition ("normal"|"stacked"|"filled")
-  Dumbbell: must include dumbbellType ("arrow"|"bullet"|"cleveland"|"connected"|"line"|"lineConnected"|"stacked")
-  Histogram: must include histogramType ("dodged"|"staggered"|"stacked")
-  Ridgeline: use ridgeBy instead of groupingFactors
-
-AXIS RULES (CRITICAL):
-  Single-Dimensional types: use xAxis ONLY — NEVER include yAxis or any y-axis params
-    (yAxisTitle, yAxisTextColor, etc.). Use smpTitle/smpTextColor instead.
-  Combined types: use xAxis + xAxis2 — NEVER include yAxis
-  Multi-Dimensional types: MUST include both xAxis and yAxis; xAxis always listed first
-
-DECORATION RULES:
-  decorations keys: only "line", "point", or "text" for 1D; or scatter-specific keys
-  Each decoration array item: only color, value, x, y, width, label (scalar values only)
-  Only one of x/y/value per item; only include x/y for x/y-decoration graph types
-
-SORTING: Never sort for: Bin, Binplot, CDF, Contour, Density, Hex, Hexplot, Histogram,
-  KaplanMeier, QQ, Quantile, Ridgeline, Scatter2D, ScatterBubble2D, Streamgraph
-
-FILTER: filterData is array of arrays: ["guess", columnName, "like"|"different", value]
-SORT:   sortData is array of arrays: ["var"|"smp"|"cat", "var"|"smp", columnName]
-
-AXIS MIN/MAX:
-  Both xAxis+yAxis present: use setMinX/setMaxX and setMinY/setMaxY
-  Only xAxis present: use setMinX/setMaxX only — NEVER use setMinY/setMaxY
-"""
-
-# ---------------------------------------------------------------------------
-# Tier 2 — added when headers/data are provided (~800 tokens)
-# Source: SCHEMA.md (key parameters) + CONTEXT.md (data format)
-# ---------------------------------------------------------------------------
-
-SCHEMA_KEY_PARAMS = """
-KEY CONFIGURATION PARAMETERS (from SCHEMA.md):
-
-Data wrangling:
-  groupingFactors   : array of factor column names for grouping/coloring data
-  segregateSamplesBy: array of columns to facet samples into subplots
-  segregateVariablesBy: array of columns to facet variables into subplots
-  transformData     : "log2"|"log10"|"-log2"|"-log10"|"zscore"|"percentile"|"sqrt"
-  samplesClustered  : boolean — hierarchical clustering of samples (columns)
-  variablesClustered: boolean — hierarchical clustering of variables (rows)
-  colorBy           : column name to color data points by
-  shapeBy           : column name to assign shapes to data points
-  sizeBy            : column name to scale data point sizes
-  pivotBy           : column name to reshape data (wide→long)
-  ridgeBy           : column name for Ridgeline plots (NOT groupingFactors)
-  sankeyAxes        : array of column names for flow axes (Sankey/Alluvial/Ribbon)
-  hierarchy         : array of column names for tree hierarchy (Bubble/Tree/Sunburst)
-
-Axis transforms:
-  xAxisTransform / yAxisTransform: "log2"|"log10"|"-log2"|"-log10"|"sqrt"|"percentile"
-
-Visual:
-  graphOrientation  : "horizontal"|"vertical" (for bar-type graphs)
-  showLegend        : boolean
-  legendPosition    : "topRight"|"right"|"bottomRight"|"bottom"|"bottomLeft"|"left"|"topLeft"|"top"
-  showRegressionFit : boolean (scatter plots)
-  regressionType    : "linear"|"exponential"|"logarithmic"|"power"|"polynomial"
-  showLoessFit      : boolean (scatter plots)
-  showConfidenceIntervals: boolean
-  jitter            : boolean — jitter data points in dotplots/boxplots
-  samplesClustered  : boolean — show dendrogram for samples
-  variablesClustered: boolean — show dendrogram for variables
-  heatmapIndicator  : boolean — show color scale on heatmaps (almost always true)
-
-Graph-specific:
-  areaType          : "overlapping"|"stacked"|"percent" (Area graphs — required)
-  densityPosition   : "normal"|"stacked"|"filled" (Density graphs — required)
-  histogramType     : "dodged"|"staggered"|"stacked" (Histogram — required)
-  dumbbellType      : "arrow"|"bullet"|"cleveland"|"connected"|"line"|"lineConnected"|"stacked"
-  boxplotNotched    : boolean
-  violinScale       : "area"|"count"|"width"
-  lineType          : "rect"|"solid"|"spline"|"dotted"|"dashed"
-  showBoxplotOriginalData: boolean — overlay data points on boxplots
-  showViolinBoxplot : boolean — show embedded boxplot inside violin
-
-Filtering and sorting:
-  filterData: [["guess", "columnName", "like"|"different", "value"]]
-  sortData  : [["smp"|"var"|"cat", "smp"|"var", "columnName"]]
-"""
-
-DATA_FORMAT_GUIDE = """
-DATA FORMAT GUIDE (from CONTEXT.md):
-
-CanvasXpress accepts two data formats:
-
-1. Simple 2D array (preferred for flat data):
-   [
-     ["Id", "Col1", "Col2", "Group"],   ← first row = column headers
-     ["Row1", 10, 35, "A"],             ← subsequent rows = data
-     ["Row2", 20, 15, "B"]
-   ]
-
-2. Structured y/x/z object (preferred for complex data):
-   {
-     "y": { "vars": ["Gene1"], "smps": ["Smp1","Smp2"], "data": [[10, 35]] },
-     "x": { "Group": ["A","B"] },   ← sample metadata
-     "z": { "Pathway": ["P1"] }     ← variable metadata
-   }
-
-For xAxis: use column names from the first row (e.g. "Col1", "Group")
-For groupingFactors / colorBy: use metadata column names (e.g. "Group")
-"""
-
-# ---------------------------------------------------------------------------
-# Tier 3 — added when description seems ambiguous/contradictory (~600 tokens)
-# Source: CONTRADICTIONS.md
-# ---------------------------------------------------------------------------
-
-CONTRADICTIONS_GUIDE = """
-CONTRADICTION RESOLUTION (from CONTRADICTIONS.md):
-
-When requirements conflict, follow this priority:
-1. Data integrity — accurately represent the data
-2. Primary goal — preserve the main analytical purpose
-3. Graph type — honor requested type when possible
-4. Parameters — include requested params when compatible
-
-Common substitutions:
-  "pie chart showing correlation"  → Scatter2D with showRegressionFit
-  "bar chart for 3D data"         → Scatter3D or ScatterBubble2D
-  "regression on bar chart"        → remove showRegressionFit (incompatible)
-  "2D scatter for 4+ variables"   → use colorBy/shapeBy for extra dims
-
-Parameter conflicts to avoid:
-  stackBy + ridgeBy in same config — incompatible
-  showRegressionFit on Bar/Heatmap — incompatible
-  yAxis on single-dimensional graph types — never allowed
-"""
-
-# ---------------------------------------------------------------------------
-# System prompt — integrates full canvasxpress-LLM knowledge base
-# ---------------------------------------------------------------------------
-
-# Tier 1 — always included (base system prompt, ~1,250 tokens)
-_SYSTEM_PROMPT_BASE = f"""You are an expert CanvasXpress data visualization assistant.
+_SYSTEM_PROMPT_HEADER = """You are an expert CanvasXpress data visualization assistant.
 
 Your task is to generate a valid CanvasXpress JSON configuration object from a natural
 language description and optional column headers.
@@ -455,22 +282,14 @@ TimeSeries, Tornado, Tree, Treemap, Upset, Violin, Volcano, Venn, Waterfall, Wor
 Default to "Bar" if the type is ambiguous.
 
 ## VALID COLOR SCHEMES
-{VALID_COLOR_SCHEMES}
+YlGn, YlGnBu, GnBu, BuGn, PuBuGn, PuBu, BuPu, RdPu, PuRd, OrRd, YlOrRd, YlOrBr,
+Purples, Blues, Greens, Oranges, Reds, Greys, PuOr, BrBG, PRGn, PiYG, RdBu, RdGy,
+RdYlBu, Spectral, RdYlGn, Bootstrap, Economist, Excel, GGPlot, Solarized, PaulTol,
+ColorBlind, Tableau, WallStreetJournal, Stata, BlackAndWhite, CanvasXpress
 
 ## VALID THEMES
-{VALID_THEMES}
-
-## GRAPH TYPE CATEGORIES
-{GRAPH_TYPE_CATEGORIES}
-
-## DECISION TREE — CHOOSING GRAPH TYPE
-{DECISION_TREE}
-
-## MINIMAL REQUIRED PARAMETERS
-{MINIMAL_PARAMETERS}
-
-## CRITICAL RULES
-{GRAPH_SPECIFIC_RULES}
+bw, classic, cx, dark, economist, excel, ggblanket, ggplot, gray, grey,
+highcharts, igray, light, linedraw, minimal, none, ptol, solarized, stata, tableau, void0, wsj
 
 ## STEPS
 1. Select graphType from the valid list using the decision tree
@@ -485,61 +304,41 @@ Default to "Bar" if the type is ambiguous.
 10. Validate: ensure minimal required parameters are present; return empty string if not valid
 """
 
-# Contradiction keywords that trigger Tier 3
-_CONTRADICTION_KEYWORDS = [
-    "pie", "correlation", "regression", "3d", "bubble",
-    "survival", "kaplan", "gantt", "sankey", "network",
-    "venn", "treemap", "volcano", "scatter", "heatmap",
-]
-
-
-def detect_tier(
-    description: str,
-    headers: list[str] | None,
-    data: list[list] | None,
-) -> int:
-    """
-    Detect which prompt tier is needed based on the request.
-    Tier 1: description only (~1,250 tokens)
-    Tier 2: headers/data provided — add SCHEMA + data format guide (~2,050 tokens)
-    Tier 3: ambiguous/complex description — add Tier 2 + contradictions guide (~2,650 tokens)
-    """
-    has_data = headers is not None or data is not None
-    desc_lower = description.lower()
-    # Tier 3: multiple chart-type keywords suggest possible ambiguity
-    keyword_hits = sum(kw in desc_lower for kw in _CONTRADICTION_KEYWORDS)
-    if keyword_hits >= 2 or has_data:
-        tier = 3 if keyword_hits >= 2 else 2
-    else:
-        tier = 1
-    return tier
-
 
 def build_system_prompt(
     description: str,
     headers: list[str] | None,
     data: list[list] | None,
-) -> tuple[str, int]:
+) -> tuple[str, int, Optional[str]]:
     """
-    Build a tiered system prompt based on request complexity.
-    Returns (prompt_string, tier_used).
+    Build a graph-type-aware, tiered system prompt from the knowledge DB.
+    Returns (prompt_string, tier_used, detected_graph_type).
     """
-    tier = detect_tier(description, headers, data)
-    prompt = _SYSTEM_PROMPT_BASE
+    tier       = detect_tier(description, headers, data)
+    graph_type = detect_graph_type(description)
+    prompt     = _SYSTEM_PROMPT_HEADER
 
-    if tier >= 2:
-        prompt += "\nprompt += \n## KEY PARAMETERS REFERENCE\n" + SCHEMA_KEY_PARAMS
-        prompt += "\nprompt += \n## DATA FORMAT GUIDE\n" + DATA_FORMAT_GUIDE
+    if _knowledge_db is not None:
+        sections = _knowledge_db.get_sections(graph_type=graph_type, tier=tier)
+        for s in sections:
+            label = s["section"].upper().replace("_", " ")
+            prompt += f"\n## {label} (from {s['source']})\n{s['content']}\n"
+        if DEBUG:
+            log.debug(
+                "KnowledgeDB: tier=%d graph=%s sections=%d chars=%d",
+                tier, graph_type or "?", len(sections), len(prompt)
+            )
+    else:
+        log.warning("Knowledge DB not loaded — run build_knowledge_db.py for better results")
 
-    if tier >= 3:
-        prompt += "\nprompt += \n## CONTRADICTION RESOLUTION\n" + CONTRADICTIONS_GUIDE
-
-    return prompt, tier
+    return prompt, tier, graph_type
 
 
-# Keep SYSTEM_PROMPT as an alias for the base (used in debug messages)
-SYSTEM_PROMPT = _SYSTEM_PROMPT_BASE
+# Load knowledge DB now
+_load_knowledge_db()
 
+# Alias for legacy references
+SYSTEM_PROMPT = _SYSTEM_PROMPT_HEADER
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
@@ -551,12 +350,6 @@ def generate_config(
     temperature: float = 0.0,
 ) -> dict | str:
     import time
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
-
-    client = anthropic.Anthropic(api_key=api_key)
 
     # ── Step 1: Retrieval ────────────────────────────────────────────────────
     t0 = time.perf_counter()
@@ -626,39 +419,39 @@ def generate_config(
     if DEBUG:
         bar = "─" * 64
         print(f"\n{bar}\n  STEP 3 — LLM CALL\n{bar}", file=sys.stderr)
-        print(f"  Model    : claude-sonnet-4-20250514", file=sys.stderr)
+        print(f"  Provider : {PROVIDER}", file=sys.stderr)
+        print(f"  Model    : {MODEL}", file=sys.stderr)
         print(f"  Calling Anthropic API...", file=sys.stderr)
 
-    # Build tiered system prompt
-    system_prompt, tier = build_system_prompt(description, headers, data_ref)
+    # Build tiered, graph-type-aware system prompt from knowledge DB
+    system_prompt, tier, graph_type = build_system_prompt(description, headers, data_ref)
     if DEBUG:
         bar = "─" * 64
-        print(f"{bar}", file=sys.stderr)
-        print("  TIERED PROMPT", file=sys.stderr)
-        print(f"{bar}", file=sys.stderr)
-        print(f"  Tier used  : {tier}", file=sys.stderr)
-        print(f"  Tier desc  : {['', 'base only', 'base+schema+data format', 'base+schema+data format+contradictions'][tier]}", file=sys.stderr)
-        print(f"  Prompt size: {len(system_prompt)} chars", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(bar, file=sys.stderr)
+        print(bar, file=sys.stderr)
+        tier_labels = ["", "base only", "base+schema+data", "base+schema+data+contradictions"]
+        print(f"  Tier      : {tier} ({tier_labels[tier]})", file=sys.stderr)
+        print(f"  GraphType : {graph_type or 'not detected'}", file=sys.stderr)
+        print(f"  Size      : {len(system_prompt)} chars (~{len(system_prompt)//4} tokens)", file=sys.stderr)
 
     t1 = time.perf_counter()
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1500,
-        temperature=temperature,
+    raw_text, usage = llm_complete(
         system=system_prompt,
-        messages=[{"role": "user", "content": prompt}],
+        user=prompt,
+        temperature=temperature,
+        max_tokens=1500,
     )
     t_llm = (time.perf_counter() - t1) * 1000
 
     if DEBUG:
-        usage = message.usage
         print(f"  Latency       : {t_llm:.0f}ms", file=sys.stderr)
-        print(f"  Input tokens  : {usage.input_tokens}", file=sys.stderr)
-        print(f"  Output tokens : {usage.output_tokens}", file=sys.stderr)
-        print(f"  Stop reason   : {message.stop_reason}", file=sys.stderr)
+        print(f"  Input tokens  : {usage.get('input_tokens', '?')}", file=sys.stderr)
+        print(f"  Output tokens : {usage.get('output_tokens', '?')}", file=sys.stderr)
+        print(f"  Stop reason   : {usage.get('stop_reason', '?')}", file=sys.stderr)
 
     # ── Step 4: Parse response ───────────────────────────────────────────────
-    raw = message.content[0].text.strip()
+    raw = raw_text.strip()
 
     if DEBUG:
         bar = "─" * 64
@@ -693,6 +486,158 @@ def generate_config(
         print(f"{'─' * 64}\n", file=sys.stderr)
 
     return config
+
+
+# ---------------------------------------------------------------------------
+# Config modification
+# ---------------------------------------------------------------------------
+
+def modify_config(
+    config: dict,
+    instruction: str,
+    headers: list[str] | None = None,
+    column_types: dict[str, str] | None = None,
+    temperature: float = 0.0,
+) -> dict:
+    """
+    Apply a plain-English modification instruction to an existing CanvasXpress config.
+    Returns the complete modified config as a dict.
+    """
+    import time
+
+    # ── Retrieve relevant examples using the instruction as query ─────────────
+    t0 = time.perf_counter()
+    examples = retrieve_examples(instruction)
+    t_retrieval = (time.perf_counter() - t0) * 1000
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — STEP 1 RETRIEVAL\n{bar}", file=sys.stderr)
+        print(f"  Instruction : {instruction}", file=sys.stderr)
+        print(f"  Results     : {len(examples)} examples in {t_retrieval:.1f}ms", file=sys.stderr)
+
+    ex_parts = []
+    for ex in examples:
+        ex_parts.append('Description: "' + ex["description"] + '"\nConfig: ' + json.dumps(ex["config"]))
+    ex_text = "\n\n".join(ex_parts)
+
+    # ── Build header hint ─────────────────────────────────────────────────────
+    header_hint = ""
+    if headers:
+        if column_types:
+            col_desc = ", ".join(
+                col + " (" + column_types.get(col, "unknown") + ")" for col in headers
+            )
+            header_hint = (
+                "\n\nDataset columns with types: " + col_desc + "."
+                "\n   - numeric : xAxis (scatter), yAxis, zAxis"
+                "\n   - factor  : groupingFactors, colorBy, shapeBy"
+                "\n   - string  : xAxis labels, smpOverlays"
+                "\n   - date    : xAxis in time series"
+                "\n   Only assign columns matching their type."
+            )
+        else:
+            header_hint = (
+                "\n\nDataset columns: " + ", ".join(headers) + ". "
+                "Use them for xAxis, yAxis, groupingFactors, colorBy etc. as appropriate."
+            )
+
+    # ── Build the modification prompt ─────────────────────────────────────────
+    config_json = json.dumps(config, indent=2)
+    prompt = (
+        "Similar CanvasXpress examples for reference:\n\n" + ex_text + "\n\n"
+        "---\n"
+        "EXISTING CONFIG (preserve all parameters unless the instruction explicitly removes them):\n"
+        + config_json + "\n\n"
+        "MODIFICATION INSTRUCTION:\n\"" + instruction + "\"" + header_hint + "\n\n"
+        "Apply the instruction to the existing config. "
+        "Return ONLY the complete modified JSON config object — no explanation, no markdown fences."
+    )
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — STEP 2 PROMPT\n{bar}", file=sys.stderr)
+        print(f"  Existing keys : {list(config.keys())}", file=sys.stderr)
+        print(f"  Instruction   : {instruction}", file=sys.stderr)
+        print(f"  Prompt length : {len(prompt)} chars", file=sys.stderr)
+
+    # ── Build system prompt (tiered, reusing existing logic) ──────────────────
+    system_prompt, tier, detected_gt = build_system_prompt(instruction, headers, None)
+
+    modify_preamble = (
+        "You are a CanvasXpress configuration editor. "
+        "You will receive an EXISTING config and a plain-English instruction describing a modification. "
+        "Your job is to apply that modification and return the COMPLETE updated config.\n"
+        "Rules:\n"
+        "- Keep ALL existing parameters unless the instruction explicitly says to remove one.\n"
+        "- Add new parameters or change existing values as instructed.\n"
+        "- Never remove graphType, xAxis, or other required parameters unless explicitly told to.\n"
+        "- Return ONLY the JSON object. No markdown, no explanation.\n\n"
+    )
+    system_prompt = modify_preamble + system_prompt
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — TIERED PROMPT\n{bar}", file=sys.stderr)
+        tier_labels = ["", "base only", "base+schema+data", "base+schema+data+contradictions"]
+        print(f"  Tier      : {tier} ({tier_labels[tier]})", file=sys.stderr)
+        print(f"  GraphType : {detected_gt or 'not detected'}", file=sys.stderr)
+        print(f"  Size      : {len(system_prompt)} chars", file=sys.stderr)
+
+    # ── LLM call ──────────────────────────────────────────────────────────────
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — STEP 3 LLM CALL\n{bar}", file=sys.stderr)
+        print(f"  Provider : {PROVIDER}", file=sys.stderr)
+        print(f"  Model    : {MODEL}", file=sys.stderr)
+
+    t1 = time.perf_counter()
+    raw_text, usage = llm_complete(
+        system=system_prompt,
+        user=prompt,
+        temperature=temperature,
+        max_tokens=1500,
+    )
+    t_llm = (time.perf_counter() - t1) * 1000
+
+    if DEBUG:
+        print(f"  Latency       : {t_llm:.0f}ms", file=sys.stderr)
+        print(f"  Input tokens  : {usage.get('input_tokens', '?')}", file=sys.stderr)
+        print(f"  Output tokens : {usage.get('output_tokens', '?')}", file=sys.stderr)
+
+    # ── Parse response ─────────────────────────────────────────────────────────
+    raw = raw_text.strip()
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — STEP 4 RAW RESPONSE\n{bar}", file=sys.stderr)
+        print(f"  {raw[:400]}", file=sys.stderr)
+
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.rsplit("```", 1)[0].strip()
+
+    if not raw or raw in ("''", '""'):
+        if DEBUG:
+            print("\n  ⚠️  Model returned empty — returning original config unchanged", file=sys.stderr)
+        return config
+
+    modified = json.loads(raw)
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — STEP 5 RESULT\n{bar}", file=sys.stderr)
+        added   = [k for k in modified if k not in config]
+        removed = [k for k in config   if k not in modified]
+        changed = [k for k in config   if k in modified and config[k] != modified[k]]
+        print(f"  Keys added   : {added   or 'none'}", file=sys.stderr)
+        print(f"  Keys removed : {removed or 'none'}", file=sys.stderr)
+        print(f"  Keys changed : {changed or 'none'}", file=sys.stderr)
+        print(f"  Retrieval : {t_retrieval:.1f}ms   LLM : {t_llm:.0f}ms", file=sys.stderr)
+
+    return modified
 
 
 # ---------------------------------------------------------------------------
@@ -904,6 +849,134 @@ def generate_canvasxpress_config(
 # Note: tier info is logged in debug mode but not returned to keep response lean
 
 
+
+
+@mcp.tool(
+    description=(
+        "Modify an existing CanvasXpress config using a plain English instruction. "
+        "Pass in your current config and describe what you want to change — add parameters, "
+        "remove parameters, change values, switch color scheme, update axis titles, etc. "
+        "The full existing config is preserved except for the changes you request. "
+        "Examples: 'add a title My Chart', 'change the color scheme to Tableau', "
+        "'remove the legend', 'set the x-axis title to Fold Change', "
+        "'add groupingFactors for the Treatment column', 'switch to dark theme'. "
+        "Returns the complete modified config ready to pass to new CanvasXpress()."
+    )
+)
+def modify_canvasxpress_config(
+    config: dict,
+    instruction: str,
+    headers: list[str] | None = None,
+    data: list[list] | None = None,
+    column_types: dict[str, str] | None = None,
+    temperature: float = 0.0,
+) -> dict:
+    """
+    Args:
+        config:       The existing CanvasXpress JSON config to modify.
+                      e.g. {"graphType": "Heatmap", "xAxis": ["Gene"], "colorScheme": "RdBu"}
+        instruction:  Plain English description of the modification to apply.
+                      e.g. "add a title", "change colorScheme to Tableau", "remove the legend"
+        headers:      Optional column names — used to validate any new column references
+                      introduced by the instruction.
+        data:         Optional CSV-style data array (first row = headers). Overrides headers.
+        column_types: Optional map of column name → type (string/numeric/factor/date).
+        temperature:  LLM creativity 0.0–1.0 (default 0.0 = deterministic).
+
+    Returns:
+        Dict with keys:
+          config        (dict) - the complete modified CanvasXpress JSON config
+          valid         (bool) - True if all column refs exist in the provided columns
+          warnings      (list) - column validation warnings (empty if valid)
+          invalid_refs  (dict) - map of config key → missing column names
+          headers_used  (list) - column names used for validation
+          types_used    (dict) - column types passed in (if provided)
+          changes       (dict) - summary of keys added, removed, and changed
+    """
+    if not config:
+        return {
+            "config": {},
+            "valid": False,
+            "warnings": ["config parameter is empty — nothing to modify."],
+            "invalid_refs": {},
+            "headers_used": [],
+            "types_used":   {},
+            "changes":      {},
+        }
+
+    # ── Resolve headers ──────────────────────────────────────────────────────
+    resolved_headers: list[str] | None = None
+    if data is not None:
+        try:
+            resolved_headers = extract_headers_from_data(data)
+            log.info("Extracted %d headers from data array", len(resolved_headers))
+        except ValueError as e:
+            return {
+                "config": config,
+                "valid": False,
+                "warnings": [str(e)],
+                "invalid_refs": {},
+                "headers_used": [],
+                "types_used":   {},
+                "changes":      {},
+            }
+    elif headers is not None:
+        resolved_headers = headers
+
+    # Validate column_types
+    VALID_TYPES = {"string", "numeric", "factor", "date"}
+    if column_types:
+        bad = {k: v for k, v in column_types.items() if v not in VALID_TYPES}
+        if bad:
+            log.warning("Unknown column types ignored: %s", bad)
+            column_types = {k: v for k, v in column_types.items() if v in VALID_TYPES}
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY REQUEST\n{bar}", file=sys.stderr)
+        print(f"  Instruction   : {instruction}", file=sys.stderr)
+        print(f"  Existing keys : {list(config.keys())}", file=sys.stderr)
+        if resolved_headers:
+            print(f"  Headers       : {resolved_headers}", file=sys.stderr)
+
+    log.info("Modifying config — instruction: %s", instruction)
+    modified = modify_config(config, instruction, resolved_headers, column_types, temperature)
+
+    # ── Build change summary ─────────────────────────────────────────────────
+    changes = {
+        "added":   [k for k in modified if k not in config],
+        "removed": [k for k in config   if k not in modified],
+        "changed": [k for k in config   if k in modified and config[k] != modified[k]],
+    }
+    log.info(
+        "Modification complete — added: %s  removed: %s  changed: %s",
+        changes["added"], changes["removed"], changes["changed"],
+    )
+
+    # ── Validate column references ───────────────────────────────────────────
+    if resolved_headers and modified:
+        validation = validate_config_headers(modified, resolved_headers)
+        if DEBUG:
+            bar = "─" * 64
+            print(f"\n{bar}\n  MODIFY — HEADER VALIDATION\n{bar}", file=sys.stderr)
+            print(f"  Valid : {validation['valid']}", file=sys.stderr)
+            if validation["warnings"]:
+                for w in validation["warnings"]:
+                    print(f"  ⚠️  {w}", file=sys.stderr)
+    else:
+        validation = {"valid": True, "warnings": [], "invalid_refs": {}}
+
+    return {
+        "config":       modified,
+        "valid":        validation["valid"],
+        "warnings":     validation["warnings"],
+        "invalid_refs": validation["invalid_refs"],
+        "headers_used": resolved_headers or [],
+        "types_used":   column_types or {},
+        "changes":      changes,
+    }
+
+
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
 def list_chart_types() -> dict:
     """Returns chart types organized by category."""
@@ -1109,7 +1182,11 @@ def get_minimal_parameters(graph_type: str) -> dict:
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    log.info("Starting CanvasXpress MCP HTTP server on %s:%d", HOST, PORT)
+    info = provider_info()
+    log.info(
+        "Starting CanvasXpress MCP server on %s:%d  provider=%s  model=%s",
+        HOST, PORT, info["provider"], info["model"],
+    )
     log.info("MCP endpoint: http://%s:%d/mcp", HOST if HOST != "0.0.0.0" else "localhost", PORT)
     if DEBUG:
         log.info("Debug mode ON  — set CX_DEBUG=0 to disable")
