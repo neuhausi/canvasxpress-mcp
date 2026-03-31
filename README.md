@@ -135,7 +135,7 @@ Each request prints 6 labelled steps to stderr:
 ```
 ---
 
-**Running in the web**
+### Running in the web
 
 There are two example clients
 
