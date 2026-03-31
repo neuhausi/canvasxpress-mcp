@@ -133,6 +133,52 @@ Each request prints 6 labelled steps to stderr:
 ── STEP 5 — PARSED CONFIG  graphType: Heatmap, keys: [...]
 ── STEP 6 — VALIDATION ──  ✅ All column references valid
 ```
+---
+
+**Running in the web**
+
+There are two example clients
+
+1. Automatically built when running:
+
+```python
+python src/build_index.py
+```
+It is a full Web page with a form to experiment, located at: `http://localhost:8100/ui`
+
+2. To activate run
+```python
+python src/proxy_server.py
+```
+It is located at: `http://localhost:8200`
+
+```bash
+# Generate
+GET /api/generate
+  ?description=Clustered heatmap with RdBu colors   # required
+  &headers=Gene,Sample1,Sample2,Treatment            # optional
+  &column_types={"Gene":"string","Sample1":"numeric"} # optional JSON
+  &data=[["Gene","S1"],["BRCA1",1.2]]                 # optional JSON (overrides headers)
+  &temperature=0.0                                    # optional
+
+# Modify
+GET /api/modify
+  ?config={"graphType":"Bar","xAxis":["Gene"]}       # required JSON
+  &instruction=change colorScheme to Tableau         # required
+
+# Kaplan-Meier
+GET /api/km
+  ?description=OS by treatment arm                   # at least one of these
+  &headers=PatientID,OS_Time,OS_Status,Treatment     # optional
+  &data=[["ID","Time","Event","Arm"],...]             # enables statistics
+  &add_annotations=true
+
+# Query parameters
+GET /api/query_params
+  ?graph_type=Heatmap         # list all params for a chart type
+  &param_name=colorScheme     # get valid values for one param
+  &refresh=true               # force re-fetch from GitHub
+```
 
 ---
 
