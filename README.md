@@ -38,7 +38,9 @@ canvasxpress-mcp/
 │
 ├── src/
 │   ├── server.py           — FastMCP HTTP server (main entry point)
-│   └── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI)
+│   ├── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI)
+│   ├── cx_knowledge.py     — Parameter knowledge skill (fetch, parse, validate, inject)
+│   └── cx_survival.py      — Kaplan-Meier skill (generate, detect columns, validate, annotate)
 │
 ├── data/
 │   ├── few_shot_examples.json  — RAG examples (add more to improve accuracy)
@@ -457,6 +459,8 @@ node test_client.mjs "Heatmap" \
 |------|-------------|
 | `generate_canvasxpress_config` | Plain English + optional data/headers/types → validated JSON config |
 | `modify_canvasxpress_config` | Modify an existing config using a plain English instruction |
+| `generate_km_config` | Generate, validate, and annotate Kaplan-Meier survival plot configs |
+| `query_canvasxpress_params` | Look up parameters, valid values, and descriptions from the live schema |
 | `list_chart_types` | All 70+ chart types organised by category |
 | `explain_config_property` | Explains any CanvasXpress config property |
 | `get_minimal_parameters` | Required parameters for a given graph type |
@@ -470,6 +474,193 @@ node test_client.mjs "Heatmap" \
 | `data` | array[][] | ❌ | CSV-style data array — first row = headers. Overrides `headers` |
 | `column_types` | object | ❌ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
 | `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+
+---
+
+### `generate_km_config`
+
+A dedicated skill for Kaplan-Meier survival plots. Accepts any combination of a plain
+English description, column headers, a full data array, or an existing config — and
+handles all four capabilities automatically based on what you provide.
+
+**Arguments:**
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `description` | string | ❌ | Plain English description of the KM plot |
+| `headers` | string[] | ❌ | Column names from your dataset |
+| `data` | array[][] | ❌ | Full data array — first row = headers. Enables statistics + decorations |
+| `config` | object | ❌ | Existing KM config to validate, fix, and enrich |
+| `add_annotations` | boolean | ❌ | Compute and embed median survival + log-rank p-value (default `true`) |
+| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+
+At least one of `description`, `headers`, `data`, or `config` must be provided.
+
+**Response:**
+
+```json
+{
+  "config": {
+    "graphType": "KaplanMeier",
+    "xAxis": ["OS_Time"],
+    "yAxis": ["OS_Status"],
+    "groupingFactors": ["Treatment"],
+    "xAxisTitle": "Time (months)",
+    "yAxisTitle": "Survival Probability",
+    "colorScheme": "Tableau",
+    "showLegend": true,
+    "decorations": [
+      { "type": "line",  "value": 14.2, "color": "#1f77b4", "label": "Median Control: 14.2 months" },
+      { "type": "line",  "value": 22.8, "color": "#ff7f0e", "label": "Median Drug A: 22.8 months" },
+      { "type": "text",  "value": 0,    "color": "#333333", "label": "Log-rank p = 0.031" }
+    ]
+  },
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "suggestions": [],
+  "column_detection": {
+    "time_col":   "OS_Time",
+    "event_col":  "OS_Status",
+    "group_cols": ["Treatment"],
+    "unassigned": ["PatientID"],
+    "confidence": "high",
+    "notes": []
+  },
+  "statistics": {
+    "groups": {
+      "Control": { "n": 45, "n_events": 38, "median_survival": 14.2 },
+      "Drug A":  { "n": 48, "n_events": 31, "median_survival": 22.8 }
+    },
+    "logrank_pvalue": 0.031,
+    "pvalue_str": "p = 0.031"
+  },
+  "decorations_added": true
+}
+```
+
+**What each capability does:**
+
+**1. Column detection** — runs on every call when headers or data are provided.
+Uses pattern matching against common survival analysis naming conventions
+(`OS_Time`, `PFS_Status`, `days`, `event`, `treatment`, `arm`, etc.).
+Reports confidence level (`high` / `medium` / `low`) and notes for any
+columns it couldn't assign.
+
+**2. Config generation** — calls the LLM with a KM-specific system prompt that
+enforces the strict `graphType: "KaplanMeier"` rules, correct axis assignments,
+and appropriate defaults (`colorScheme: "Tableau"`, `showLegend: true`).
+Column roles from detection are injected directly into the prompt.
+
+**3. Config validation** — checks any provided or generated config against KM
+rules: `graphType` must be `"KaplanMeier"`, `xAxis` must hold the time column,
+`yAxis` must hold the event column, no forbidden single-dimensional params.
+Returns `errors` (must-fix), `warnings` (should-fix), and `suggestions`
+(nice-to-have), plus an auto-corrected `fixed_config`.
+
+**4. Statistical annotations** — when `data` is provided, computes per-group
+KM curves (pure Python, no scipy needed), extracts median survival times,
+and runs a log-rank test for two-group comparisons. Results are embedded
+as `decorations` in the config: vertical lines at each group's median
+survival time, and a text annotation with the log-rank p-value.
+
+**Usage examples:**
+
+```python
+# From description alone
+generate_km_config(
+    description="Overall survival by treatment arm"
+)
+
+# From headers — detects columns, generates config
+generate_km_config(
+    description="PFS curve colored by disease stage",
+    headers=["PatientID", "PFS_Time", "PFS_Status", "Stage"]
+)
+
+# From full data — generates config + computes statistics + adds decorations
+generate_km_config(
+    data=[
+        ["PatientID", "Time", "Event", "Treatment"],
+        ["P001", 24, 1, "Control"],
+        ["P002", 18, 0, "Drug A"],
+        ...
+    ]
+)
+
+# Validate an existing config
+generate_km_config(
+    config={"graphType": "KaplanMeier", "xAxis": ["Time"]},
+    headers=["PatientID", "Time", "Event", "Treatment"]
+)
+```
+
+
+---
+
+### `query_canvasxpress_params`
+
+Query the CanvasXpress parameter knowledge base — fetched live from the
+[canvasxpress-LLM](https://github.com/neuhausi/canvasxpress-LLM) GitHub repo
+with automatic local cache fallback.
+
+**Arguments:**
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `graph_type` | string | ❌ | Chart type e.g. `"Heatmap"`, `"Scatter2D"` — returns all parameters for this type |
+| `param_name` | string | ❌ | Parameter name e.g. `"colorScheme"`, `"areaType"` — returns full definition |
+| `refresh` | boolean | ❌ | Force re-fetch from GitHub even if cache is fresh (default `false`) |
+
+Pass `graph_type` alone, `param_name` alone, both together, or neither for a full summary.
+
+**Example responses:**
+
+```json
+// query_canvasxpress_params(param_name="areaType")
+{
+  "found": true,
+  "param": "areaType",
+  "description": "How area series are drawn. REQUIRED for Area charts.",
+  "type": "string",
+  "valid_values": ["overlapping", "stacked", "percent"],
+  "graph_types": ["Area", "AreaLine"],
+  "schema_source": "GitHub"
+}
+
+// query_canvasxpress_params(graph_type="Heatmap")
+{
+  "graph_type": "Heatmap",
+  "param_count": 12,
+  "params": {
+    "colorScheme":        { "type": "string",  "valid_values": ["RdBu", "Spectral", ...] },
+    "samplesClustered":   { "type": "boolean", "valid_values": [] },
+    "variablesClustered": { "type": "boolean", "valid_values": [] },
+    "heatmapIndicator":   { "type": "boolean", "valid_values": [] },
+    "smpOverlays":        { "type": "string",  "valid_values": [] },
+    ...
+  },
+  "schema_source": "cache"
+}
+```
+
+**What the skill does internally:**
+
+The skill powers three things at once, automatically — you don't need to call the tool for these to be active:
+
+1. **Prompt injection** — on every `generate_canvasxpress_config` or `modify_canvasxpress_config` call, a live snippet of valid parameter values for the detected graph type is appended to the system prompt. This tightens generation — the model knows `areaType` can only be `"overlapping"`, `"stacked"`, or `"percent"`, not some invented value.
+
+2. **Value validation** — after generation, every string-valued config parameter is checked against its known valid values. Invalid values (e.g. `colorScheme: "BluRed"`) appear as warnings in the response alongside the existing column-reference warnings.
+
+3. **MCP tool** — the `query_canvasxpress_params` tool lets you interrogate the schema directly: what params does a Heatmap support? What are the valid values for `lineType`?
+
+**Configuration:**
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
+| `CX_SKIP_FETCH` | `0` | Set to `1` to always use cache / bundled schema (no GitHub fetch) |
+
 
 ---
 

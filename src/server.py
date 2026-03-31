@@ -29,6 +29,8 @@ import numpy as np
 import sqlite_vec
 from fastmcp import FastMCP
 from llm_providers import complete as llm_complete, provider_info, PROVIDER, MODEL
+import cx_knowledge
+import cx_survival
 from sentence_transformers import SentenceTransformer
 
 # ---------------------------------------------------------------------------
@@ -331,11 +333,19 @@ def build_system_prompt(
     else:
         log.warning("Knowledge DB not loaded — run build_knowledge_db.py for better results")
 
+    # Inject live parameter+valid-values snippet from cx_knowledge
+    param_snippet = cx_knowledge.get_param_snippet(graph_type=graph_type)
+    if param_snippet:
+        prompt += "\n" + param_snippet
+
     return prompt, tier, graph_type
 
 
 # Load knowledge DB now
 _load_knowledge_db()
+
+# Warm the cx_knowledge schema cache
+cx_knowledge.warm_cache()
 
 # Alias for legacy references
 SYSTEM_PROMPT = _SYSTEM_PROMPT_HEADER
@@ -709,10 +719,17 @@ def validate_config_headers(config: dict, headers: list[str]) -> dict:
                 f"'{key}' references column(s) not found in headers: {missing}"
             )
 
+    # Value-level validation via cx_knowledge schema
+    value_check = cx_knowledge.validate_param_values(config)
+    for w in value_check["warnings"]:
+        if w not in warnings:
+            warnings.append(w)
+
     return {
-        "valid": len(warnings) == 0,
-        "warnings": warnings,
-        "invalid_refs": invalid_refs,
+        "valid":          len(warnings) == 0,
+        "warnings":       warnings,
+        "invalid_refs":   invalid_refs,
+        "invalid_values": value_check["invalid_values"],
     }
 
 
@@ -976,6 +993,123 @@ def modify_canvasxpress_config(
         "changes":      changes,
     }
 
+
+
+@mcp.tool(
+    description=(
+        "Generate, validate, and annotate Kaplan-Meier survival plot configs for CanvasXpress. "
+        "Accepts any combination of: a plain English description, column headers or a full data "
+        "array, and/or an existing config to validate and fix. "
+        "Automatically detects which columns are time, event, and grouping from the dataset. "
+        "Computes median survival and log-rank p-value from data and embeds them as decorations. "
+        "Examples: description='OS curve by treatment arm' with headers=['PatientID','OS_Time','OS_Status','Treatment']; "
+        "or config={...} to validate an existing KM config; "
+        "or data=[['ID','Time','Event','Arm'],[...]] to generate with annotations."
+    )
+)
+def generate_km_config(
+    description:     str | None = None,
+    headers:         list[str] | None = None,
+    data:            list[list] | None = None,
+    config:          dict | None = None,
+    add_annotations: bool = True,
+    temperature:     float = 0.0,
+) -> dict:
+    """
+    Args:
+        description:     Plain English description of the KM plot you want.
+                         e.g. "Overall survival by treatment arm with 95% CI"
+        headers:         Column names from your dataset.
+                         e.g. ["PatientID", "OS_Time", "OS_Status", "Treatment"]
+        data:            Full data array — first row must be column headers.
+                         e.g. [["ID","Time","Event","Arm"],["P1",24,1,"A"],...]
+                         When provided, headers are extracted automatically and
+                         statistics + decorations are computed from the data.
+        config:          An existing KM config to validate, fix, and/or enrich.
+                         e.g. {"graphType":"KaplanMeier","xAxis":["OS_Time"],...}
+        add_annotations: Whether to compute median survival and log-rank p-value
+                         from data and add them as decorations (default True).
+        temperature:     LLM creativity 0.0–1.0 (default 0.0 = deterministic).
+
+    Returns:
+        Dict with keys:
+          config            (dict)       - the CanvasXpress KM JSON config
+          valid             (bool)       - True if config passes all KM validation rules
+          errors            (list)       - must-fix issues (e.g. missing xAxis)
+          warnings          (list)       - should-fix issues and notes
+          suggestions       (list)       - optional improvements
+          column_detection  (dict|None)  - detected time/event/group columns + confidence
+          statistics        (dict|None)  - per-group n, n_events, median survival + log-rank p
+          decorations_added (bool)       - whether median/p-value decorations were added
+    """
+    log.info(
+        "KM skill: description=%s headers=%s data_rows=%s config_keys=%s",
+        bool(description), bool(headers),
+        len(data) - 1 if data else 0,
+        list(config.keys()) if config else None,
+    )
+
+    if not any([description, headers, data, config]):
+        return {
+            "config":            {"graphType": "KaplanMeier"},
+            "valid":             False,
+            "errors":            ["At least one of description, headers, data, or config must be provided."],
+            "warnings":          [],
+            "suggestions":       ["Pass headers or data so columns can be detected automatically."],
+            "column_detection":  None,
+            "statistics":        None,
+            "decorations_added": False,
+        }
+
+    return cx_survival.handle_generate_km(
+        description     = description,
+        headers         = headers,
+        data            = data,
+        config          = config,
+        add_annotations = add_annotations,
+        temperature     = temperature,
+        llm_complete_fn = llm_complete,
+    )
+
+
+@mcp.tool(
+    description=(
+        "Query the CanvasXpress parameter knowledge base. "
+        "Fetch parameters, their valid values, and descriptions from the "
+        "canvasxpress-LLM schema — sourced live from GitHub with local cache fallback. "
+        "Usage: pass graph_type to list all parameters for a chart type, "
+        "param_name to look up a single parameter's valid values and description, "
+        "or both to check whether a parameter applies to a specific chart type. "
+        "Examples: graph_type='Heatmap', param_name='colorScheme', "
+        "param_name='areaType' graph_type='Area'."
+    )
+)
+def query_canvasxpress_params(
+    graph_type: str | None = None,
+    param_name: str | None = None,
+    refresh: bool = False,
+) -> dict:
+    """
+    Args:
+        graph_type: CanvasXpress chart type e.g. "Heatmap", "Scatter2D", "Violin".
+                    Returns all parameters that apply to this chart type.
+        param_name: Parameter name e.g. "colorScheme", "areaType", "histogramType".
+                    Returns full definition including valid values and applicable graph types.
+        refresh:    If True, re-fetch SCHEMA.md from GitHub even if cache is fresh.
+
+    Returns:
+        Dict with:
+          For a single param:  {found, param, description, type, valid_values, graph_types, schema_source}
+          For a graph type:    {graph_type, param_count, params: {name: {description, type, valid_values}}, schema_source}
+          For all params:      {param_count, params, schema_source, tip}
+    """
+    if refresh:
+        cx_knowledge.load_schema(force=True)
+        log.info("cx_knowledge schema refreshed on request")
+    return cx_knowledge.handle_query_params(
+        graph_type=graph_type,
+        param_name=param_name,
+    )
 
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
 def list_chart_types() -> dict:
