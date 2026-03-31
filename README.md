@@ -5,6 +5,10 @@ Natural language → CanvasXpress JSON configs, served over HTTP on port 8100.
 Describe a chart in plain English. Get back a ready-to-use CanvasXpress JSON config
 object ready to pass directly to `new CanvasXpress()`. No CanvasXpress expertise required.
 
+Exposes two interfaces on the same port:
+- **MCP** (`/mcp`) — JSON-RPC 2.0 endpoint for AI coding agents (Cursor, Windsurf, Claude Desktop, etc.)
+- **REST** (`/generate`, `/modify`) — plain HTTP GET/POST endpoints for any web page or script, with optional JSONP support
+
 ```
 "Clustered heatmap with RdBu colors and dendrograms on both axes"
 "Volcano plot with log2 fold change on x-axis and -log10 p-value on y-axis"
@@ -96,7 +100,14 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 python src/server.py
 ```
 
-Server starts at: `http://localhost:8100/mcp`
+Two endpoints are ready immediately:
+
+| Endpoint | Description |
+|----------|-------------|
+| `http://localhost:8100/mcp` | MCP JSON-RPC endpoint (for AI agents) |
+| `http://localhost:8100/generate` | REST: generate a new config |
+| `http://localhost:8100/modify` | REST: modify an existing config |
+| `http://localhost:8100/ui` | Interactive web form (open in a browser) |
 
 **To run on a different port:**
 
@@ -135,50 +146,84 @@ Each request prints 6 labelled steps to stderr:
 ```
 ---
 
-### Running in the web
+## REST endpoints
 
-There are two example clients
+The REST endpoints accept all the same parameters as the MCP tools via HTTP GET query
+string or POST body (`application/json` or `application/x-www-form-urlencoded`).
+No MCP client is required — any browser, `curl`, or web page works.
 
-1. Automatically built when running:
+### `/generate`
 
-```python
-python src/build_index.py
 ```
-It is a full Web page with a form to experiment, located at: `http://localhost:8100/ui`
-
-2. To activate run
-```python
-python src/proxy_server.py
+GET /generate?description=<text>[&headers=...][&column_types=...][&data=...][&temperature=...]
+             [&target=...][&callback=...][&client_id=...]
 ```
-It is located at: `http://localhost:8200`
+
+| Parameter | Description |
+|-----------|-------------|
+| `description` | **Required.** Plain English chart description |
+| `headers` | Comma-separated column names |
+| `column_types` | JSON object mapping column → type |
+| `data` | JSON array of arrays (first row = headers) |
+| `temperature` | LLM creativity 0–1 (default `0`) |
+| `target` | Canvas element id — echoed back as `result.target` |
+| `callback` | JS function name — triggers JSONP response |
+| `client_id` | Opaque correlation id — echoed back as `result.client_id` |
 
 ```bash
-# Generate
-GET /api/generate
-  ?description=Clustered heatmap with RdBu colors   # required
-  &headers=Gene,Sample1,Sample2,Treatment            # optional
-  &column_types={"Gene":"string","Sample1":"numeric"} # optional JSON
-  &data=[["Gene","S1"],["BRCA1",1.2]]                 # optional JSON (overrides headers)
-  &temperature=0.0                                    # optional
+# Plain JSON
+curl "http://localhost:8100/generate?description=Bar+chart+of+gene+expression&headers=Gene,Expr"
 
-# Modify
-GET /api/modify
-  ?config={"graphType":"Bar","xAxis":["Gene"]}       # required JSON
-  &instruction=change colorScheme to Tableau         # required
-
-# Kaplan-Meier
-GET /api/km
-  ?description=OS by treatment arm                   # at least one of these
-  &headers=PatientID,OS_Time,OS_Status,Treatment     # optional
-  &data=[["ID","Time","Event","Arm"],...]             # enables statistics
-  &add_annotations=true
-
-# Query parameters
-GET /api/query_params
-  ?graph_type=Heatmap         # list all params for a chart type
-  &param_name=colorScheme     # get valid values for one param
-  &refresh=true               # force re-fetch from GitHub
+# With JSONP + target + client_id
+curl "http://localhost:8100/generate?description=Violin+plot&callback=renderChart&target=myCanvas&client_id=req-1"
+# → renderChart({"config":{...}, "prompt":"Violin plot", "target":"myCanvas", "client_id":"req-1"})
 ```
+
+### `/modify`
+
+```
+GET /modify?config=<json>[&instruction=...][&headers=...][&column_types=...][&data=...]
+           [&target=...][&callback=...][&client_id=...]
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `config` | **Required.** Existing CanvasXpress config as a JSON string |
+| `instruction` | **Required.** Plain English change to apply |
+| `headers` | Comma-separated column names |
+| `column_types` | JSON object mapping column → type |
+| `data` | JSON array of arrays |
+| `temperature` | LLM creativity 0–1 (default `0`) |
+| `target` | Canvas element id — echoed back as `result.target` |
+| `callback` | JS function name — triggers JSONP response |
+| `client_id` | Opaque correlation id — echoed back as `client_id` |
+
+### `/ui`
+
+Open `http://localhost:8100/ui` in a browser to get an interactive form for both
+endpoints. Fill in the description (or config + instruction), hit **Generate** or
+**Modify**, and inspect the resulting config. The URL bar updates as you type so
+the link is always shareable and bookmarkable.
+
+### JSONP (cross-origin requests)
+
+Add `?callback=myFunction` to receive the response wrapped in a JS function call:
+
+```html
+<!-- Works across origins — no CORS headers needed -->
+<script>
+function renderChart(data) {
+  // data.config  → CanvasXpress config
+  // data.prompt  → original description / instruction
+  // data.target  → canvas element id you passed
+  // data.client_id → correlation id you passed
+  new CanvasXpress(data.target, myDataset, data.config);
+}
+</script>
+<script src="http://localhost:8100/generate?description=Bar+chart&callback=renderChart&target=myCanvas&client_id=req-1"></script>
+```
+
+The callback name is validated against `/^[A-Za-z_$][A-Za-z0-9_.]*$/` to prevent XSS.
 
 ---
 
@@ -421,49 +466,91 @@ The server scales to 3,000+ examples with no performance impact (~10ms retrieval
 
 ## Test clients
 
-All three clients accept the same arguments after the description, in any order:
+All three clients support two modes: **MCP** (default) and **REST** (`--rest` flag).
+
+In MCP mode, arguments after the description are positional:
 - A **comma-separated string** → column headers
 - A **JSON array of arrays** → data (first row = headers)
 - A **JSON object** → column types (`string`/`numeric`/`factor`/`date`)
 
+In REST mode, pass `generate` or `modify` as the first argument, then the description
+(or `config` + `instruction`), with optional flags for response options.
+
 ### Python
 
 ```bash
-# Default — built-in sample data + types
+# MCP mode (default)
 python test_client.py
-
-# Headers only
 python test_client.py "Violin plot by cell type" "Gene,CellType,Expression"
-
-# Headers + column types
 python test_client.py "Scatter plot" "Gene,Expr,Treatment" \
   '{"Gene":"string","Expr":"numeric","Treatment":"factor"}'
-
-# Full data array + types
 python test_client.py "Heatmap" \
   '[["Gene","S1","S2","Treatment"],["BRCA1",1.2,3.4,"Control"]]' \
   '{"Gene":"string","S1":"numeric","S2":"numeric","Treatment":"factor"}'
+
+# REST mode
+python test_client.py --rest generate "Bar chart"
+python test_client.py --rest generate "Violin plot" "Gene,Expr,CellType" \
+  '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
+python test_client.py --rest modify '{"graphType":"Bar"}' "add a title My Chart"
+python test_client.py --rest generate "Scatter plot" --target myCanvas
+python test_client.py --rest generate "Bar chart" --callback renderChart    # JSONP
+python test_client.py --rest generate "Bar chart" --client-id req-1 --callback renderChart
 ```
 
 ### Perl
 
 ```bash
-# requires: cpan LWP::UserAgent JSON
+# requires: cpan LWP::UserAgent JSON URI::Escape
+# MCP mode (default)
 perl test_client.pl
 perl test_client.pl "Volcano plot" "Gene,log2FC,pValue"
 perl test_client.pl "Scatter plot" "Gene,Expr,Treatment" \
   '{"Gene":"string","Expr":"numeric","Treatment":"factor"}'
+
+# REST mode
+perl test_client.pl --rest generate "Bar chart"
+perl test_client.pl --rest generate "Violin plot" "Gene,Expr,CellType" \
+  '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
+perl test_client.pl --rest modify '{"graphType":"Bar"}' "add a title My Chart"
+perl test_client.pl --rest generate "Bar chart" --target myCanvas
+perl test_client.pl --rest generate "Bar chart" --callback renderChart      # JSONP
+perl test_client.pl --rest generate "Bar chart" --client-id req-1 --callback renderChart
 ```
 
 ### Node.js
 
 ```bash
 # requires: Node 18+  and  npm install @modelcontextprotocol/sdk
+# MCP mode (default)
 node test_client.mjs
 node test_client.mjs "Scatter plot by Treatment" "Gene,Sample1,Treatment"
 node test_client.mjs "Heatmap" \
   '[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]' \
   '{"Gene":"string","S1":"numeric","Treatment":"factor"}'
+
+# REST mode
+node test_client.mjs --rest generate "Bar chart"
+node test_client.mjs --rest generate "Violin plot" "Gene,Expr,CellType" \
+  '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
+node test_client.mjs --rest modify '{"graphType":"Bar"}' "add a title My Chart"
+node test_client.mjs --rest generate "Bar chart" --target myCanvas
+node test_client.mjs --rest generate "Bar chart" --callback renderChart     # JSONP
+node test_client.mjs --rest generate "Bar chart" --client-id req-1 --callback renderChart
+```
+
+**REST flags** (all three clients):
+
+| Flag | Description |
+|------|-------------|
+| `--target <id>` | Canvas element id — echoed as `result.target` |
+| `--callback <fn>` | JS function name — JSONP response |
+| `--client-id <id>` | Correlation id — echoed as `result.client_id` |
+
+The `REST_URL` environment variable overrides the default `http://localhost:8100`:
+
+```bash
+REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 ```
 
 ---
@@ -484,7 +571,11 @@ node test_client.mjs "Heatmap" \
   "warnings": [],
   "invalid_refs": {},
   "headers_used": ["Gene", "Sample1", "Sample2", "Treatment"],
-  "types_used": {"Gene": "string", "Sample1": "numeric", "Treatment": "factor"}
+  "types_used": {"Gene": "string", "Sample1": "numeric", "Treatment": "factor"},
+
+  "prompt":    "clustered heatmap with RdBu colors",
+  "target":    "myCanvas",
+  "client_id": "req-1"
 }
 ```
 
@@ -496,6 +587,9 @@ node test_client.mjs "Heatmap" \
 | `invalid_refs` | Map of config key → missing column names |
 | `headers_used` | Column names used for validation |
 | `types_used` | Column types passed in (if provided) |
+| `prompt` | *(REST only)* The originating description or instruction, echoed verbatim |
+| `target` | *(REST only)* Echoed from `?target=` — canvas element id |
+| `client_id` | *(REST only)* Echoed from `?client_id=` — opaque correlation id |
 
 ---
 

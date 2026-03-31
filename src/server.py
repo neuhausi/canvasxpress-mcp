@@ -26,7 +26,7 @@ from difflib import SequenceMatcher
 from typing import Optional
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse
+from starlette.responses import JSONResponse, HTMLResponse, Response
 
 import numpy as np
 import sqlite_vec
@@ -1393,6 +1393,41 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
     return kwargs, 200, ""
 
 
+def _make_response(result: dict, request: Request, prompt: str = "") -> Response:
+    """
+    Return a JSONResponse normally, or a JSONP response when ?callback=name is present.
+    Injects ?target, ?client_id, and the originating prompt into the result payload.
+
+    Parameters extracted from the query string (not forwarded to the tool):
+      callback   (str) — JavaScript function name; triggers JSONP response.
+                         e.g. ?callback=renderChart  →  renderChart({...})
+      target     (str) — Canvas / DOM element id echoed in the response so the
+                         caller knows which element to render to.
+      client_id  (str) — Opaque correlation id echoed verbatim in the response.
+                         Useful when multiple async requests share one callback.
+    The originating prompt (description or instruction) is always echoed as 'prompt'.
+    """
+    p = request.query_params
+    callback  = p.get("callback",  "").strip()
+    target    = p.get("target",    "").strip()
+    client_id = p.get("client_id", "").strip()
+
+    result = dict(result)   # shallow copy — do not mutate the tool return value
+    if prompt:     result["prompt"]    = prompt
+    if target:     result["target"]    = target
+    if client_id:  result["client_id"] = client_id
+
+    if callback:
+        # Validate callback is a safe JS identifier to prevent XSS
+        import re as _re
+        if not _re.match(r'^[A-Za-z_$][A-Za-z0-9_.]*$', callback):
+            return JSONResponse({"error": "Invalid callback name"}, status_code=400)
+        body = f"{callback}({json.dumps(result)})"
+        return Response(content=body, media_type="application/javascript")
+
+    return JSONResponse(result)
+
+
 # ---------------------------------------------------------------------------
 # REST endpoints — /generate  /modify  /ui
 # ---------------------------------------------------------------------------
@@ -1414,6 +1449,7 @@ _UI_HTML = r"""<!DOCTYPE html>
   input[type=text],textarea,select{width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:5px;font-size:.9rem;font-family:inherit;background:#fff}
   textarea{resize:vertical;min-height:80px}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
   .actions{margin-top:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:.9rem;font-weight:600}
   .btn-primary{background:#c0392b;color:#fff}
@@ -1426,6 +1462,7 @@ _UI_HTML = r"""<!DOCTYPE html>
   .valid{background:#d4edda;color:#155724}
   .invalid{background:#f8d7da;color:#721c24}
   .warn{background:#fff3cd;color:#856404}
+  .jsonp-badge{background:#d1ecf1;color:#0c5460}
   .meta{font-size:.8rem;color:#666;margin-bottom:8px}
   .tab-bar{display:flex;gap:4px;margin-bottom:16px}
   .tab{padding:7px 16px;border-radius:5px 5px 0 0;border:1px solid #ccc;border-bottom:none;cursor:pointer;font-weight:600;font-size:.85rem;background:#eee}
@@ -1433,6 +1470,10 @@ _UI_HTML = r"""<!DOCTYPE html>
   .panel{display:none}
   .panel.active{display:block}
   .card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px}
+  .shared-card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:14px;margin-top:12px}
+  .shared-card legend{font-weight:700;font-size:.82rem;color:#888;text-transform:uppercase;letter-spacing:.05em;padding:0 6px}
+  fieldset{border:1px solid #ddd;border-radius:5px;padding:10px 14px 14px}
+  .hint{font-size:.75rem;color:#888;margin-top:3px}
 </style>
 </head>
 <body>
@@ -1494,6 +1535,31 @@ _UI_HTML = r"""<!DOCTYPE html>
   </label>
 </div>
 
+<!-- ── Shared: callback + target + client_id ────────────────────── -->
+<fieldset style="margin-top:12px">
+  <legend>Response options</legend>
+  <div class="row3">
+    <div>
+      <label>target <span>canvas element id — echoed in response</span>
+        <input type="text" id="s-target" placeholder="myCanvas">
+      </label>
+      <p class="hint">Returned as <code>result.target</code> so your callback knows which canvas to render to.</p>
+    </div>
+    <div>
+      <label>callback <span>JS function name — enables JSONP</span>
+        <input type="text" id="s-callback" placeholder="renderChart">
+      </label>
+      <p class="hint">When set, response is <code>renderChart({…})</code> instead of JSON. Use with a <code>&lt;script src="…"&gt;</code> tag for cross-origin requests.</p>
+    </div>
+    <div>
+      <label>client_id <span>correlation id — echoed in response</span>
+        <input type="text" id="s-client-id" placeholder="chart-42">
+      </label>
+      <p class="hint">Returned as <code>result.client_id</code>. Useful when multiple requests share one callback to identify which result arrived.</p>
+    </div>
+  </div>
+</fieldset>
+
 <div class="actions">
   <button class="btn-primary" onclick="submit()">&#9654; Run</button>
   <button class="btn-secondary" onclick="copyUrl()">&#128279; Copy URL</button>
@@ -1524,25 +1590,35 @@ function v(id){ return document.getElementById(id).value.trim(); }
 
 function buildUrl() {
   const p = new URLSearchParams();
+  const target    = v('s-target');
+  const callback  = v('s-callback');
+  const clientId  = v('s-client-id');
+
   if (activeTab === 'generate') {
     const desc = v('g-desc'), hdrs = v('g-headers'), types = v('g-types'),
           data = v('g-data'), temp = v('g-temp');
-    if (desc)  p.set('description', desc);
-    if (hdrs)  p.set('headers', hdrs);
-    if (types) p.set('column_types', types);
-    if (data)  p.set('data', data);
+    if (desc)     p.set('description', desc);
+    if (hdrs)     p.set('headers', hdrs);
+    if (types)    p.set('column_types', types);
+    if (data)     p.set('data', data);
     if (temp && temp !== '0') p.set('temperature', temp);
+    if (target)   p.set('target', target);
+    if (callback) p.set('callback', callback);
+    if (clientId) p.set('client_id', clientId);
     const url = BASE + '/generate?' + p.toString();
     document.getElementById('url-box').textContent = url;
     return url;
   } else {
     const cfg = v('m-config'), instr = v('m-instr'), hdrs = v('m-headers'),
           types = v('m-types'), data = v('m-data');
-    if (cfg)   p.set('config', cfg);
-    if (instr) p.set('instruction', instr);
-    if (hdrs)  p.set('headers', hdrs);
-    if (types) p.set('column_types', types);
-    if (data)  p.set('data', data);
+    if (cfg)      p.set('config', cfg);
+    if (instr)    p.set('instruction', instr);
+    if (hdrs)     p.set('headers', hdrs);
+    if (types)    p.set('column_types', types);
+    if (data)     p.set('data', data);
+    if (target)   p.set('target', target);
+    if (callback) p.set('callback', callback);
+    if (clientId) p.set('client_id', clientId);
     const url = BASE + '/modify?' + p.toString();
     document.getElementById('url-box').textContent = url;
     return url;
@@ -1550,7 +1626,8 @@ function buildUrl() {
 }
 
 ['g-desc','g-headers','g-types','g-data','g-temp',
- 'm-config','m-instr','m-headers','m-types','m-data'].forEach(id => {
+ 'm-config','m-instr','m-headers','m-types','m-data',
+ 's-target','s-callback','s-client-id'].forEach(id => {
   document.getElementById(id).addEventListener('input', buildUrl);
 });
 
@@ -1560,7 +1637,9 @@ function copyUrl() {
 }
 
 async function submit() {
-  const url = buildUrl();
+  const url      = buildUrl();
+  const callback = v('s-callback');
+  const clientId = v('s-client-id');
   const resultEl = document.getElementById('result');
   const preEl    = document.getElementById('result-pre');
   const metaEl   = document.getElementById('result-meta');
@@ -1569,20 +1648,37 @@ async function submit() {
   preEl.textContent = 'Loading…';
   metaEl.textContent = '';
   titleEl.innerHTML = activeTab === 'generate' ? 'Generated Config' : 'Modified Config';
+
   try {
     const resp = await fetch(url);
-    const data = await resp.json();
+    const text = await resp.text();
+
+    // JSONP mode — show raw JS response
+    if (callback) {
+      titleEl.innerHTML = (activeTab === 'generate' ? 'Generated Config' : 'Modified Config') +
+        ' <span class="badge jsonp-badge">JSONP</span>';
+      metaEl.innerHTML = `callback: <b>${callback}</b>` +
+        (v('s-target')    ? ` &nbsp; target: <b>${v('s-target')}</b>`       : '') +
+        (clientId         ? ` &nbsp; client_id: <b>${clientId}</b>`          : '');
+      preEl.textContent = text;
+      return;
+    }
+
+    const data = JSON.parse(text);
     if (data.error) { preEl.textContent = 'Error: ' + data.error; return; }
 
-    const cfg  = data.config  || {};
+    const cfg   = data.config  || {};
     const valid = data.valid;
     const warns = data.warnings || [];
     const badge = valid
       ? '<span class="badge valid">✓ valid</span>'
       : '<span class="badge invalid">✗ warnings</span>';
-    const gt = cfg.graphType || '?';
-    const hdr = (data.headers_used || []).join(', ') || '—';
-    metaEl.innerHTML = `graphType: <b>${gt}</b>${badge} &nbsp; headers: ${hdr}` +
+    const gt   = cfg.graphType || '?';
+    const hdr  = (data.headers_used || []).join(', ') || '—';
+    const tgt  = data.target    ? ` &nbsp; target: <b>${data.target}</b>`       : '';
+    const cid  = data.client_id ? ` &nbsp; client_id: <b>${data.client_id}</b>` : '';
+    const prm  = data.prompt    ? `<br>prompt: <i>${data.prompt}</i>`            : '';
+    metaEl.innerHTML = `graphType: <b>${gt}</b>${badge}${tgt}${cid} &nbsp; headers: ${hdr}${prm}` +
       (warns.length ? `<br><span class="badge warn">⚠ ${warns.join(' | ')}</span>` : '');
     if (activeTab === 'modify' && data.changes) {
       const c = data.changes;
@@ -1602,18 +1698,22 @@ async function submit() {
   const tab = p.get('_tab') || 'generate';
   if (tab === 'modify') {
     document.querySelector('[data-tab=modify]').click();
-    if (p.get('config'))      document.getElementById('m-config').value = p.get('config');
-    if (p.get('instruction')) document.getElementById('m-instr').value  = p.get('instruction');
+    if (p.get('config'))      document.getElementById('m-config').value  = p.get('config');
+    if (p.get('instruction')) document.getElementById('m-instr').value   = p.get('instruction');
     if (p.get('headers'))     document.getElementById('m-headers').value = p.get('headers');
-    if (p.get('column_types'))document.getElementById('m-types').value  = p.get('column_types');
-    if (p.get('data'))        document.getElementById('m-data').value   = p.get('data');
+    if (p.get('column_types'))document.getElementById('m-types').value   = p.get('column_types');
+    if (p.get('data'))        document.getElementById('m-data').value    = p.get('data');
   } else {
     if (p.get('description')) document.getElementById('g-desc').value    = p.get('description');
-    if (p.get('headers'))     document.getElementById('g-headers').value  = p.get('headers');
+    if (p.get('headers'))     document.getElementById('g-headers').value = p.get('headers');
     if (p.get('column_types'))document.getElementById('g-types').value   = p.get('column_types');
     if (p.get('data'))        document.getElementById('g-data').value    = p.get('data');
     if (p.get('temperature')) document.getElementById('g-temp').value    = p.get('temperature');
   }
+  // shared
+  if (p.get('target'))    document.getElementById('s-target').value    = p.get('target');
+  if (p.get('callback'))  document.getElementById('s-callback').value  = p.get('callback');
+  if (p.get('client_id')) document.getElementById('s-client-id').value = p.get('client_id');
   buildUrl();
 })();
 </script>
@@ -1646,7 +1746,7 @@ async def rest_generate(request: Request) -> JSONResponse:
     except Exception as exc:
         log.exception("REST /generate error")
         return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+    return _make_response(result, request, prompt=kwargs.get("description", ""))
 
 
 @mcp.custom_route("/modify", methods=["GET", "POST"])
@@ -1677,7 +1777,7 @@ async def rest_modify(request: Request) -> JSONResponse:
     except Exception as exc:
         log.exception("REST /modify error")
         return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+    return _make_response(result, request, prompt=kwargs.get("instruction", ""))
 
 
 @mcp.custom_route("/ui", methods=["GET"])

@@ -15,6 +15,13 @@
  *   node test_client.mjs --modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
  *   node test_client.mjs --modify '{"graphType":"Heatmap","xAxis":["Gene"]}' "change colorScheme to Spectral"
  *
+ *   # REST endpoint (plain HTTP GET — no MCP protocol)
+ *   node test_client.mjs --rest generate "Violin plot" "Gene,Expr,CellType" '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
+ *   node test_client.mjs --rest modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
+ *   node test_client.mjs --rest generate "Bar chart" --target myCanvas       # echoes target in response
+ *   node test_client.mjs --rest generate "Bar chart" --callback renderChart  # JSONP response
+ *   node test_client.mjs --rest generate "Bar chart" --client-id req-1 --callback renderChart
+ *
  * Requirements:
  *   npm install @modelcontextprotocol/sdk
  */
@@ -22,7 +29,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const MCP_URL = process.env.MCP_URL || "http://localhost:8100/mcp";
+const MCP_URL  = process.env.MCP_URL  || "http://localhost:8100/mcp";
+const REST_URL = process.env.REST_URL || "http://localhost:8100";
 const SEP  = "─".repeat(50);
 const SEP2 = "═".repeat(50);
 
@@ -262,6 +270,69 @@ async function runExamples() {
 
 async function main() {
   const args = process.argv.slice(2);
+
+  if (args[0] === "--rest") {
+    // -----------------------------------------------------------------------
+    // REST mode — calls /generate or /modify directly (no MCP protocol)
+    // Supports --callback name (JSONP) and --target id
+    // -----------------------------------------------------------------------
+    if (args.length < 2) { console.error("Usage: --rest generate|modify ..."); process.exit(1); }
+    const subCmd = args[1];
+
+    // Pull out --callback / --target / --client-id flags
+    const restArgs = [];
+    let callback = null, target = null, clientId = null;
+    for (let i = 2; i < args.length; i++) {
+      if (args[i] === "--callback"  && args[i+1]) { callback = args[++i]; }
+      else if (args[i] === "--target"    && args[i+1]) { target   = args[++i]; }
+      else if (args[i] === "--client-id" && args[i+1]) { clientId = args[++i]; }
+      else restArgs.push(args[i]);
+    }
+
+    const params = new URLSearchParams();
+    if (callback) params.set("callback",  callback);
+    if (target)   params.set("target",    target);
+    if (clientId) params.set("client_id", clientId);
+
+    if (subCmd === "generate") {
+      if (!restArgs[0]) { console.error("Missing description"); process.exit(1); }
+      params.set("description", restArgs[0]);
+      for (const a of restArgs.slice(1)) {
+        const t = a.trim();
+        if (t.startsWith("{"))      params.set("column_types", t);
+        else if (t.startsWith("[")) params.set("data", t);
+        else                        params.set("headers", t);
+      }
+      const url = `${REST_URL}/generate?${params}`;
+      console.log(`GET ${url}\n`);
+      const res  = await fetch(url);
+      const body = await res.text();
+      if (callback) { console.log(`── JSONP response ${SEP}\n${body}`); }
+      else          { printGenerateResult(JSON.parse(body)); }
+
+    } else if (subCmd === "modify") {
+      if (restArgs.length < 2) { console.error("Missing config and/or instruction"); process.exit(1); }
+      params.set("config",      restArgs[0]);
+      params.set("instruction", restArgs[1]);
+      for (const a of restArgs.slice(2)) {
+        const t = a.trim();
+        if (t.startsWith("{"))      params.set("column_types", t);
+        else if (t.startsWith("[")) params.set("data", t);
+        else                        params.set("headers", t);
+      }
+      const url = `${REST_URL}/modify?${params}`;
+      console.log(`GET ${url}\n`);
+      const res  = await fetch(url);
+      const body = await res.text();
+      if (callback) { console.log(`── JSONP response ${SEP}\n${body}`); }
+      else          { printModifyResult(JSON.parse(restArgs[0]), JSON.parse(body), restArgs[1]); }
+
+    } else {
+      console.error(`Unknown sub-command '${subCmd}'. Use: generate | modify`);
+      process.exit(1);
+    }
+    return;
+  }
 
   if (args[0] === "--examples") {
     await runExamples();

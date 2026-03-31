@@ -16,6 +16,13 @@ Usage:
     python test_client.py --modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart and switch to dark theme"
     python test_client.py --modify '{"graphType":"Heatmap","xAxis":["Gene"]}' "change colorScheme to Spectral"
 
+    # REST endpoint (plain HTTP GET — no MCP protocol)
+    python test_client.py --rest generate "Violin plot" "Gene,Expr,CellType" '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
+    python test_client.py --rest modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
+    python test_client.py --rest generate "Bar chart" --target myCanvas      # echoes target in response
+    python test_client.py --rest generate "Bar chart" --callback renderChart  # JSONP response
+    python test_client.py --rest generate "Bar chart" --client-id req-1 --callback renderChart
+
 Requirements:
     pip install httpx
 """
@@ -25,7 +32,8 @@ import sys
 import os
 import httpx
 
-MCP_URL = os.environ.get("MCP_URL", "http://localhost:8100/mcp")
+MCP_URL  = os.environ.get("MCP_URL",  "http://localhost:8100/mcp")
+REST_URL = os.environ.get("REST_URL", "http://localhost:8100")
 
 GENERATE_EXAMPLES = [
     {
@@ -326,6 +334,72 @@ def run_examples():
 
 def main():
     args = sys.argv[1:]
+
+    if args and args[0] == "--rest":
+        # -------------------------------------------------------------------
+        # REST mode — calls /generate or /modify directly (no MCP protocol)
+        # Supports --callback name (JSONP) and --target id
+        # -------------------------------------------------------------------
+        if len(args) < 2:
+            print("Usage: --rest generate|modify ...", file=sys.stderr); sys.exit(1)
+        sub_cmd = args[1]
+
+        # Pull out --callback / --target / --client-id flags
+        rest_args, callback, target, client_id = [], None, None, None
+        i = 2
+        while i < len(args):
+            if args[i] == "--callback" and i + 1 < len(args):
+                callback = args[i + 1]; i += 2
+            elif args[i] == "--target" and i + 1 < len(args):
+                target = args[i + 1]; i += 2
+            elif args[i] == "--client-id" and i + 1 < len(args):
+                client_id = args[i + 1]; i += 2
+            else:
+                rest_args.append(args[i]); i += 1
+
+        params: dict = {}
+        if callback:  params["callback"]  = callback
+        if target:    params["target"]    = target
+        if client_id: params["client_id"] = client_id
+
+        if sub_cmd == "generate":
+            if not rest_args:
+                print("Missing description", file=sys.stderr); sys.exit(1)
+            params["description"] = rest_args[0]
+            for a in rest_args[1:]:
+                a = a.strip()
+                if a.startswith("{"):   params["column_types"] = a
+                elif a.startswith("["): params["data"]         = a
+                else:                   params["headers"]       = a
+            url = REST_URL + "/generate"
+            print(f"GET {url}?{'&'.join(f'{k}={v}' for k, v in params.items())}\n")
+            r = httpx.get(url, params=params, timeout=120)
+            if callback:
+                print(f"── JSONP response {'─'*40}\n{r.text}")
+            else:
+                _print_generate_result(r.json())
+
+        elif sub_cmd == "modify":
+            if len(rest_args) < 2:
+                print("Missing config and/or instruction", file=sys.stderr); sys.exit(1)
+            params["config"]      = rest_args[0]
+            params["instruction"] = rest_args[1]
+            for a in rest_args[2:]:
+                a = a.strip()
+                if a.startswith("{"):   params["column_types"] = a
+                elif a.startswith("["): params["data"]         = a
+                else:                   params["headers"]       = a
+            url = REST_URL + "/modify"
+            print(f"GET {url}?{'&'.join(f'{k}={v}' for k, v in params.items())}\n")
+            r = httpx.get(url, params=params, timeout=120)
+            if callback:
+                print(f"── JSONP response {'─'*40}\n{r.text}")
+            else:
+                _print_modify_result(json.loads(rest_args[0]), r.json(), rest_args[1])
+        else:
+            print(f"Unknown sub-command '{sub_cmd}'. Use: generate | modify", file=sys.stderr)
+            sys.exit(1)
+        return
 
     if args and args[0] == "--examples":
         run_examples()

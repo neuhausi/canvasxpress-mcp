@@ -4,6 +4,7 @@ use warnings;
 use JSON;
 use LWP::UserAgent;
 use HTTP::Request;
+use URI::Escape qw(uri_escape);
 
 # ---------------------------------------------------------------------------
 # CanvasXpress MCP Test Client — Perl
@@ -21,9 +22,17 @@ use HTTP::Request;
 #   # Modify an existing config
 #   perl test_client.pl --modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
 #   perl test_client.pl --modify '{"graphType":"Heatmap","xAxis":["Gene"]}' "change colorScheme to Spectral"
+#
+#   # REST endpoint (no MCP protocol — plain HTTP GET)
+#   perl test_client.pl --rest generate "Violin plot" "Gene,Expr,CellType" '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
+#   perl test_client.pl --rest modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
+#   perl test_client.pl --rest generate "Bar chart" --target myCanvas           # echoes target in response
+#   perl test_client.pl --rest generate "Bar chart" --callback renderChart      # JSONP response
+#   perl test_client.pl --rest generate "Bar chart" --client-id req-1 --callback renderChart
 # ---------------------------------------------------------------------------
 
-my $MCP_URL = $ENV{MCP_URL} || "http://localhost:8100/mcp";
+my $MCP_URL  = $ENV{MCP_URL}  || "http://localhost:8100/mcp";
+my $REST_URL = $ENV{REST_URL} || "http://localhost:8100";
 my $ua      = LWP::UserAgent->new(timeout => 120);
 my $json    = JSON->new->utf8->pretty;
 my $SEP     = "─" x 50;
@@ -139,7 +148,75 @@ if ($first_arg eq "--examples") {
     exit 0;
 }
 
-if ($first_arg eq "--modify") {
+if ($first_arg eq "--rest") {
+    # -----------------------------------------------------------------------
+    # REST mode — calls /generate or /modify directly (no MCP protocol)
+    # Supports ?callback=name (JSONP) and ?target=id
+    # -----------------------------------------------------------------------
+    my $sub_cmd = $ARGV[1] // die "Usage: --rest generate|modify ...\n";
+    my %extras;
+
+    # Scan for --callback / --target / --client-id flags anywhere in remaining args
+    my @rest_args;
+    my $i = 2;
+    while ($i <= $#ARGV) {
+        if    ($ARGV[$i] eq '--callback'  && defined $ARGV[$i+1]) { $extras{callback}  = $ARGV[++$i] }
+        elsif ($ARGV[$i] eq '--target'    && defined $ARGV[$i+1]) { $extras{target}    = $ARGV[++$i] }
+        elsif ($ARGV[$i] eq '--client-id' && defined $ARGV[$i+1]) { $extras{client_id} = $ARGV[++$i] }
+        else { push @rest_args, $ARGV[$i] }
+        $i++;
+    }
+
+    if ($sub_cmd eq 'generate') {
+        my $description = $rest_args[0] // die "Missing description\n";
+        my ($headers, $data, $column_types) = parse_extra_args(@rest_args[1..$#rest_args]);
+        my %params = (description => $description);
+        $params{headers}      = join(",", @$headers)          if $headers;
+        $params{data}         = $json->encode($data)          if $data;
+        $params{column_types} = encode_json($column_types)    if $column_types;
+        $params{callback}     = $extras{callback}             if $extras{callback};
+        $params{target}       = $extras{target}               if $extras{target};
+        $params{client_id}    = $extras{client_id}            if $extras{client_id};
+        my $url = "$REST_URL/generate?" . join("&", map { uri_escape($_) . "=" . uri_escape($params{$_}) } keys %params);
+        print "GET $url\n\n";
+        my $res  = $ua->get($url);
+        my $body = $res->decoded_content;
+        if ($extras{callback}) {
+            print "── JSONP response $SEP\n$body\n";
+        } else {
+            my $r = decode_json($body);
+            print_generate_result($r);
+        }
+
+    } elsif ($sub_cmd eq 'modify') {
+        my $config      = decode_json($rest_args[0] // die "Missing config JSON\n");
+        my $instruction = $rest_args[1]              // die "Missing instruction\n";
+        my ($headers, $data, $column_types) = parse_extra_args(@rest_args[2..$#rest_args]);
+        my %params = (config => encode_json($config), instruction => $instruction);
+        $params{headers}      = join(",", @$headers)          if $headers;
+        $params{data}         = $json->encode($data)          if $data;
+        $params{column_types} = encode_json($column_types)    if $column_types;
+        $params{callback}     = $extras{callback}             if $extras{callback};
+        $params{target}       = $extras{target}               if $extras{target};
+        $params{client_id}    = $extras{client_id}            if $extras{client_id};
+        my $url = "$REST_URL/modify?" . join("&", map { uri_escape($_) . "=" . uri_escape($params{$_}) } keys %params);
+        print "GET $url\n\n";
+        my $res  = $ua->get($url);
+        my $body = $res->decoded_content;
+        if ($extras{callback}) {
+            print "── JSONP response $SEP\n$body\n";
+        } else {
+            my $r = decode_json($body);
+            print_modify_result($config, $r, $instruction);
+        }
+
+    } else {
+        die "Unknown sub-command '$sub_cmd'. Use: generate | modify\n";
+    }
+    exit 0;
+}
+
+
     my $orig_config = decode_json($ARGV[1] // die "Missing config JSON\n");
     my $instruction = $ARGV[2]             // die "Missing instruction\n";
     my ($headers, $data, $column_types) = parse_extra_args(@ARGV[3..$#ARGV]);
