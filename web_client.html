@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CanvasXpress MCP — Web Client</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f8f8f6;
+    --surface:   #ffffff;
+    --border:    #e0ddd6;
+    --border2:   #c8c5be;
+    --text:      #1a1a18;
+    --muted:     #6b6a65;
+    --accent:    #2563eb;
+    --accent-bg: #eff6ff;
+    --green:     #16a34a;
+    --green-bg:  #f0fdf4;
+    --amber:     #b45309;
+    --amber-bg:  #fffbeb;
+    --red:       #dc2626;
+    --red-bg:    #fef2f2;
+    --radius:    8px;
+    --mono:      "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 17px; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 0;
+    height: calc(100vh - 57px);
+    overflow: hidden;
+  }
+
+  .panel {
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .panel-left  { border-right: 1px solid var(--border); }
+  .panel-right { background: var(--bg); }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+    gap: 0;
+  }
+  .tab {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color .15s;
+  }
+  .tab:hover   { color: var(--text); }
+  .tab.active  { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Form elements ── */
+  .field { margin-bottom: 14px; }
+  label  { display: block; font-size: 12px; font-weight: 500; margin-bottom: 4px; color: var(--muted); }
+  .required::after { content: " *"; color: var(--red); }
+
+  input[type="text"], textarea, select {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input[type="text"]:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+  }
+  textarea { resize: vertical; min-height: 80px; font-family: var(--mono); font-size: 12px; }
+
+  .hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── Buttons ── */
+  .btn-row { display: flex; gap: 8px; margin-top: 16px; }
+  .btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background .15s, opacity .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .btn-secondary:hover { background: var(--bg); }
+
+  /* ── URL box ── */
+  .url-box {
+    background: var(--accent-bg);
+    border: 1px solid #bfdbfe;
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin: 12px 0;
+  }
+  .url-box label { color: var(--accent); margin-bottom: 6px; }
+  .url-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    word-break: break-all;
+    color: #1e40af;
+    user-select: all;
+    cursor: text;
+  }
+  .copy-btn {
+    margin-top: 6px;
+    font-size: 11px;
+    padding: 4px 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .copy-btn:hover { background: #1d4ed8; }
+
+  /* ── Result area ── */
+  .result-area { height: 100%; display: flex; flex-direction: column; }
+
+  .result-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .result-toolbar h2 { font-size: 13px; font-weight: 600; flex: 1; }
+
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 99px;
+  }
+  .badge-green  { background: var(--green-bg);  color: var(--green); }
+  .badge-red    { background: var(--red-bg);    color: var(--red); }
+  .badge-amber  { background: var(--amber-bg);  color: var(--amber); }
+  .badge-muted  { background: var(--bg);        color: var(--muted); border: 1px solid var(--border); }
+
+  .result-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .result-section h3 {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: var(--radius);
+    padding: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+
+  .issue-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .issue-item {
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .issue-item.error   { background: var(--red-bg);   color: #7f1d1d; }
+  .issue-item.warning { background: var(--amber-bg); color: #78350f; }
+  .issue-item.suggest { background: var(--accent-bg); color: #1e3a8a; }
+  .issue-icon { flex-shrink: 0; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+  }
+  .stat-card .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .stat-card .stat-value { font-size: 15px; font-weight: 600; }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state {
+    color: var(--muted);
+    text-align: center;
+    padding: 60px 20px;
+    font-size: 13px;
+  }
+  .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+  /* ── Collapsible sections ── */
+  .collapsible-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+    user-select: none;
+  }
+  .collapsible-header h3 { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .collapsible-header .chevron {
+    transition: transform .2s;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .collapsible-body { display: block; }
+  .collapsed .collapsible-body { display: none; }
+  .collapsed .chevron { transform: rotate(-90deg); }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; height: auto; }
+    .panel-left { border-right: none; border-bottom: 1px solid var(--border); }
+    .panel-right { min-height: 500px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="3" y="3" width="18" height="18" rx="3"/>
+    <path d="M3 9h18M9 21V9"/>
+  </svg>
+  <h1>CanvasXpress MCP</h1>
+  <span class="sub" id="proxyUrl"></span>
+</header>
+
+<div class="layout">
+  <!-- ── LEFT PANEL: form ── -->
+  <div class="panel panel-left">
+
+    <div class="tabs" id="tabBar">
+      <button class="tab active" data-tab="generate">Generate</button>
+      <button class="tab"        data-tab="modify">Modify</button>
+      <button class="tab"        data-tab="km">Kaplan-Meier</button>
+      <button class="tab"        data-tab="params">Query params</button>
+    </div>
+
+    <!-- ── GENERATE ── -->
+    <div class="tab-content active" id="tab-generate">
+      <div class="field">
+        <label class="required" for="gen-desc">Description</label>
+        <input type="text" id="gen-desc"
+          placeholder="e.g. Clustered heatmap with RdBu colors">
+      </div>
+      <div class="field">
+        <label for="gen-headers">Headers <span style="font-weight:400">(comma-separated)</span></label>
+        <input type="text" id="gen-headers"
+          placeholder="Gene, Sample1, Sample2, Treatment">
+        <p class="hint">Leave blank if passing full data below</p>
+      </div>
+      <div class="collapsible" id="coll-gen-advanced">
+        <div class="collapsible-header" onclick="toggleCollapsible('coll-gen-advanced')">
+          <h3>Advanced options</h3>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="field">
+            <label for="gen-types">Column types <span style="font-weight:400">(JSON object)</span></label>
+            <textarea id="gen-types" rows="3"
+              placeholder='{"Gene":"string","Sample1":"numeric","Treatment":"factor"}'></textarea>
+          </div>
+          <div class="field">
+            <label for="gen-data">Data array <span style="font-weight:400">(JSON — overrides headers)</span></label>
+            <textarea id="gen-data" rows="5"
+              placeholder='[["Gene","S1","S2"],["BRCA1",1.2,3.4],["TP53",2.1,0.9]]'></textarea>
+          </div>
+          <div class="field">
+            <label for="gen-temp">Temperature</label>
+            <input type="text" id="gen-temp" placeholder="0.0" style="width:80px">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MODIFY ── -->
+    <div class="tab-content" id="tab-modify">
+      <div class="field">
+        <label class="required" for="mod-config">Existing config <span style="font-weight:400">(JSON)</span></label>
+        <textarea id="mod-config" rows="6"
+          placeholder='{"graphType":"Heatmap","xAxis":["Gene"],"colorScheme":"RdBu"}'></textarea>
+      </div>
+      <div class="field">
+        <label class="required" for="mod-instr">Modification instruction</label>
+        <input type="text" id="mod-instr"
+          placeholder='e.g. change colorScheme to Tableau and add a title'>
+      </div>
+      <div class="collapsible" id="coll-mod-advanced">
+        <div class="collapsible-header" onclick="toggleCollapsible('coll-mod-advanced')">
+          <h3>Advanced options</h3>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="field">
+            <label for="mod-headers">Headers</label>
+            <input type="text" id="mod-headers" placeholder="Gene, Sample1, Treatment">
+          </div>
+          <div class="field">
+            <label for="mod-types">Column types</label>
+            <textarea id="mod-types" rows="3"
+              placeholder='{"Gene":"string","Sample1":"numeric","Treatment":"factor"}'></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── KAPLAN-MEIER ── -->
+    <div class="tab-content" id="tab-km">
+      <div class="field">
+        <label for="km-desc">Description</label>
+        <input type="text" id="km-desc"
+          placeholder="e.g. Overall survival by treatment arm">
+      </div>
+      <div class="field">
+        <label for="km-headers">Headers</label>
+        <input type="text" id="km-headers"
+          placeholder="PatientID, OS_Time, OS_Status, Treatment">
+      </div>
+      <div class="collapsible" id="coll-km-advanced">
+        <div class="collapsible-header" onclick="toggleCollapsible('coll-km-advanced')">
+          <h3>Advanced options</h3>
+          <span class="chevron">▾</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="field">
+            <label for="km-data">Data array <span style="font-weight:400">(enables statistics + annotations)</span></label>
+            <textarea id="km-data" rows="6"
+              placeholder='[["ID","Time","Event","Arm"],["P1",24,1,"Control"],["P2",18,0,"Drug A"]]'></textarea>
+          </div>
+          <div class="field">
+            <label for="km-config">Existing config to validate</label>
+            <textarea id="km-config" rows="4"
+              placeholder='{"graphType":"KaplanMeier","xAxis":["OS_Time"]}'></textarea>
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="km-annot" checked style="width:auto">
+            <label for="km-annot" style="margin:0">Add median survival + log-rank annotations</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── QUERY PARAMS ── -->
+    <div class="tab-content" id="tab-params">
+      <div class="field">
+        <label for="qp-graph">Graph type</label>
+        <input type="text" id="qp-graph" placeholder="e.g. Heatmap, Scatter2D, Violin">
+        <p class="hint">Returns all parameters for this chart type</p>
+      </div>
+      <div class="field">
+        <label for="qp-param">Parameter name</label>
+        <input type="text" id="qp-param" placeholder="e.g. colorScheme, areaType, lineType">
+        <p class="hint">Returns valid values and description for this parameter</p>
+      </div>
+      <div class="field" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="qp-refresh" style="width:auto">
+        <label for="qp-refresh" style="margin:0">Force refresh from GitHub</label>
+      </div>
+    </div>
+
+    <!-- ── URL preview + send ── -->
+    <div class="url-box">
+      <label>Generated URL</label>
+      <div class="url-text" id="urlPreview">—</div>
+      <button class="copy-btn" onclick="copyUrl()">Copy URL</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="sendBtn" onclick="sendRequest()">
+        Send request
+      </button>
+      <button class="btn btn-secondary" onclick="clearResult()">Clear</button>
+    </div>
+  </div>
+
+  <!-- ── RIGHT PANEL: result ── -->
+  <div class="panel panel-right">
+    <div class="result-area">
+      <div class="result-toolbar">
+        <h2>Response</h2>
+        <span id="statusBadge" class="badge badge-muted" style="display:none"></span>
+        <span id="timeBadge"   class="badge badge-muted" style="display:none"></span>
+      </div>
+      <div class="result-body" id="resultBody">
+        <div class="empty-state">
+          <div class="icon">⚡</div>
+          Fill in the form and click <strong>Send request</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+const PROXY_BASE = (() => {
+  const u = new URL(window.location.href);
+  return `${u.protocol}//${u.hostname}:${u.port || 8200}`;
+})();
+
+document.getElementById('proxyUrl').textContent = PROXY_BASE;
+
+// ---------------------------------------------------------------------------
+// Tab switching
+// ---------------------------------------------------------------------------
+document.getElementById('tabBar').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  updateUrl();
+});
+
+// ---------------------------------------------------------------------------
+// Collapsible sections
+// ---------------------------------------------------------------------------
+function toggleCollapsible(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
+// ---------------------------------------------------------------------------
+// URL builder
+// ---------------------------------------------------------------------------
+function buildUrl() {
+  const active = document.querySelector('.tab.active').dataset.tab;
+  const params = new URLSearchParams();
+
+  const get = id => document.getElementById(id)?.value?.trim() || '';
+  const checked = id => document.getElementById(id)?.checked;
+
+  if (active === 'generate') {
+    const desc = get('gen-desc');
+    if (!desc) return null;
+    params.set('description', desc);
+    const hdrs = get('gen-headers');
+    if (hdrs) params.set('headers', hdrs);
+    const types = get('gen-types');
+    if (types) { try { JSON.parse(types); params.set('column_types', types); } catch(e) {} }
+    const data = get('gen-data');
+    if (data)  { try { JSON.parse(data);  params.set('data', data);         } catch(e) {} }
+    const temp = get('gen-temp');
+    if (temp && temp !== '0' && temp !== '0.0') params.set('temperature', temp);
+    return `${PROXY_BASE}/api/generate?${params}`;
+  }
+
+  if (active === 'modify') {
+    const cfg   = get('mod-config');
+    const instr = get('mod-instr');
+    if (!cfg || !instr) return null;
+    try { JSON.parse(cfg); } catch(e) { return null; }
+    params.set('config',      cfg);
+    params.set('instruction', instr);
+    const hdrs  = get('mod-headers');
+    if (hdrs) params.set('headers', hdrs);
+    const types = get('mod-types');
+    if (types) { try { JSON.parse(types); params.set('column_types', types); } catch(e) {} }
+    return `${PROXY_BASE}/api/modify?${params}`;
+  }
+
+  if (active === 'km') {
+    const desc = get('km-desc');
+    const hdrs = get('km-headers');
+    const data = get('km-data');
+    const cfg  = get('km-config');
+    if (!desc && !hdrs && !data && !cfg) return null;
+    if (desc) params.set('description', desc);
+    if (hdrs) params.set('headers', hdrs);
+    if (data) { try { JSON.parse(data); params.set('data', data); } catch(e) {} }
+    if (cfg)  { try { JSON.parse(cfg);  params.set('config', cfg); } catch(e) {} }
+    if (!checked('km-annot')) params.set('add_annotations', 'false');
+    return `${PROXY_BASE}/api/km?${params}`;
+  }
+
+  if (active === 'params') {
+    const gt = get('qp-graph');
+    const pn = get('qp-param');
+    if (!gt && !pn) return null;
+    if (gt) params.set('graph_type', gt);
+    if (pn) params.set('param_name', pn);
+    if (checked('qp-refresh')) params.set('refresh', 'true');
+    return `${PROXY_BASE}/api/query_params?${params}`;
+  }
+
+  return null;
+}
+
+function updateUrl() {
+  const url = buildUrl();
+  const el  = document.getElementById('urlPreview');
+  el.textContent = url || '— fill in required fields above —';
+  el.style.color = url ? '#1e40af' : '#9ca3af';
+}
+
+// Live URL preview
+document.querySelectorAll('input, textarea, select').forEach(el => {
+  el.addEventListener('input', updateUrl);
+});
+document.querySelectorAll('input[type="checkbox"]').forEach(el => {
+  el.addEventListener('change', updateUrl);
+});
+updateUrl();
+
+// ---------------------------------------------------------------------------
+// Copy URL
+// ---------------------------------------------------------------------------
+function copyUrl() {
+  const url = buildUrl();
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy URL', 1500);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Send request
+// ---------------------------------------------------------------------------
+async function sendRequest() {
+  const url = buildUrl();
+  if (!url) {
+    showError('Fill in the required fields first.');
+    return;
+  }
+
+  const btn   = document.getElementById('sendBtn');
+  const badge = document.getElementById('statusBadge');
+  const time  = document.getElementById('timeBadge');
+  btn.disabled    = true;
+  btn.innerHTML   = '<span class="spinner"></span> Sending…';
+  badge.style.display = 'none';
+  time.style.display  = 'none';
+
+  const t0 = Date.now();
+  try {
+    const resp = await fetch(url);
+    const ms   = Date.now() - t0;
+    const data = await resp.json();
+    renderResult(data, resp.status, ms);
+  } catch (err) {
+    showError(`Network error: ${err.message}`);
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = 'Send request';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Render result
+// ---------------------------------------------------------------------------
+function renderResult(data, status, ms) {
+  const badge  = document.getElementById('statusBadge');
+  const timeBadge = document.getElementById('timeBadge');
+
+  badge.style.display    = '';
+  timeBadge.style.display = '';
+  timeBadge.textContent   = `${ms}ms`;
+  timeBadge.className     = 'badge badge-muted';
+
+  if (status !== 200 || data.error) {
+    badge.textContent = `Error ${status}`;
+    badge.className   = 'badge badge-red';
+    showError(data.error || `HTTP ${status}`);
+    return;
+  }
+
+  const valid = data.valid !== false;
+  badge.textContent = valid ? 'Valid' : 'Warnings';
+  badge.className   = `badge ${valid ? 'badge-green' : 'badge-amber'}`;
+
+  const body = document.getElementById('resultBody');
+  body.innerHTML = '';
+
+  // ── Config ────────────────────────────────────────────────────────────────
+  if (data.config && Object.keys(data.config).length > 0) {
+    body.appendChild(section('Config',
+      `<pre>${jsonHighlight(data.config)}</pre>`
+    ));
+  }
+
+  // ── Params result (query_params endpoint) ─────────────────────────────────
+  if (data.params) {
+    const entries = Object.entries(data.params);
+    const rows = entries.map(([p, e]) => {
+      const vals = e.valid_values?.length
+        ? e.valid_values.map(v => `<code>${escHtml(v)}</code>`).join(' ')
+        : '<span style="color:var(--muted)">—</span>';
+      return `<tr>
+        <td style="font-weight:500;white-space:nowrap">${escHtml(p)}</td>
+        <td style="color:var(--muted)">${escHtml(e.type||'')}</td>
+        <td>${escHtml(e.description||'')}</td>
+        <td style="font-size:11px">${vals}</td>
+      </tr>`;
+    }).join('');
+    body.appendChild(section(
+      `Parameters (${entries.length})${data.graph_type ? ' — ' + data.graph_type : ''}`,
+      `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th align="left" style="padding:6px 8px;color:var(--muted)">Name</th>
+          <th align="left" style="padding:6px 8px;color:var(--muted)">Type</th>
+          <th align="left" style="padding:6px 8px;color:var(--muted)">Description</th>
+          <th align="left" style="padding:6px 8px;color:var(--muted)">Valid values</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px">Source: ${escHtml(data.schema_source||'')}</p>`
+    ));
+  }
+
+  // ── KM column detection ───────────────────────────────────────────────────
+  if (data.column_detection) {
+    const cd = data.column_detection;
+    const confColor = {high:'var(--green)',medium:'var(--amber)',low:'var(--red)'}[cd.confidence]||'var(--muted)';
+    body.appendChild(section('Column detection',
+      `<div class="stats-grid">
+        ${statCard('Time column',    cd.time_col  || 'not detected')}
+        ${statCard('Event column',   cd.event_col || 'not detected')}
+        ${statCard('Group column(s)',cd.group_cols?.join(', ') || 'none')}
+        ${statCard('Unassigned',     cd.unassigned?.join(', ') || 'none')}
+      </div>
+      <p style="margin-top:8px;font-size:12px">
+        Confidence: <strong style="color:${confColor}">${cd.confidence}</strong>
+      </p>
+      ${cd.notes?.map(n=>`<p style="font-size:12px;color:var(--muted);margin-top:4px">ℹ️ ${escHtml(n)}</p>`).join('')||''}`
+    ));
+  }
+
+  // ── KM statistics ─────────────────────────────────────────────────────────
+  if (data.statistics?.groups) {
+    const grps = data.statistics.groups;
+    const cards = Object.entries(grps).map(([name, g]) =>
+      `<div class="stat-card">
+        <div class="stat-label">${escHtml(name)}</div>
+        <div class="stat-value">${g.median_survival != null ? g.median_survival.toFixed(1) : 'NR'}</div>
+        <div style="font-size:11px;color:var(--muted)">${g.n_events}/${g.n} events</div>
+      </div>`
+    ).join('');
+    const pval = data.statistics.pvalue_str
+      ? `<p style="margin-top:8px;font-size:13px;font-weight:600">Log-rank ${escHtml(data.statistics.pvalue_str)}</p>`
+      : '';
+    body.appendChild(section('Survival statistics',
+      `<div class="stats-grid">${cards}</div>${pval}`
+    ));
+  }
+
+  // ── Changes (modify endpoint) ─────────────────────────────────────────────
+  if (data.changes) {
+    const ch = data.changes;
+    const rows = [
+      ch.added?.length   ? `<li class="issue-item suggest"><span class="issue-icon">＋</span>Added: ${ch.added.join(', ')}</li>` : '',
+      ch.removed?.length ? `<li class="issue-item warning"><span class="issue-icon">−</span>Removed: ${ch.removed.join(', ')}</li>` : '',
+      ch.changed?.length ? `<li class="issue-item suggest"><span class="issue-icon">~</span>Changed: ${ch.changed.join(', ')}</li>` : '',
+    ].filter(Boolean).join('');
+    if (rows) body.appendChild(section('Changes', `<ul class="issue-list">${rows}</ul>`));
+  }
+
+  // ── Errors / Warnings / Suggestions ──────────────────────────────────────
+  const allIssues = [
+    ...(data.errors||[]).map(e   => ({type:'error',   text:e})),
+    ...(data.warnings||[]).map(w => ({type:'warning', text:w})),
+    ...(data.suggestions||[]).map(s => ({type:'suggest', text:s})),
+  ];
+  if (allIssues.length) {
+    const icons = {error:'✖', warning:'⚠', suggest:'💡'};
+    const items = allIssues.map(i =>
+      `<li class="issue-item ${i.type}"><span class="issue-icon">${icons[i.type]}</span>${escHtml(i.text)}</li>`
+    ).join('');
+    body.appendChild(section('Validation', `<ul class="issue-list">${items}</ul>`));
+  }
+
+  // ── Headers / types used ──────────────────────────────────────────────────
+  if (data.headers_used?.length) {
+    body.appendChild(section('Headers used',
+      `<p style="font-size:12px;font-family:var(--mono)">${escHtml(data.headers_used.join(', '))}</p>`
+    ));
+  }
+
+  // ── Raw JSON ──────────────────────────────────────────────────────────────
+  body.appendChild(section('Raw response',
+    `<pre style="max-height:300px">${jsonHighlight(data)}</pre>`
+  ));
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function section(title, html) {
+  const el = document.createElement('div');
+  el.className = 'result-section';
+  el.innerHTML = `<h3>${escHtml(title)}</h3>${html}`;
+  return el;
+}
+
+function statCard(label, value) {
+  return `<div class="stat-card">
+    <div class="stat-label">${escHtml(label)}</div>
+    <div class="stat-value" style="font-size:13px">${escHtml(String(value))}</div>
+  </div>`;
+}
+
+function showError(msg) {
+  const body = document.getElementById('resultBody');
+  body.innerHTML = `<div class="issue-item error" style="padding:12px 14px;border-radius:var(--radius)">
+    <span class="issue-icon">✖</span>${escHtml(msg)}
+  </div>`;
+}
+
+function clearResult() {
+  document.getElementById('resultBody').innerHTML =
+    '<div class="empty-state"><div class="icon">⚡</div>Fill in the form and click <strong>Send request</strong></div>';
+  document.getElementById('statusBadge').style.display = 'none';
+  document.getElementById('timeBadge').style.display   = 'none';
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function jsonHighlight(obj) {
+  const s = JSON.stringify(obj, null, 2);
+  return s
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"([^"]+)":/g, '<span style="color:#89dceb">"$1"</span>:')
+    .replace(/: "([^"]*)"(,?)/g, ': <span style="color:#a6e3a1">"$1"</span>$2')
+    .replace(/: (true|false)(,?)/g, ': <span style="color:#cba6f7">$1</span>$2')
+    .replace(/: (-?[\d.]+)(,?)/g, ': <span style="color:#fab387">$1</span>$2');
+}
+</script>
+</body>
+</html>
