@@ -197,7 +197,7 @@ def _connect(client: httpx.Client) -> str | None:
     init = _post_mcp(client, None, {
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-11-25",
             "capabilities": {},
             "clientInfo": {"name": "python-client", "version": "1.0.0"},
         },

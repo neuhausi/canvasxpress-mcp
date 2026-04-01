@@ -897,17 +897,16 @@ mcp = FastMCP(
     ),
 )
 
-# ---------------------------------------------------------------------------
-# CORS — allow browser requests from the origins listed in CORS_ORIGINS
-# ---------------------------------------------------------------------------
-mcp.add_middleware(
+# Build the CORS ASGI middleware list — passed to mcp.run() below.
+# CORS_ORIGINS is read from .env (CORS_ORIGINS env var).
+_cors_middleware: list = [
     Middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key"],
     )
-)
+]
 
 
 @mcp.tool(
@@ -1861,4 +1860,4 @@ if __name__ == "__main__":
         log.info("Debug mode ON  — set CX_DEBUG=0 to disable")
         log.info("Retrieval : %s", "vector (sqlite-vec)" if _use_vector_index else "SequenceMatcher (fallback)")
         log.info("Examples  : %d loaded", len(EXAMPLES))
-    mcp.run(transport="http", host=HOST, port=PORT)
+    mcp.run(transport="http", host=HOST, port=PORT, middleware=_cors_middleware)
