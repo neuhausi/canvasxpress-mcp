@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-CanvasXpress MCP Server v4 — HTTP Transport
+CanvasXpress MCP Server — HTTP Transport
 =============================================
-All v3 improvements plus fast local vector search:
   - sqlite-vec + sentence-transformers for semantic retrieval
   - Scales to 3,000+ few-shot examples with ~10ms retrieval
   - Falls back to SequenceMatcher if index not built yet
@@ -24,9 +23,6 @@ import sqlite3
 from pathlib import Path
 from difflib import SequenceMatcher
 from typing import Optional
-
-from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse, Response
 
 import numpy as np
 import sqlite_vec
@@ -267,46 +263,171 @@ def _load_knowledge_db() -> bool:
 
 
 _SYSTEM_PROMPT_HEADER = """You are an expert CanvasXpress data visualization assistant.
-
 Your task is to generate a valid CanvasXpress JSON configuration object from a natural
-language description and optional column headers.
+language description and optional column headers and column types.
 
 ## OUTPUT FORMAT
-- Return ONLY a valid JSON object. No markdown, no backticks, no explanations.
-- If you cannot generate a valid config, return an empty string.
+Return ONLY a valid JSON object. No markdown, no backticks, no explanations.
+If you cannot generate a valid config, return an empty string.
 
-## VALID GRAPH TYPES (use exactly these names)
-Alluvial, Area, AreaLine, Bar, BarLine, Boxplot, Bin, Binplot, Bubble, Bullet, Bump,
-CDF, Chord, Circular, Cleveland, Contour, Correlation, Density, Distribution, Donut,
-DotLine, Dotplot, Dumbbell, Gantt, Heatmap, Hex, Hexplot, Histogram, KaplanMeier, Line,
-Lollipop, Map, Meter, Network, ParallelCoordinates, Pareto, Pie, QQ, Quantile, Radar,
-Ribbon, Ridgeline, Sankey, Scatter2D, Scatter3D, ScatterBubble2D, Spaghetti, Stacked,
-StackedLine, StackedPercent, StackedPercentLine, Streamgraph, Sunburst, TagCloud,
-TimeSeries, Tornado, Tree, Treemap, Upset, Violin, Volcano, Venn, Waterfall, WordCloud
+## STEP 1 — SELECT GRAPH TYPE
+Choose graphType from this exact list (default to "Bar" if ambiguous):
+  Alluvial, Area, AreaLine, Bar, BarLine, Boxplot, Bin, Binplot, Bubble, Bullet, Bump,
+  CDF, Chord, Circular, Cleveland, Contour, Correlation, Density, Distribution, Donut,
+  DotLine, Dotplot, Dumbbell, Gantt, Heatmap, Hex, Hexplot, Histogram, KaplanMeier, Line,
+  Lollipop, Map, Meter, Network, ParallelCoordinates, Pareto, Pie, QQ, Quantile, Radar,
+  Ribbon, Ridgeline, Sankey, Scatter2D, Scatter3D, ScatterBubble2D, Spaghetti, Stacked,
+  StackedLine, StackedPercent, StackedPercentLine, Streamgraph, Sunburst, TagCloud,
+  TimeSeries, Tornado, Tree, Treemap, Upset, Violin, Volcano, Venn, Waterfall, WordCloud
 
-Default to "Bar" if the type is ambiguous.
+## STEP 2 — ASSIGN AXES (most critical structural decision)
+First classify the graphType, then assign axes accordingly.
 
-## VALID COLOR SCHEMES
-YlGn, YlGnBu, GnBu, BuGn, PuBuGn, PuBu, BuPu, RdPu, PuRd, OrRd, YlOrRd, YlOrBr,
-Purples, Blues, Greens, Oranges, Reds, Greys, PuOr, BrBG, PRGn, PiYG, RdBu, RdGy,
-RdYlBu, Spectral, RdYlGn, Bootstrap, Economist, Excel, GGPlot, Solarized, PaulTol,
-ColorBlind, Tableau, WallStreetJournal, Stata, BlackAndWhite, CanvasXpress
+SINGLE-DIMENSIONAL (xAxis ONLY — NEVER yAxis):
+  Bar, Boxplot, Violin, Heatmap, Line, Area, Histogram, Density, Dotplot, Lollipop,
+  Waterfall, Ridgeline, Pie, Donut, Stacked, StackedPercent, Chord, Sankey, Alluvial,
+  Ribbon, Treemap, Venn, Radar, CDF, QQ, Quantile, Cleveland, Dumbbell, Gantt,
+  TagCloud, WordCloud, Sunburst, Bubble, Network, Correlation, and all others not below.
 
-## VALID THEMES
-bw, classic, cx, dark, economist, excel, ggblanket, ggplot, gray, grey,
-highcharts, igray, light, linedraw, minimal, none, ptol, solarized, stata, tableau, void0, wsj
+  CONCEPTUAL MODEL (critical — get this right first):
+  - Single-dimensional graphs have TWO axes with fundamentally different roles:
+      xAxis   = the NUMERIC variable being plotted (heights of bars, positions of points,
+                values in the distribution). This is the data column with numbers.
+      samples = the CATEGORICAL labels (gene names, patient IDs, time points, groups).
+                Samples are NOT set via a parameter — they come from the data automatically.
+  - smpTitle labels the sample/categorical axis. It is the equivalent of what yAxisTitle
+    is for multi-dimensional graphs, but for the categorical dimension of 1D charts.
+    Use smpTitle instead of yAxisTitle on all single-dimensional chart types.
 
-## STEPS
-1. Select graphType from the valid list using the decision tree
-2. Set xAxis (and yAxis/zAxis if required) using provided column names
-3. Set decorations if specified (follow decoration rules strictly)
-4. Set filterData if filtering is requested
-5. Set sortData if sorting is requested (skip for density/scatter types)
-6. Set colorScheme from valid list if colors mentioned
-7. Set theme from valid list if style mentioned
-8. Set graph-type-specific required parameters (areaType, densityPosition, etc.)
-9. Add any additional parameters from description
-10. Validate: ensure minimal required parameters are present; return empty string if not valid
+  Examples of correct xAxis assignment:
+    "Bar chart of Expression values per Gene"
+      → xAxis: ["Expression"]   (numeric)   Gene is the sample (categorical) — not in xAxis
+    "Violin plot of Score grouped by Treatment"
+      → xAxis: ["Score"]        (numeric)   Treatment → groupingFactors, not xAxis
+    "Heatmap of gene expression"
+      → xAxis: ["Gene"]         (in heatmaps, Gene/variable names ARE the xAxis — exception)
+    "Bar chart of Q1, Q2, Q3, Q4 revenue"
+      → xAxis: ["Q1","Q2","Q3","Q4"]   (numeric columns — multiple values allowed)
+    "Line chart of Sales over Month"
+      → xAxis: ["Sales"]        (numeric)   Month is the sample axis (smpTitle: "Month")
+
+  Rules:
+  - xAxis must contain NUMERIC data column name(s). If the column is categorical
+    (gene names, patient IDs, drug names, group labels), it belongs in the samples
+    dimension, not xAxis — omit xAxis and let CanvasXpress auto-assign.
+  - Exception: Heatmap — the variable names (genes, features) go in xAxis because
+    that is how CanvasXpress structures heatmap data.
+  - If no numeric column name is identifiable from the description, omit xAxis
+    entirely (CanvasXpress will auto-assign from the data).
+  - Multiple numeric columns on the same axis are allowed:
+    "xAxis": ["Q1", "Q2", "Q3", "Q4"]
+  - To label the categorical/sample axis: use smpTitle (NOT yAxisTitle).
+  - NEVER use yAxisTitle, yAxisTextColor, yAxisTitleColor, yAxisLog,
+    yAxisMinValue, yAxisMaxValue, yAxisTextFontStyle, yAxisTitleFontStyle.
+
+COMBINED (xAxis + xAxis2 — NEVER yAxis):
+  AreaLine, BarLine, DotLine, Pareto, StackedLine, StackedPercentLine.
+  Rules:
+  - xAxis for the primary numeric series, xAxis2 for the secondary numeric series.
+  - If ambiguous: first numeric column → xAxis, second numeric column → xAxis2.
+  - NEVER yAxis. Use smpTitle to label the categorical sample axis, never yAxisTitle.
+
+MULTI-DIMENSIONAL (both xAxis AND yAxis required):
+  Scatter2D, Scatter3D, ScatterBubble2D, Volcano, Spaghetti,
+  Contour, Streamgraph, Bump, KaplanMeier, TimeSeries.
+  Rules:
+  - MUST include BOTH xAxis and yAxis. Always list xAxis before yAxis.
+  - Scatter3D and ScatterBubble2D also require zAxis.
+  - If no column names given, omit axis params (CanvasXpress auto-assigns).
+  - Use xAxisTitle and yAxisTitle for axis labels (NOT smpTitle).
+
+## STEP 3 — SET REQUIRED GRAPH-TYPE-SPECIFIC PARAMETERS
+These are mandatory when the graph type is selected:
+  Area:      areaType: "overlapping" | "stacked" | "percent"  (REQUIRED)
+  Density:   densityPosition: "normal" | "stacked" | "filled"  (REQUIRED)
+  Histogram: histogramType: "dodged" | "staggered" | "stacked"  (REQUIRED)
+  Dumbbell:  dumbbellType: "arrow" | "bullet" | "cleveland" | "connected" | "line" | "lineConnected" | "stacked"
+  Ridgeline: use ridgeBy (column name) instead of groupingFactors
+  Spaghetti, TagCloud, WordCloud: must include colorBy
+  KaplanMeier: xAxis = time column, yAxis = event/status column (0/1), use colorBy for grouping (treatment arms, etc.)
+
+## STEP 4 — ASSIGN DATA COLUMNS TO PARAMETERS
+Using column names from the description or provided headers:
+  groupingFactors : factor/categorical columns for grouping and colouring (1D charts)
+  colorBy         : column whose values determine colour (scatter, spaghetti)
+  shapeBy         : column for point shapes
+  sizeBy          : column for point size (ScatterBubble2D)
+  ellipseBy       : column to draw confidence ellipses around groups (Scatter2D and Scatter3D only)
+  segregateSamplesBy / segregateVariablesBy : columns for faceting into sub-plots
+  smpOverlays / varOverlays : metadata columns for heatmap annotation tracks
+  ridgeBy         : column for Ridgeline groups (NOT groupingFactors)
+  sankeyAxes      : ordered list of flow columns (Sankey, Alluvial, Ribbon)
+  hierarchy       : ordered list of hierarchy columns (Bubble, Tree, Sunburst)
+
+## STEP 5 — APPLY DATA TRANSFORMS (if requested)
+  transformData   : "log2" | "log10" | "-log2" | "-log10" | "zscore" | "percentile" | "sqrt"
+  xAxisTransform  : "log2" | "log10" | "-log2" | "-log10" | "sqrt" | "percentile"
+  yAxisTransform  : same options (only for multi-dimensional graphs)
+  filterData FORMAT (use when description says "filter", "only show", "where", "limit to")
+    filterData is an array of filter rule arrays. Each rule: ["guess", "columnName", "operator", "value"]
+    operators: "like" (equals / contains), "different" (not equals)
+    "guess" is always the literal string "guess" as the first element.
+    Examples: [["guess", "Treatment", "like", "Control"]], [["guess", "Stage", "different", "IV"]],
+    Multiple filters (AND logic — all must pass):
+      "filterData": [["guess", "Treatment", "like", "Drug A"], ["guess", "Responder", "like", "Yes"]]
+  sortData FORMAT (use when description says "sort", "order by", "ranked by", "ascending", "descending")
+    sortData is an array of sort rule arrays. Each rule: ["sortType", "axis", "columnName"]
+    sortType: "var" (sort variables/rows), "smp" (sort samples/columns), "cat" (sort by category)
+    axis: "var" or "smp"
+    columnName: the column to sort by
+    Examples: [["var", "var", "Expression"]], [["smp", "smp", "Treatment"]]
+    Multiple filters and sorts are allowed — apply in the order given.
+      Never use sortData for: Bin, Binplot, CDF, Contour, Density, Hex, Hexplot,
+        Histogram, KaplanMeier, QQ, Quantile, Ridgeline, Scatter2D, ScatterBubble2D, Streamgraph.
+        For simple bar chart sorting use sortDir: "ascending" or "descending" instead.
+
+## STEP 6 — ADD DECORATIONS (if requested)
+decorations is an array of objects. Each object requires "type" and "color".
+  types: "line" | "point" | "text"
+CRITICAL — position key depends on graph category:
+  1D graphs (Bar, Violin, Heatmap, Line, etc.):
+    Use "value" (a number). NEVER "x" or "y".
+    {"type": "line",  "value": 2.0,  "color": "#e74c3c", "width": 1, "label": "Threshold"}
+    {"type": "point", "value": 8.5,  "color": "#e67e22", "label": "Marker"}
+    {"type": "text",  "value": 100,  "color": "#2c3e50", "label": "Key event"}
+  Multi-dim (Scatter2D, Volcano, etc.):
+    Use "x" for vertical lines, "y" for horizontal lines, both for points/text.
+    NEVER use "value" for multi-dimensional graphs.
+    {"type": "line", "x":  2.0, "color": "#e74c3c", "width": 1, "label": "FC +2"}
+    {"type": "line", "y":  1.3, "color": "#7f8c8d", "width": 1, "label": "p=0.05"}
+    {"type": "point","x": 1.5, "y": 4.2, "color": "#e74c3c", "label": "Sample X"}
+  Volcano standard: two vertical lines (x = ±threshold) + one horizontal line (y = significance)
+
+## STEP 7 — SET VISUAL STYLING (if mentioned)
+  colorScheme (use exactly one of):
+    YlGn, YlGnBu, GnBu, BuGn, PuBuGn, PuBu, BuPu, RdPu, PuRd, OrRd, YlOrRd, YlOrBr,
+    Purples, Blues, Greens, Oranges, Reds, Greys, PuOr, BrBG, PRGn, PiYG, RdBu, RdGy,
+    RdYlBu, Spectral, RdYlGn, Bootstrap, Economist, Excel, GGPlot, Solarized, PaulTol,
+    ColorBlind, Tableau, WallStreetJournal, Stata, BlackAndWhite, CanvasXpress
+  theme (use exactly one of):
+    bw, classic, cx, dark, economist, excel, ggblanket, ggplot, gray, grey,
+    highcharts, igray, light, linedraw, minimal, none, ptol, solarized, stata, tableau, void0, wsj
+  Other styling: title, showLegend, legendPosition, graphOrientation,
+    xAxisTitle, yAxisTitle (multi-dim only), smpTitle (1D/combined only),
+    setMinX, setMaxX, setMinY (multi-dim only), setMaxY (multi-dim only),
+    background, dataPointSize, samplesClustered, variablesClustered, heatmapIndicator
+
+## STEP 8 — PARAMETER DISCIPLINE (final check before output)
+Only use parameter names that are known CanvasXpress parameters.
+NEVER invent parameter names. If unsure whether a parameter exists, omit it.
+Examples of hallucinated names to NEVER use:
+  showRegressionEllipse, showEllipse, ellipseShow, showGroupEllipses — use ellipseBy instead.
+  yAxisTitle on 1D charts — use smpTitle instead.
+  yAxis on single-dimensional or combined charts — never valid.
+
+## STEP 9 — VALIDATE
+Ensure graphType and all required axis parameters are present.
+Return empty string if the config cannot be made valid.
 """
 
 
@@ -361,7 +482,7 @@ def generate_config(
     headers: list[str] | None = None,
     column_types: dict[str, str] | None = None,
     temperature: float = 0.0,
-) -> dict | str:
+) -> tuple[dict, list[str]]:
     import time
 
     # ── Step 1: Retrieval ────────────────────────────────────────────────────
@@ -485,6 +606,13 @@ def generate_config(
 
     config = json.loads(raw)
 
+    # Strip any hallucinated parameter names not present in the known schema
+    config, removed_keys = cx_knowledge.filter_unknown_params(config)
+    if removed_keys and DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  STEP 4b — PARAM FILTER\n{bar}", file=sys.stderr)
+        print(f"  Removed unknown params: {removed_keys}", file=sys.stderr)
+
     if DEBUG:
         bar = "─" * 64
         print(f"\n{bar}\n  STEP 5 — PARSED CONFIG\n{bar}", file=sys.stderr)
@@ -498,7 +626,7 @@ def generate_config(
         print(f"  Total     : {t_retrieval + t_llm:.0f}ms", file=sys.stderr)
         print(f"{'─' * 64}\n", file=sys.stderr)
 
-    return config
+    return config, removed_keys
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +639,7 @@ def modify_config(
     headers: list[str] | None = None,
     column_types: dict[str, str] | None = None,
     temperature: float = 0.0,
-) -> dict:
+) -> tuple[dict, list[str]]:
     """
     Apply a plain-English modification instruction to an existing CanvasXpress config.
     Returns the complete modified config as a dict.
@@ -639,6 +767,13 @@ def modify_config(
 
     modified = json.loads(raw)
 
+    # Strip hallucinated parameter names
+    modified, removed_keys = cx_knowledge.filter_unknown_params(modified)
+    if removed_keys and DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  MODIFY — PARAM FILTER\n{bar}", file=sys.stderr)
+        print(f"  Removed unknown params: {removed_keys}", file=sys.stderr)
+
     if DEBUG:
         bar = "─" * 64
         print(f"\n{bar}\n  MODIFY — STEP 5 RESULT\n{bar}", file=sys.stderr)
@@ -650,7 +785,7 @@ def modify_config(
         print(f"  Keys changed : {changed or 'none'}", file=sys.stderr)
         print(f"  Retrieval : {t_retrieval:.1f}ms   LLM : {t_llm:.0f}ms", file=sys.stderr)
 
-    return modified
+    return modified, removed_keys
 
 
 # ---------------------------------------------------------------------------
@@ -832,7 +967,7 @@ def generate_canvasxpress_config(
             print(f"  {col:25s} → {typ}", file=sys.stderr)
 
     log.info("Generating config for: %s", description)
-    config = generate_config(description, resolved_headers, column_types, temperature)
+    config, removed_params = generate_config(description, resolved_headers, column_types, temperature)
     graph_type = config.get("graphType", "unknown") if config else "none"
     log.info("Generated graphType: %s", graph_type)
 
@@ -859,12 +994,13 @@ def generate_canvasxpress_config(
             log.debug("No headers or data provided — skipping column validation")
 
     return {
-        "config": config,
-        "valid": validation["valid"],
-        "warnings": validation["warnings"],
-        "invalid_refs": validation["invalid_refs"],
-        "headers_used": resolved_headers or [],
-        "types_used": column_types or {},
+        "config":         config,
+        "valid":          validation["valid"],
+        "warnings":       validation["warnings"],
+        "invalid_refs":   validation["invalid_refs"],
+        "headers_used":   resolved_headers or [],
+        "types_used":     column_types or {},
+        "removed_params": removed_params,
     }
 # Note: tier info is logged in debug mode but not returned to keep response lean
 
@@ -960,7 +1096,7 @@ def modify_canvasxpress_config(
             print(f"  Headers       : {resolved_headers}", file=sys.stderr)
 
     log.info("Modifying config — instruction: %s", instruction)
-    modified = modify_config(config, instruction, resolved_headers, column_types, temperature)
+    modified, removed_params = modify_config(config, instruction, resolved_headers, column_types, temperature)
 
     # ── Build change summary ─────────────────────────────────────────────────
     changes = {
@@ -987,13 +1123,14 @@ def modify_canvasxpress_config(
         validation = {"valid": True, "warnings": [], "invalid_refs": {}}
 
     return {
-        "config":       modified,
-        "valid":        validation["valid"],
-        "warnings":     validation["warnings"],
-        "invalid_refs": validation["invalid_refs"],
-        "headers_used": resolved_headers or [],
-        "types_used":   column_types or {},
-        "changes":      changes,
+        "config":         modified,
+        "valid":          validation["valid"],
+        "warnings":       validation["warnings"],
+        "invalid_refs":   validation["invalid_refs"],
+        "headers_used":   resolved_headers or [],
+        "types_used":     column_types or {},
+        "changes":        changes,
+        "removed_params": removed_params,
     }
 
 
@@ -1313,477 +1450,6 @@ def get_minimal_parameters(graph_type: str) -> dict:
         "error": f"Unknown graph type '{gt}'.",
         "tip": "Use list_chart_types to see all valid graph types.",
     }
-
-
-# ---------------------------------------------------------------------------
-# REST helpers — parse query params or JSON body into tool kwargs
-# ---------------------------------------------------------------------------
-
-def _parse_col_types(raw: str) -> dict:
-    """Accept JSON object OR 'Col=type,Col2=type2' shorthand."""
-    raw = raw.strip()
-    if raw.startswith("{"):
-        return json.loads(raw)
-    result = {}
-    for item in raw.split(","):
-        item = item.strip()
-        if "=" in item:
-            k, v = item.split("=", 1)
-            result[k.strip()] = v.strip()
-    return result
-
-
-async def _kwargs_from_request(request: Request, require_description: bool = True) -> dict | tuple[dict, int, str]:
-    """Extract generate/modify kwargs from a GET query string or POST JSON/form body."""
-    if request.method == "GET":
-        p = dict(request.query_params)
-    else:
-        ct = request.headers.get("content-type", "")
-        if "application/json" in ct:
-            p = await request.json()
-        else:
-            form = await request.form()
-            p = dict(form)
-
-    kwargs: dict = {}
-
-    # description / prompt (aliases)
-    desc = p.get("description") or p.get("prompt") or p.get("q") or ""
-    if require_description and not desc:
-        return {}, 400, "'description' (or 'prompt') is required"
-    if desc:
-        kwargs["description"] = desc
-
-    # instruction (modify only)
-    if "instruction" in p:
-        kwargs["instruction"] = p["instruction"]
-
-    # config (modify only) — JSON string or object
-    if "config" in p:
-        v = p["config"]
-        kwargs["config"] = json.loads(v) if isinstance(v, str) else v
-
-    # headers — comma-separated string or JSON array
-    if "headers" in p:
-        v = p["headers"]
-        if isinstance(v, str):
-            v = v.strip()
-            kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",")]
-        else:
-            kwargs["headers"] = v
-
-    # data — JSON array of arrays
-    if "data" in p:
-        v = p["data"]
-        kwargs["data"] = json.loads(v) if isinstance(v, str) else v
-
-    # column_types — JSON object or "Col=type,Col2=type2"
-    for key in ("column_types", "types"):
-        if key in p:
-            v = p[key]
-            kwargs["column_types"] = json.loads(v) if (isinstance(v, str) and v.strip().startswith("{")) else (
-                _parse_col_types(v) if isinstance(v, str) else v
-            )
-            break
-
-    # temperature
-    if "temperature" in p:
-        kwargs["temperature"] = float(p["temperature"])
-
-    return kwargs, 200, ""
-
-
-def _make_response(result: dict, request: Request, prompt: str = "") -> Response:
-    """
-    Return a JSONResponse normally, or a JSONP response when ?callback=name is present.
-    Injects ?target, ?client_id, and the originating prompt into the result payload.
-
-    Parameters extracted from the query string (not forwarded to the tool):
-      callback   (str) — JavaScript function name; triggers JSONP response.
-                         e.g. ?callback=renderChart  →  renderChart({...})
-      target     (str) — Canvas / DOM element id echoed in the response so the
-                         caller knows which element to render to.
-      client_id  (str) — Opaque correlation id echoed verbatim in the response.
-                         Useful when multiple async requests share one callback.
-    The originating prompt (description or instruction) is always echoed as 'prompt'.
-    """
-    p = request.query_params
-    callback  = p.get("callback",  "").strip()
-    target    = p.get("target",    "").strip()
-    client_id = p.get("client_id", "").strip()
-
-    result = dict(result)   # shallow copy — do not mutate the tool return value
-    if prompt:     result["prompt"]    = prompt
-    if target:     result["target"]    = target
-    if client_id:  result["client_id"] = client_id
-
-    if callback:
-        # Validate callback is a safe JS identifier to prevent XSS
-        import re as _re
-        if not _re.match(r'^[A-Za-z_$][A-Za-z0-9_.]*$', callback):
-            return JSONResponse({"error": "Invalid callback name"}, status_code=400)
-        body = f"{callback}({json.dumps(result)})"
-        return Response(content=body, media_type="application/javascript")
-
-    return JSONResponse(result)
-
-
-# ---------------------------------------------------------------------------
-# REST endpoints — /generate  /modify  /ui
-# ---------------------------------------------------------------------------
-
-_UI_HTML = r"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CanvasXpress MCP — Web UI</title>
-<style>
-  *{box-sizing:border-box}
-  body{font-family:system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;background:#f5f5f5;color:#222}
-  h1{font-size:1.4rem;margin-bottom:4px}
-  h1 span{color:#c0392b}
-  .subtitle{color:#666;font-size:.85rem;margin-bottom:24px}
-  label{display:block;font-weight:600;font-size:.85rem;margin-top:14px;margin-bottom:3px}
-  label span{font-weight:400;color:#888}
-  input[type=text],textarea,select{width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:5px;font-size:.9rem;font-family:inherit;background:#fff}
-  textarea{resize:vertical;min-height:80px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-  .actions{margin-top:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:.9rem;font-weight:600}
-  .btn-primary{background:#c0392b;color:#fff}
-  .btn-secondary{background:#555;color:#fff}
-  #url-box{flex:1;min-width:200px;font-size:.78rem;color:#555;background:#fff;border:1px solid #ccc;border-radius:5px;padding:7px 10px;word-break:break-all;cursor:text;white-space:pre-wrap}
-  #result{margin-top:24px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px;display:none}
-  #result h3{margin:0 0 10px;font-size:.95rem}
-  pre{margin:0;font-size:.82rem;overflow:auto;max-height:460px;background:#f8f8f8;padding:10px;border-radius:4px}
-  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:700;margin-left:6px}
-  .valid{background:#d4edda;color:#155724}
-  .invalid{background:#f8d7da;color:#721c24}
-  .warn{background:#fff3cd;color:#856404}
-  .jsonp-badge{background:#d1ecf1;color:#0c5460}
-  .meta{font-size:.8rem;color:#666;margin-bottom:8px}
-  .tab-bar{display:flex;gap:4px;margin-bottom:16px}
-  .tab{padding:7px 16px;border-radius:5px 5px 0 0;border:1px solid #ccc;border-bottom:none;cursor:pointer;font-weight:600;font-size:.85rem;background:#eee}
-  .tab.active{background:#fff;border-bottom:1px solid #fff;margin-bottom:-1px}
-  .panel{display:none}
-  .panel.active{display:block}
-  .card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px}
-  .shared-card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:14px;margin-top:12px}
-  .shared-card legend{font-weight:700;font-size:.82rem;color:#888;text-transform:uppercase;letter-spacing:.05em;padding:0 6px}
-  fieldset{border:1px solid #ddd;border-radius:5px;padding:10px 14px 14px}
-  .hint{font-size:.75rem;color:#888;margin-top:3px}
-</style>
-</head>
-<body>
-<h1>CanvasXpress <span>MCP</span> — Web UI</h1>
-<p class="subtitle">Generate or modify CanvasXpress configs. Parameters are encoded in the URL — bookmark or share it.</p>
-
-<div class="tab-bar">
-  <div class="tab active" data-tab="generate">Generate</div>
-  <div class="tab" data-tab="modify">Modify</div>
-</div>
-
-<!-- ── GENERATE panel ─────────────────────────────────────────────── -->
-<div class="panel card active" id="panel-generate">
-  <label>Description / Prompt <span>(required)</span>
-    <input type="text" id="g-desc" placeholder="e.g. Clustered heatmap with RdBu colors and dendrograms on both axes">
-  </label>
-  <div class="row">
-    <div>
-      <label>Headers <span>comma-separated</span>
-        <input type="text" id="g-headers" placeholder="Gene, Sample1, Sample2, Treatment">
-      </label>
-    </div>
-    <div>
-      <label>Column types <span>Col=type,… or JSON</span>
-        <input type="text" id="g-types" placeholder='Gene=string,Sample1=numeric,Treatment=factor'>
-      </label>
-    </div>
-  </div>
-  <label>Data <span>JSON array of arrays — first row is headers</span>
-    <textarea id="g-data" placeholder='[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]'></textarea>
-  </label>
-  <label>Temperature <span>0 = deterministic</span>
-    <input type="text" id="g-temp" value="0" style="width:80px">
-  </label>
-</div>
-
-<!-- ── MODIFY panel ───────────────────────────────────────────────── -->
-<div class="panel card" id="panel-modify">
-  <label>Existing config <span>JSON object — required</span>
-    <textarea id="m-config" style="min-height:120px" placeholder='{"graphType":"Bar","xAxis":["Gene"]}'></textarea>
-  </label>
-  <label>Instruction <span>plain English modification — required</span>
-    <input type="text" id="m-instr" placeholder="add a title My Chart and change colorScheme to Tableau">
-  </label>
-  <div class="row">
-    <div>
-      <label>Headers <span>optional</span>
-        <input type="text" id="m-headers" placeholder="Gene, Sample1, Treatment">
-      </label>
-    </div>
-    <div>
-      <label>Column types <span>optional</span>
-        <input type="text" id="m-types" placeholder="Gene=string,Sample1=numeric">
-      </label>
-    </div>
-  </div>
-  <label>Data <span>optional JSON array</span>
-    <textarea id="m-data" placeholder='[["Gene","S1"],["BRCA1",1.2]]'></textarea>
-  </label>
-</div>
-
-<!-- ── Shared: callback + target + client_id ────────────────────── -->
-<fieldset style="margin-top:12px">
-  <legend>Response options</legend>
-  <div class="row3">
-    <div>
-      <label>target <span>canvas element id — echoed in response</span>
-        <input type="text" id="s-target" placeholder="myCanvas">
-      </label>
-      <p class="hint">Returned as <code>result.target</code> so your callback knows which canvas to render to.</p>
-    </div>
-    <div>
-      <label>callback <span>JS function name — enables JSONP</span>
-        <input type="text" id="s-callback" placeholder="renderChart">
-      </label>
-      <p class="hint">When set, response is <code>renderChart({…})</code> instead of JSON. Use with a <code>&lt;script src="…"&gt;</code> tag for cross-origin requests.</p>
-    </div>
-    <div>
-      <label>client_id <span>correlation id — echoed in response</span>
-        <input type="text" id="s-client-id" placeholder="chart-42">
-      </label>
-      <p class="hint">Returned as <code>result.client_id</code>. Useful when multiple requests share one callback to identify which result arrived.</p>
-    </div>
-  </div>
-</fieldset>
-
-<div class="actions">
-  <button class="btn-primary" onclick="submit()">&#9654; Run</button>
-  <button class="btn-secondary" onclick="copyUrl()">&#128279; Copy URL</button>
-  <div id="url-box">—</div>
-</div>
-
-<div id="result">
-  <h3 id="result-title">Result</h3>
-  <div class="meta" id="result-meta"></div>
-  <pre id="result-pre"></pre>
-</div>
-
-<script>
-const BASE = window.location.origin;
-let activeTab = 'generate';
-
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab, .panel').forEach(el => el.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
-    activeTab = t.dataset.tab;
-    buildUrl();
-  });
-});
-
-function v(id){ return document.getElementById(id).value.trim(); }
-
-function buildUrl() {
-  const p = new URLSearchParams();
-  const target    = v('s-target');
-  const callback  = v('s-callback');
-  const clientId  = v('s-client-id');
-
-  if (activeTab === 'generate') {
-    const desc = v('g-desc'), hdrs = v('g-headers'), types = v('g-types'),
-          data = v('g-data'), temp = v('g-temp');
-    if (desc)     p.set('description', desc);
-    if (hdrs)     p.set('headers', hdrs);
-    if (types)    p.set('column_types', types);
-    if (data)     p.set('data', data);
-    if (temp && temp !== '0') p.set('temperature', temp);
-    if (target)   p.set('target', target);
-    if (callback) p.set('callback', callback);
-    if (clientId) p.set('client_id', clientId);
-    const url = BASE + '/generate?' + p.toString();
-    document.getElementById('url-box').textContent = url;
-    return url;
-  } else {
-    const cfg = v('m-config'), instr = v('m-instr'), hdrs = v('m-headers'),
-          types = v('m-types'), data = v('m-data');
-    if (cfg)      p.set('config', cfg);
-    if (instr)    p.set('instruction', instr);
-    if (hdrs)     p.set('headers', hdrs);
-    if (types)    p.set('column_types', types);
-    if (data)     p.set('data', data);
-    if (target)   p.set('target', target);
-    if (callback) p.set('callback', callback);
-    if (clientId) p.set('client_id', clientId);
-    const url = BASE + '/modify?' + p.toString();
-    document.getElementById('url-box').textContent = url;
-    return url;
-  }
-}
-
-['g-desc','g-headers','g-types','g-data','g-temp',
- 'm-config','m-instr','m-headers','m-types','m-data',
- 's-target','s-callback','s-client-id'].forEach(id => {
-  document.getElementById(id).addEventListener('input', buildUrl);
-});
-
-function copyUrl() {
-  const url = buildUrl();
-  navigator.clipboard.writeText(url).catch(() => {});
-}
-
-async function submit() {
-  const url      = buildUrl();
-  const callback = v('s-callback');
-  const clientId = v('s-client-id');
-  const resultEl = document.getElementById('result');
-  const preEl    = document.getElementById('result-pre');
-  const metaEl   = document.getElementById('result-meta');
-  const titleEl  = document.getElementById('result-title');
-  resultEl.style.display = 'block';
-  preEl.textContent = 'Loading…';
-  metaEl.textContent = '';
-  titleEl.innerHTML = activeTab === 'generate' ? 'Generated Config' : 'Modified Config';
-
-  try {
-    const resp = await fetch(url);
-    const text = await resp.text();
-
-    // JSONP mode — show raw JS response
-    if (callback) {
-      titleEl.innerHTML = (activeTab === 'generate' ? 'Generated Config' : 'Modified Config') +
-        ' <span class="badge jsonp-badge">JSONP</span>';
-      metaEl.innerHTML = `callback: <b>${callback}</b>` +
-        (v('s-target')    ? ` &nbsp; target: <b>${v('s-target')}</b>`       : '') +
-        (clientId         ? ` &nbsp; client_id: <b>${clientId}</b>`          : '');
-      preEl.textContent = text;
-      return;
-    }
-
-    const data = JSON.parse(text);
-    if (data.error) { preEl.textContent = 'Error: ' + data.error; return; }
-
-    const cfg   = data.config  || {};
-    const valid = data.valid;
-    const warns = data.warnings || [];
-    const badge = valid
-      ? '<span class="badge valid">✓ valid</span>'
-      : '<span class="badge invalid">✗ warnings</span>';
-    const gt   = cfg.graphType || '?';
-    const hdr  = (data.headers_used || []).join(', ') || '—';
-    const tgt  = data.target    ? ` &nbsp; target: <b>${data.target}</b>`       : '';
-    const cid  = data.client_id ? ` &nbsp; client_id: <b>${data.client_id}</b>` : '';
-    const prm  = data.prompt    ? `<br>prompt: <i>${data.prompt}</i>`            : '';
-    metaEl.innerHTML = `graphType: <b>${gt}</b>${badge}${tgt}${cid} &nbsp; headers: ${hdr}${prm}` +
-      (warns.length ? `<br><span class="badge warn">⚠ ${warns.join(' | ')}</span>` : '');
-    if (activeTab === 'modify' && data.changes) {
-      const c = data.changes;
-      metaEl.innerHTML += `<br>added: ${(c.added||[]).join(', ')||'none'} &nbsp; ` +
-        `removed: ${(c.removed||[]).join(', ')||'none'} &nbsp; ` +
-        `changed: ${(c.changed||[]).join(', ')||'none'}`;
-    }
-    preEl.textContent = JSON.stringify(cfg, null, 2);
-  } catch(e) {
-    preEl.textContent = 'Request failed: ' + e;
-  }
-}
-
-// Populate from URL params on load (so bookmarked URLs auto-fill the form)
-(function restoreFromUrl() {
-  const p = new URLSearchParams(window.location.search);
-  const tab = p.get('_tab') || 'generate';
-  if (tab === 'modify') {
-    document.querySelector('[data-tab=modify]').click();
-    if (p.get('config'))      document.getElementById('m-config').value  = p.get('config');
-    if (p.get('instruction')) document.getElementById('m-instr').value   = p.get('instruction');
-    if (p.get('headers'))     document.getElementById('m-headers').value = p.get('headers');
-    if (p.get('column_types'))document.getElementById('m-types').value   = p.get('column_types');
-    if (p.get('data'))        document.getElementById('m-data').value    = p.get('data');
-  } else {
-    if (p.get('description')) document.getElementById('g-desc').value    = p.get('description');
-    if (p.get('headers'))     document.getElementById('g-headers').value = p.get('headers');
-    if (p.get('column_types'))document.getElementById('g-types').value   = p.get('column_types');
-    if (p.get('data'))        document.getElementById('g-data').value    = p.get('data');
-    if (p.get('temperature')) document.getElementById('g-temp').value    = p.get('temperature');
-  }
-  // shared
-  if (p.get('target'))    document.getElementById('s-target').value    = p.get('target');
-  if (p.get('callback'))  document.getElementById('s-callback').value  = p.get('callback');
-  if (p.get('client_id')) document.getElementById('s-client-id').value = p.get('client_id');
-  buildUrl();
-})();
-</script>
-</body>
-</html>
-"""
-
-
-@mcp.custom_route("/generate", methods=["GET", "POST"])
-async def rest_generate(request: Request) -> JSONResponse:
-    """
-    REST endpoint for generate_canvasxpress_config.
-
-    GET  /generate?description=Violin+plot&headers=Gene,Expr,CellType&column_types=Gene%3Dstring%2CExpr%3Dnumeric%2CCellType%3Dfactor
-    POST /generate   (JSON body with same keys, or application/x-www-form-urlencoded)
-
-    Query / body parameters:
-      description   (str, required) — plain English chart description. Alias: prompt, q.
-      headers       (str)           — comma-separated column names, or JSON array.
-      data          (str)           — JSON array of arrays (first row = header row).
-      column_types  (str)           — "Col=type,…" or JSON object. Alias: types.
-                                      Valid types: string, numeric, factor, date.
-      temperature   (float)         — 0.0–1.0, default 0.
-    """
-    kwargs, status, err = await _kwargs_from_request(request, require_description=True)
-    if status != 200:
-        return JSONResponse({"error": err}, status_code=status)
-    try:
-        result = generate_canvasxpress_config(**kwargs)
-    except Exception as exc:
-        log.exception("REST /generate error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return _make_response(result, request, prompt=kwargs.get("description", ""))
-
-
-@mcp.custom_route("/modify", methods=["GET", "POST"])
-async def rest_modify(request: Request) -> JSONResponse:
-    """
-    REST endpoint for modify_canvasxpress_config.
-
-    GET  /modify?config={"graphType":"Bar","xAxis":["Gene"]}&instruction=add+a+title+My+Chart
-    POST /modify   (JSON body with same keys)
-
-    Query / body parameters:
-      config        (str|obj, required) — existing CanvasXpress JSON config.
-      instruction   (str, required)     — plain English modification instruction.
-      headers       (str)               — optional comma-separated column names.
-      data          (str)               — optional JSON array of arrays.
-      column_types  (str)               — optional "Col=type,…" or JSON object.
-      temperature   (float)             — 0.0–1.0, default 0.
-    """
-    kwargs, status, err = await _kwargs_from_request(request, require_description=False)
-    if status != 200:
-        return JSONResponse({"error": err}, status_code=status)
-    if "config" not in kwargs:
-        return JSONResponse({"error": "'config' is required"}, status_code=400)
-    if "instruction" not in kwargs:
-        return JSONResponse({"error": "'instruction' is required"}, status_code=400)
-    try:
-        result = modify_canvasxpress_config(**kwargs)
-    except Exception as exc:
-        log.exception("REST /modify error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return _make_response(result, request, prompt=kwargs.get("instruction", ""))
-
-
-@mcp.custom_route("/ui", methods=["GET"])
-async def rest_ui(request: Request) -> HTMLResponse:
-    """Serve the browser-based form UI at /ui."""
-    return HTMLResponse(_UI_HTML)
 
 
 # ---------------------------------------------------------------------------

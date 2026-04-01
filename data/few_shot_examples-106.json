@@ -1,0 +1,1642 @@
+[
+  {
+    "id": 1,
+    "type": "Bar",
+    "description": "Create a bar chart showing values by category",
+    "config": {
+      "graphType": "Bar",
+      "title": "Bar Chart",
+      "xAxisTitle": "Category",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 2,
+    "type": "Bar",
+    "description": "Horizontal bar chart with blue bars and a legend",
+    "config": {
+      "graphType": "Bar",
+      "graphOrientation": "horizontal",
+      "colorScheme": "Blues",
+      "showLegend": true,
+      "title": "Horizontal Bar Chart"
+    }
+  },
+  {
+    "id": 3,
+    "type": "Bar",
+    "description": "Grouped bar chart comparing multiple groups side by side",
+    "config": {
+      "graphType": "Bar",
+      "groupingFactors": [
+        "Group"
+      ],
+      "title": "Grouped Bar Chart",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 4,
+    "type": "Stacked",
+    "description": "Stacked bar chart showing composition of each sample",
+    "config": {
+      "graphType": "Stacked",
+      "title": "Stacked Bar Chart",
+      "showLegend": true,
+      "xAxisTitle": "Sample",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 5,
+    "type": "StackedPercent",
+    "description": "100% stacked bar chart showing relative proportions",
+    "config": {
+      "graphType": "StackedPercent",
+      "title": "100% Stacked Bar Chart",
+      "showLegend": true,
+      "smpTitle": "Percentage (%)"
+    }
+  },
+  {
+    "id": 6,
+    "type": "Line",
+    "description": "Line chart to show trends over time",
+    "config": {
+      "graphType": "Line",
+      "title": "Line Chart",
+      "xAxisTitle": "Time",
+      "showLegend": true,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 7,
+    "type": "Line",
+    "description": "Multi-line chart with different colors for each series and data points shown",
+    "config": {
+      "graphType": "Line",
+      "showDataPoints": true,
+      "colorScheme": "GGPlot",
+      "showLegend": true,
+      "title": "Multi-Series Line Chart"
+    }
+  },
+  {
+    "id": 8,
+    "type": "Area",
+    "description": "Area chart filling under the line with transparency",
+    "config": {
+      "graphType": "Area",
+      "title": "Area Chart",
+      "xAxisTitle": "Time",
+      "areaAlpha": 0.6,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 9,
+    "type": "Scatter2D",
+    "description": "Scatter plot of two variables with regression line",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "Scatter Plot",
+      "xAxisTitle": "X Variable",
+      "yAxisTitle": "Y Variable",
+      "fitType": "linear",
+      "showConfidenceIntervals": true
+    }
+  },
+  {
+    "id": 10,
+    "type": "Scatter2D",
+    "description": "Scatter plot colored by group with large data points",
+    "config": {
+      "graphType": "Scatter2D",
+      "dataPointSize": 8,
+      "colorScheme": "Tableau",
+      "showLegend": true,
+      "groupingFactors": [
+        "Group"
+      ],
+      "title": "Colored Scatter Plot"
+    }
+  },
+  {
+    "id": 11,
+    "type": "Scatter3D",
+    "description": "3D scatter plot with three numeric axes",
+    "config": {
+      "graphType": "Scatter3D",
+      "title": "3D Scatter Plot",
+      "xAxisTitle": "X",
+      "yAxisTitle": "Y",
+      "zAxisTitle": "Z",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 12,
+    "type": "Heatmap",
+    "description": "Heatmap with hierarchical clustering of rows and columns",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Clustered Heatmap",
+      "clusterSamples": true,
+      "clusterVariables": true,
+      "heatmapIndicator": true,
+      "colorScheme": "RdBu"
+    }
+  },
+  {
+    "id": 13,
+    "type": "Heatmap",
+    "description": "Gene expression heatmap with blue-white-red color scale",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Gene Expression Heatmap",
+      "colorScheme": "RdBu",
+      "heatmapIndicator": true,
+      "clusterVariables": true,
+      "xAxisTitle": "Samples",
+      "smpTitle": "Genes"
+    }
+  },
+  {
+    "id": 14,
+    "type": "Boxplot",
+    "description": "Box plot showing distribution across groups",
+    "config": {
+      "graphType": "Boxplot",
+      "title": "Box Plot",
+      "xAxisTitle": "Group",
+      "showIQROutliers": true,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 15,
+    "type": "Boxplot",
+    "description": "Notched box plots with jittered data points overlaid",
+    "config": {
+      "graphType": "Boxplot",
+      "title": "Notched Box Plot",
+      "notched": true,
+      "showDataPoints": true,
+      "jitter": 0.2
+    }
+  },
+  {
+    "id": 16,
+    "type": "Violin",
+    "description": "Violin plot showing distribution shape with embedded box plot",
+    "config": {
+      "graphType": "Violin",
+      "title": "Violin Plot",
+      "xAxisTitle": "Group",
+      "violinPlot": true,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 17,
+    "type": "Pie",
+    "description": "Pie chart showing proportions with percentage labels",
+    "config": {
+      "graphType": "Pie",
+      "title": "Pie Chart",
+      "showPiePercentages": true,
+      "showLegend": true
+    }
+  },
+  {
+    "id": 18,
+    "type": "Pie",
+    "description": "Donut chart with a hole in the center",
+    "config": {
+      "graphType": "Pie",
+      "title": "Donut Chart",
+      "pieDonut": true,
+      "showPiePercentages": true,
+      "showLegend": true
+    }
+  },
+  {
+    "id": 19,
+    "type": "Dotplot",
+    "description": "Dot plot for comparing values across categories",
+    "config": {
+      "graphType": "Dotplot",
+      "title": "Dot Plot",
+      "xAxisTitle": "Category",
+      "dataPointSize": 6,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 20,
+    "type": "Density",
+    "description": "Density plot showing distribution of values",
+    "config": {
+      "graphType": "Density",
+      "title": "Density Plot",
+      "xAxisTitle": "Value",
+      "showLegend": true,
+      "smpTitle": "Density"
+    }
+  },
+  {
+    "id": 21,
+    "type": "Histogram",
+    "description": "Histogram with automatic bin calculation",
+    "config": {
+      "graphType": "Histogram",
+      "title": "Histogram",
+      "xAxisTitle": "Value",
+      "colorScheme": "Blues",
+      "smpTitle": "Frequency"
+    }
+  },
+  {
+    "id": 22,
+    "type": "Lollipop",
+    "description": "Lollipop chart ranking items by value",
+    "config": {
+      "graphType": "Lollipop",
+      "title": "Lollipop Chart",
+      "graphOrientation": "horizontal",
+      "xAxisTitle": "Value",
+      "smpTitle": "Item"
+    }
+  },
+  {
+    "id": 23,
+    "type": "Waterfall",
+    "description": "Waterfall chart showing cumulative effect of sequential values",
+    "config": {
+      "graphType": "Waterfall",
+      "title": "Waterfall Chart",
+      "xAxisTitle": "Category",
+      "showLegend": true,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 24,
+    "type": "Network",
+    "description": "Network graph with force-directed layout",
+    "config": {
+      "graphType": "Network",
+      "title": "Network Graph",
+      "networkAlgorithm": "fruchterman",
+      "showNodeLabels": true,
+      "showLegend": true
+    }
+  },
+  {
+    "id": 25,
+    "type": "Sankey",
+    "description": "Sankey flow diagram showing flow between categories",
+    "config": {
+      "graphType": "Sankey",
+      "title": "Sankey Diagram",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 26,
+    "type": "Venn",
+    "description": "Venn diagram showing overlap between two sets",
+    "config": {
+      "graphType": "Venn",
+      "title": "Venn Diagram",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 27,
+    "type": "Treemap",
+    "description": "Treemap showing hierarchical data as nested rectangles",
+    "config": {
+      "graphType": "Treemap",
+      "title": "Treemap",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 28,
+    "type": "Bar",
+    "description": "Bar chart with dark theme and custom title font size",
+    "config": {
+      "graphType": "Bar",
+      "theme": "dark",
+      "titleScaleFontFactor": 1.5,
+      "title": "Dark Theme Bar Chart",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 29,
+    "type": "Scatter2D",
+    "description": "Volcano plot with logarithmic y-axis and fold-change on x-axis",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "Volcano Plot",
+      "xAxisTitle": "Log2 Fold Change",
+      "yAxisTitle": "-Log10 p-value",
+      "yAxis2Show": false,
+      "dataPointSize": 3,
+      "colorScheme": "RdBu"
+    }
+  },
+  {
+    "id": 30,
+    "type": "Line",
+    "description": "Survival curve (Kaplan-Meier) showing survival probability over time",
+    "config": {
+      "graphType": "Line",
+      "title": "Survival Curve",
+      "xAxisTitle": "Time (days)",
+      "showLegend": true,
+      "showDataPoints": false,
+      "smpTitle": "Survival Probability"
+    }
+  },
+  {
+    "id": 31,
+    "type": "Heatmap",
+    "description": "Correlation matrix heatmap",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Correlation Matrix",
+      "colorScheme": "RdBu",
+      "heatmapIndicator": true,
+      "showLegend": true,
+      "xAxisTitle": "Variables",
+      "smpTitle": "Variables"
+    }
+  },
+  {
+    "id": 32,
+    "type": "Bar",
+    "description": "Error bar chart showing mean and standard deviation",
+    "config": {
+      "graphType": "Bar",
+      "title": "Mean \u00b1 SD Bar Chart",
+      "showSmpStdErr": true,
+      "xAxisTitle": "Group",
+      "smpTitle": "Mean Value"
+    }
+  },
+  {
+    "id": 33,
+    "type": "Scatter2D",
+    "description": "Bubble chart where point size encodes a third variable",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "Bubble Chart",
+      "sizeBy": "size",
+      "dataPointSize": 10,
+      "showLegend": true,
+      "colorScheme": "Tableau"
+    }
+  },
+  {
+    "id": 34,
+    "type": "Line",
+    "description": "Line chart with log scale on the y-axis",
+    "config": {
+      "graphType": "Line",
+      "title": "Log Scale Line Chart",
+      "xAxisTitle": "Time",
+      "showLegend": true,
+      "smpTitle": "Value (log scale)"
+    }
+  },
+  {
+    "id": 35,
+    "type": "Bar",
+    "description": "Bar chart sorted in descending order",
+    "config": {
+      "graphType": "Bar",
+      "title": "Sorted Bar Chart",
+      "sortDir": "descending",
+      "xAxisTitle": "Category",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 36,
+    "type": "Heatmap",
+    "description": "Heatmap with row and column annotations showing experimental conditions",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Annotated Heatmap",
+      "colorScheme": "RdYlGn",
+      "heatmapIndicator": true,
+      "clusterSamples": true,
+      "clusterVariables": false,
+      "showLegend": true
+    }
+  },
+  {
+    "id": 37,
+    "type": "Scatter2D",
+    "description": "PCA plot coloring samples by treatment group",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "PCA Plot",
+      "xAxisTitle": "PC1",
+      "yAxisTitle": "PC2",
+      "groupingFactors": [
+        "Treatment"
+      ],
+      "showLegend": true,
+      "dataPointSize": 6,
+      "colorScheme": "Set1"
+    }
+  },
+  {
+    "id": 38,
+    "type": "Boxplot",
+    "description": "Box plot with significance indicators between groups",
+    "config": {
+      "graphType": "Boxplot",
+      "title": "Box Plot with Statistics",
+      "showIQROutliers": true,
+      "xAxisTitle": "Treatment",
+      "showLegend": true,
+      "colorScheme": "Set2",
+      "smpTitle": "Response"
+    }
+  },
+  {
+    "id": 39,
+    "type": "Bar",
+    "description": "Stacked bar chart with percentages for composition analysis",
+    "config": {
+      "graphType": "StackedPercent",
+      "title": "Composition Analysis",
+      "showLegend": true,
+      "colorScheme": "Pastel",
+      "smpTitle": "Percentage (%)"
+    }
+  },
+  {
+    "id": 40,
+    "type": "Area",
+    "description": "Stacked area chart showing how components contribute over time",
+    "config": {
+      "graphType": "Area",
+      "title": "Stacked Area Chart",
+      "xAxisTitle": "Time",
+      "graphType2": "Stacked",
+      "showLegend": true,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 41,
+    "type": "Scatter2D",
+    "description": "MA plot for differential expression with fold change vs mean expression",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "MA Plot",
+      "xAxisTitle": "Mean Expression (A)",
+      "yAxisTitle": "Log2 Fold Change (M)",
+      "dataPointSize": 2,
+      "colorScheme": "Blues"
+    }
+  },
+  {
+    "id": 42,
+    "type": "Line",
+    "description": "Dose-response curve with sigmoidal fit",
+    "config": {
+      "graphType": "Line",
+      "title": "Dose-Response Curve",
+      "xAxisTitle": "Dose (log scale)",
+      "xAxisLog": true,
+      "fitType": "loess",
+      "showLegend": true,
+      "smpTitle": "Response (%)"
+    }
+  },
+  {
+    "id": 43,
+    "type": "Heatmap",
+    "description": "Hierarchical clustered heatmap with dendrograms on both axes",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Biclustered Heatmap",
+      "clusterSamples": true,
+      "clusterVariables": true,
+      "heatmapIndicator": true,
+      "dendrogramSpace": 40,
+      "colorScheme": "Blues"
+    }
+  },
+  {
+    "id": 44,
+    "type": "Bar",
+    "description": "Bar chart with custom colors for each bar",
+    "config": {
+      "graphType": "Bar",
+      "title": "Custom Color Bar Chart",
+      "colors": [
+        "#e41a1c",
+        "#377eb8",
+        "#4daf4a",
+        "#984ea3",
+        "#ff7f00"
+      ],
+      "xAxisTitle": "Category",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 45,
+    "type": "Scatter2D",
+    "description": "Scatter plot with ellipses around each group",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "Scatter with Ellipses",
+      "ellipseBy": "Group",
+      "groupingFactors": [
+        "Group"
+      ],
+      "showLegend": true,
+      "colorScheme": "Set1"
+    }
+  },
+  {
+    "id": 46,
+    "type": "Violin",
+    "description": "Violin plot showing gene expression distribution by cell type",
+    "config": {
+      "graphType": "Violin",
+      "title": "Expression by Cell Type",
+      "xAxisTitle": "Cell Type",
+      "violinPlot": true,
+      "showLegend": true,
+      "colorScheme": "Tableau",
+      "smpTitle": "Expression"
+    }
+  },
+  {
+    "id": 47,
+    "type": "Pie",
+    "description": "Exploded pie chart highlighting the largest slice",
+    "config": {
+      "graphType": "Pie",
+      "title": "Market Share",
+      "showPiePercentages": true,
+      "pieSeparation": 0.1,
+      "showLegend": true
+    }
+  },
+  {
+    "id": 48,
+    "type": "Bar",
+    "description": "Bar chart with GGPlot theme and minimal grid lines",
+    "config": {
+      "graphType": "Bar",
+      "theme": "ggplot",
+      "title": "GGPlot-Style Bar Chart",
+      "showLegend": true,
+      "xAxisTitle": "Category",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 49,
+    "type": "Line",
+    "description": "Time series with shaded confidence interval bands",
+    "config": {
+      "graphType": "Line",
+      "title": "Time Series with CI",
+      "showConfidenceIntervals": true,
+      "showLegend": true,
+      "xAxisTitle": "Time",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 50,
+    "type": "Scatter2D",
+    "description": "UMAP embedding plot colored by cluster identity",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "UMAP Embedding",
+      "xAxisTitle": "UMAP1",
+      "yAxisTitle": "UMAP2",
+      "groupingFactors": [
+        "Cluster"
+      ],
+      "dataPointSize": 3,
+      "showLegend": true,
+      "colorScheme": "Tableau"
+    }
+  },
+  {
+    "id": 51,
+    "type": "Heatmap",
+    "description": "Copy number variation heatmap across genomic regions",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "CNV Heatmap",
+      "colorScheme": "RdBu",
+      "heatmapIndicator": true,
+      "xAxisTitle": "Chromosomal Region",
+      "smpTitle": "Sample"
+    }
+  },
+  {
+    "id": 52,
+    "type": "Boxplot",
+    "description": "Side-by-side box plots for before and after treatment comparison",
+    "config": {
+      "graphType": "Boxplot",
+      "title": "Before vs After Treatment",
+      "groupingFactors": [
+        "Timepoint"
+      ],
+      "colorScheme": "Set1",
+      "showLegend": true,
+      "xAxisTitle": "Group",
+      "smpTitle": "Measurement"
+    }
+  },
+  {
+    "id": 53,
+    "type": "Bar",
+    "description": "Tornado chart comparing two groups in opposite directions",
+    "config": {
+      "graphType": "Bar",
+      "title": "Tornado Chart",
+      "graphOrientation": "horizontal",
+      "showLegend": true,
+      "colorScheme": "RdBu"
+    }
+  },
+  {
+    "id": 54,
+    "type": "Line",
+    "description": "Growth curve comparing multiple cell lines over days",
+    "config": {
+      "graphType": "Line",
+      "title": "Cell Growth Curves",
+      "xAxisTitle": "Day",
+      "showDataPoints": true,
+      "showLegend": true,
+      "colorScheme": "Set1",
+      "smpTitle": "Cell Count"
+    }
+  },
+  {
+    "id": 55,
+    "type": "Scatter2D",
+    "description": "Correlation scatter plot between two gene expression values",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "Expression Correlation",
+      "xAxisTitle": "Gene A Expression",
+      "yAxisTitle": "Gene B Expression",
+      "fitType": "linear",
+      "showConfidenceIntervals": true,
+      "dataPointSize": 4
+    }
+  },
+  {
+    "id": 56,
+    "type": "Heatmap",
+    "description": "Pathway activity heatmap with Z-score normalization",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Pathway Activity",
+      "colorScheme": "RdYlBu",
+      "heatmapIndicator": true,
+      "clusterSamples": true,
+      "xAxisTitle": "Sample",
+      "smpTitle": "Pathway"
+    }
+  },
+  {
+    "id": 57,
+    "type": "Bar",
+    "description": "Frequency bar chart from count data",
+    "config": {
+      "graphType": "Bar",
+      "title": "Frequency Distribution",
+      "xAxisTitle": "Category",
+      "colorScheme": "Blues",
+      "smpTitle": "Count"
+    }
+  },
+  {
+    "id": 58,
+    "type": "Scatter2D",
+    "description": "Scatter plot with marginal histograms on the axes",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "Scatter with Marginals",
+      "xAxisTitle": "Variable X",
+      "yAxisTitle": "Variable Y",
+      "showMarginalHist": true,
+      "dataPointSize": 4
+    }
+  },
+  {
+    "id": 59,
+    "type": "Violin",
+    "description": "Half violin plot (raincloud) with scatter points",
+    "config": {
+      "graphType": "Violin",
+      "title": "Raincloud Plot",
+      "violinPlot": true,
+      "showDataPoints": true,
+      "xAxisTitle": "Group",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 60,
+    "type": "Area",
+    "description": "Normalized area chart showing proportions over time",
+    "config": {
+      "graphType": "Area",
+      "title": "Proportional Area Chart",
+      "xAxisTitle": "Time",
+      "showLegend": true,
+      "colorScheme": "Pastel",
+      "smpTitle": "Proportion"
+    }
+  },
+  {
+    "id": 61,
+    "type": "Bar",
+    "description": "Bar chart with two y-axes for different scales",
+    "config": {
+      "graphType": "Bar",
+      "title": "Dual Axis Chart",
+      "xAxisTitle": "Category",
+      "showLegend": true,
+      "smpTitle": "Primary Value"
+    }
+  },
+  {
+    "id": 62,
+    "type": "Scatter2D",
+    "description": "tSNE plot showing single-cell clusters",
+    "config": {
+      "graphType": "Scatter2D",
+      "title": "tSNE Plot",
+      "xAxisTitle": "tSNE1",
+      "yAxisTitle": "tSNE2",
+      "groupingFactors": [
+        "CellType"
+      ],
+      "dataPointSize": 2,
+      "showLegend": true,
+      "colorScheme": "Tableau"
+    }
+  },
+  {
+    "id": 63,
+    "type": "Heatmap",
+    "description": "Drug sensitivity heatmap showing IC50 values across cell lines",
+    "config": {
+      "graphType": "Heatmap",
+      "title": "Drug Sensitivity",
+      "colorScheme": "YlOrRd",
+      "heatmapIndicator": true,
+      "clusterSamples": true,
+      "clusterVariables": true,
+      "xAxisTitle": "Cell Line",
+      "smpTitle": "Drug"
+    }
+  },
+  {
+    "id": 64,
+    "type": "Bar",
+    "description": "Diverging bar chart with values above and below zero",
+    "config": {
+      "graphType": "Bar",
+      "title": "Diverging Bar Chart",
+      "colorScheme": "RdBu",
+      "xAxisTitle": "Category",
+      "showLegend": false,
+      "smpTitle": "Change"
+    }
+  },
+  {
+    "id": 65,
+    "type": "Line",
+    "description": "Step line chart for discrete time-point data",
+    "config": {
+      "graphType": "Line",
+      "title": "Step Chart",
+      "lineType": "step",
+      "xAxisTitle": "Time Point",
+      "showLegend": true,
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 66,
+    "type": "Boxplot",
+    "description": "Box plot with individual data points shown as a strip plot",
+    "config": {
+      "graphType": "Boxplot",
+      "title": "Box Plot with Data Points",
+      "showDataPoints": true,
+      "jitter": 0.3,
+      "dataPointSize": 3,
+      "xAxisTitle": "Group",
+      "colorScheme": "Set2",
+      "smpTitle": "Value"
+    }
+  },
+  {
+    "id": 67,
+    "type": "Bar",
+    "description": "Bar chart of gene expression filtered to show only Control samples",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "filterData": [
+        [
+          "guess",
+          "Treatment",
+          "like",
+          "Control"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 68,
+    "type": "Scatter2D",
+    "description": "Scatter plot filtered to Responders only where Response equals Yes",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "PC1"
+      ],
+      "yAxis": [
+        "PC2"
+      ],
+      "colorBy": "CellType",
+      "filterData": [
+        [
+          "guess",
+          "Response",
+          "like",
+          "Yes"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 69,
+    "type": "Bar",
+    "description": "Bar chart excluding Stage IV patients",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "filterData": [
+        [
+          "guess",
+          "Stage",
+          "different",
+          "IV"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 70,
+    "type": "Heatmap",
+    "description": "Heatmap filtered to Drug A treatment group and Responders only",
+    "config": {
+      "graphType": "Heatmap",
+      "xAxis": [
+        "Gene"
+      ],
+      "samplesClustered": true,
+      "variablesClustered": true,
+      "filterData": [
+        [
+          "guess",
+          "Treatment",
+          "like",
+          "Drug A"
+        ],
+        [
+          "guess",
+          "Response",
+          "like",
+          "Yes"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 71,
+    "type": "Bar",
+    "description": "Bar chart of expression values sorted descending by value",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "sortDir": "descending"
+    }
+  },
+  {
+    "id": 72,
+    "type": "Bar",
+    "description": "Horizontal bar chart sorted ascending by Expression",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "graphOrientation": "horizontal",
+      "sortDir": "ascending"
+    }
+  },
+  {
+    "id": 73,
+    "type": "Heatmap",
+    "description": "Heatmap sorted by Treatment column",
+    "config": {
+      "graphType": "Heatmap",
+      "xAxis": [
+        "Gene"
+      ],
+      "samplesClustered": false,
+      "sortData": [
+        [
+          "smp",
+          "smp",
+          "Treatment"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 74,
+    "type": "Bar",
+    "description": "Bar chart filtered to Control group and sorted descending",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "filterData": [
+        [
+          "guess",
+          "Treatment",
+          "like",
+          "Control"
+        ]
+      ],
+      "sortDir": "descending"
+    }
+  },
+  {
+    "id": 75,
+    "type": "Violin",
+    "description": "Violin plot showing only Drug A and Drug B treatment groups, excluding Control",
+    "config": {
+      "graphType": "Violin",
+      "xAxis": [
+        "Expression"
+      ],
+      "groupingFactors": [
+        "Treatment"
+      ],
+      "filterData": [
+        [
+          "guess",
+          "Treatment",
+          "different",
+          "Control"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 76,
+    "type": "Scatter2D",
+    "description": "Scatter plot sorted by Sample metadata column",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "PC1"
+      ],
+      "yAxis": [
+        "PC2"
+      ],
+      "colorBy": "Treatment",
+      "sortData": [
+        [
+          "smp",
+          "smp",
+          "Sample"
+        ]
+      ]
+    }
+  },
+  {
+    "id": 77,
+    "type": "Bar",
+    "description": "Bar chart with a horizontal reference line at y equals 2.0",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "value": 2.0,
+          "color": "#e74c3c",
+          "width": 1,
+          "label": "Threshold"
+        }
+      ]
+    }
+  },
+  {
+    "id": 78,
+    "type": "Heatmap",
+    "description": "Clustered heatmap with a vertical reference line marking sample boundary at position 5",
+    "config": {
+      "graphType": "Heatmap",
+      "xAxis": [
+        "Gene"
+      ],
+      "samplesClustered": true,
+      "variablesClustered": true,
+      "decorations": [
+        {
+          "type": "line",
+          "value": 5,
+          "color": "#333333",
+          "width": 2,
+          "label": "Boundary"
+        }
+      ]
+    }
+  },
+  {
+    "id": 79,
+    "type": "Bar",
+    "description": "Bar chart with two horizontal threshold lines at 1.5 and minus 1.5 for fold change cutoffs",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "value": 1.5,
+          "color": "#e74c3c",
+          "width": 1,
+          "label": "FC +1.5"
+        },
+        {
+          "type": "line",
+          "value": -1.5,
+          "color": "#3498db",
+          "width": 1,
+          "label": "FC -1.5"
+        }
+      ]
+    }
+  },
+  {
+    "id": 80,
+    "type": "Violin",
+    "description": "Violin plot with a horizontal dashed line at the overall median value of 5.2",
+    "config": {
+      "graphType": "Violin",
+      "xAxis": [
+        "Expression"
+      ],
+      "groupingFactors": [
+        "CellType"
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "value": 5.2,
+          "color": "#7f8c8d",
+          "width": 1,
+          "label": "Overall median"
+        }
+      ]
+    }
+  },
+  {
+    "id": 81,
+    "type": "Line",
+    "description": "Line chart with a text annotation label at value 100 marking a key event",
+    "config": {
+      "graphType": "Line",
+      "xAxis": [
+        "Month"
+      ],
+      "decorations": [
+        {
+          "type": "text",
+          "value": 100,
+          "color": "#2c3e50",
+          "label": "Key event"
+        }
+      ]
+    }
+  },
+  {
+    "id": 82,
+    "type": "Boxplot",
+    "description": "Boxplot with a point marker at value 8.5 indicating an outlier threshold",
+    "config": {
+      "graphType": "Boxplot",
+      "xAxis": [
+        "Score"
+      ],
+      "groupingFactors": [
+        "Group"
+      ],
+      "decorations": [
+        {
+          "type": "point",
+          "value": 8.5,
+          "color": "#e67e22",
+          "label": "Outlier threshold"
+        }
+      ]
+    }
+  },
+  {
+    "id": 83,
+    "type": "Scatter2D",
+    "description": "Scatter plot with a vertical reference line at x equals 1.5 for fold change threshold",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "log2FC"
+      ],
+      "yAxis": [
+        "negLog10P"
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "x": 1.5,
+          "color": "#e74c3c",
+          "width": 1,
+          "label": "FC threshold"
+        }
+      ]
+    }
+  },
+  {
+    "id": 84,
+    "type": "Scatter2D",
+    "description": "Volcano plot with vertical lines at log2FC of 1 and minus 1 and horizontal line at -log10 p-value of 1.3",
+    "config": {
+      "graphType": "Volcano",
+      "xAxis": [
+        "log2FC"
+      ],
+      "yAxis": [
+        "negLog10P"
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "x": 1.0,
+          "color": "#e74c3c",
+          "width": 1,
+          "label": "FC +1"
+        },
+        {
+          "type": "line",
+          "x": -1.0,
+          "color": "#3498db",
+          "width": 1,
+          "label": "FC -1"
+        },
+        {
+          "type": "line",
+          "y": 1.3,
+          "color": "#7f8c8d",
+          "width": 1,
+          "label": "p=0.05"
+        }
+      ]
+    }
+  },
+  {
+    "id": 85,
+    "type": "Scatter2D",
+    "description": "Scatter plot with a horizontal reference line at y equals 0 and a text annotation",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "PC1"
+      ],
+      "yAxis": [
+        "PC2"
+      ],
+      "colorBy": "Treatment",
+      "decorations": [
+        {
+          "type": "line",
+          "y": 0,
+          "color": "#95a5a6",
+          "width": 1,
+          "label": "Zero"
+        },
+        {
+          "type": "text",
+          "x": 2.0,
+          "y": 3.0,
+          "color": "#2c3e50",
+          "label": "Cluster A"
+        }
+      ]
+    }
+  },
+  {
+    "id": 86,
+    "type": "Scatter2D",
+    "description": "Scatter plot with a point marker at x 1.5 y 4.2 highlighting a specific sample",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "PC1"
+      ],
+      "yAxis": [
+        "PC2"
+      ],
+      "colorBy": "Group",
+      "decorations": [
+        {
+          "type": "point",
+          "x": 1.5,
+          "y": 4.2,
+          "color": "#e74c3c",
+          "label": "Sample X"
+        }
+      ]
+    }
+  },
+  {
+    "id": 87,
+    "type": "Bar",
+    "description": "Bar chart filtered to Control group with a significance threshold line at 2",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "filterData": [
+        [
+          "guess",
+          "Treatment",
+          "like",
+          "Control"
+        ]
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "value": 2.0,
+          "color": "#e74c3c",
+          "width": 1,
+          "label": "Significance threshold"
+        }
+      ]
+    }
+  },
+  {
+    "id": 88,
+    "type": "Volcano",
+    "description": "Volcano plot with fold change cutoff lines at plus and minus 2 and significance line at 1.3",
+    "config": {
+      "graphType": "Volcano",
+      "xAxis": [
+        "log2FC"
+      ],
+      "yAxis": [
+        "negLog10P"
+      ],
+      "decorations": [
+        {
+          "type": "line",
+          "x": 2.0,
+          "color": "#e74c3c",
+          "width": 1,
+          "label": "FC +2"
+        },
+        {
+          "type": "line",
+          "x": -2.0,
+          "color": "#3498db",
+          "width": 1,
+          "label": "FC -2"
+        },
+        {
+          "type": "line",
+          "y": 1.3,
+          "color": "#7f8c8d",
+          "width": 1,
+          "label": "p = 0.05"
+        }
+      ]
+    }
+  },
+  {
+    "id": 89,
+    "type": "Bar",
+    "description": "Bar chart of Expression values with Gene column on the axis",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Gene"
+      ],
+      "smpTitle": "Expression"
+    }
+  },
+  {
+    "id": 90,
+    "type": "Violin",
+    "description": "Violin plot of gene expression values by cell type with Expression label on sample axis",
+    "config": {
+      "graphType": "Violin",
+      "xAxis": [
+        "Expression"
+      ],
+      "groupingFactors": [
+        "CellType"
+      ],
+      "smpTitle": "Cell Types"
+    }
+  },
+  {
+    "id": 91,
+    "type": "Boxplot",
+    "description": "Boxplot showing Score distribution across groups with custom sample axis title Groups",
+    "config": {
+      "graphType": "Boxplot",
+      "xAxis": [
+        "Score"
+      ],
+      "groupingFactors": [
+        "Group"
+      ],
+      "smpTitle": "Groups"
+    }
+  },
+  {
+    "id": 92,
+    "type": "Heatmap",
+    "description": "Heatmap of RNA-seq expression with Gene on xAxis and sample axis labelled Samples",
+    "config": {
+      "graphType": "Heatmap",
+      "xAxis": [
+        "Gene"
+      ],
+      "samplesClustered": true,
+      "variablesClustered": true,
+      "colorScheme": "RdBu",
+      "smpTitle": "Samples"
+    }
+  },
+  {
+    "id": 93,
+    "type": "Line",
+    "description": "Line chart of sales over time with Month on xAxis and Sales label on sample axis",
+    "config": {
+      "graphType": "Line",
+      "xAxis": [
+        "Month"
+      ],
+      "smpTitle": "Sales"
+    }
+  },
+  {
+    "id": 94,
+    "type": "Scatter2D",
+    "description": "Scatter plot of PC1 versus PC2 colored by Treatment group",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "PC1"
+      ],
+      "yAxis": [
+        "PC2"
+      ],
+      "colorBy": "Treatment",
+      "xAxisTitle": "PC1",
+      "yAxisTitle": "PC2"
+    }
+  },
+  {
+    "id": 95,
+    "type": "Scatter2D",
+    "description": "Scatter plot of log2 fold change on x-axis and negative log10 p-value on y-axis",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "log2FC"
+      ],
+      "yAxis": [
+        "negLog10P"
+      ],
+      "xAxisTitle": "log2 Fold Change",
+      "yAxisTitle": "-log10(p-value)"
+    }
+  },
+  {
+    "id": 96,
+    "type": "Volcano",
+    "description": "Volcano plot with log2FoldChange on x-axis and padj on y-axis transformed to -log10",
+    "config": {
+      "graphType": "Volcano",
+      "xAxis": [
+        "log2FoldChange"
+      ],
+      "yAxis": [
+        "padj"
+      ],
+      "yAxisTransform": "-log10",
+      "xAxisTitle": "log2 Fold Change",
+      "yAxisTitle": "-log10(adjusted p-value)"
+    }
+  },
+  {
+    "id": 97,
+    "type": "Scatter2D",
+    "description": "UMAP scatter plot with UMAP1 on x-axis and UMAP2 on y-axis colored by CellType",
+    "config": {
+      "graphType": "Scatter2D",
+      "xAxis": [
+        "UMAP1"
+      ],
+      "yAxis": [
+        "UMAP2"
+      ],
+      "colorBy": "CellType",
+      "xAxisTitle": "UMAP 1",
+      "yAxisTitle": "UMAP 2"
+    }
+  },
+  {
+    "id": 98,
+    "type": "Scatter3D",
+    "description": "3D scatter plot with GeneA on x-axis, GeneB on y-axis, GeneC on z-axis colored by Condition",
+    "config": {
+      "graphType": "Scatter3D",
+      "xAxis": [
+        "GeneA"
+      ],
+      "yAxis": [
+        "GeneB"
+      ],
+      "zAxis": [
+        "GeneC"
+      ],
+      "colorBy": "Condition",
+      "xAxisTitle": "GeneA",
+      "yAxisTitle": "GeneB",
+      "zAxisTitle": "GeneC"
+    }
+  },
+  {
+    "id": 99,
+    "type": "BarLine",
+    "description": "Bar and line combination chart with Revenue as bars and Growth as line overlay",
+    "config": {
+      "graphType": "BarLine",
+      "xAxis": [
+        "Revenue"
+      ],
+      "xAxis2": [
+        "Growth"
+      ],
+      "smpTitle": "Quarter"
+    }
+  },
+  {
+    "id": 100,
+    "type": "AreaLine",
+    "description": "Area and line combination with Sales as area and Target as line",
+    "config": {
+      "graphType": "AreaLine",
+      "xAxis": [
+        "Sales"
+      ],
+      "xAxis2": [
+        "Target"
+      ],
+      "smpTitle": "Month"
+    }
+  },
+  {
+    "id": 101,
+    "type": "Pareto",
+    "description": "Pareto chart with Frequency on the bar axis and CumulativePercent on the line axis",
+    "config": {
+      "graphType": "Pareto",
+      "xAxis": [
+        "Frequency"
+      ],
+      "xAxis2": [
+        "CumulativePercent"
+      ],
+      "smpTitle": "Category"
+    }
+  },
+  {
+    "id": 102,
+    "type": "Bar",
+    "description": "Simple bar chart comparing category values, no specific column names given",
+    "config": {
+      "graphType": "Bar",
+      "colorScheme": "Tableau",
+      "showLegend": true
+    }
+  },
+  {
+    "id": 103,
+    "type": "Scatter2D",
+    "description": "Scatter plot of two continuous variables, column names not specified",
+    "config": {
+      "graphType": "Scatter2D",
+      "showRegressionFit": true,
+      "colorScheme": "CanvasXpress"
+    }
+  },
+  {
+    "id": 104,
+    "type": "Bar",
+    "description": "Bar chart showing Q1, Q2, Q3 and Q4 values together on the same axis",
+    "config": {
+      "graphType": "Bar",
+      "xAxis": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "smpTitle": "Quarter Revenue"
+    }
+  },
+  {
+    "id": 105,
+    "type": "Heatmap",
+    "description": "Heatmap with multiple gene columns GeneA GeneB GeneC assigned to xAxis",
+    "config": {
+      "graphType": "Heatmap",
+      "xAxis": [
+        "GeneA",
+        "GeneB",
+        "GeneC"
+      ],
+      "samplesClustered": true,
+      "variablesClustered": true
+    }
+  },
+  {
+    "id": 106,
+    "type": "KaplanMeier",
+    "description": "Kaplan-Meier survival curve with OS_Time on xAxis and OS_Status on yAxis grouped by Treatment",
+    "config": {
+      "graphType": "KaplanMeier",
+      "xAxis": [
+        "OS_Time"
+      ],
+      "yAxis": [
+        "OS_Status"
+      ],
+      "groupingFactors": [
+        "Treatment"
+      ],
+      "xAxisTitle": "Time (months)",
+      "yAxisTitle": "Survival Probability",
+      "showLegend": true,
+      "colorScheme": "Tableau"
+    }
+  }
+]

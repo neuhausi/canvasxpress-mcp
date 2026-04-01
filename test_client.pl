@@ -216,7 +216,7 @@ if ($first_arg eq "--rest") {
     exit 0;
 }
 
-
+if ($first_arg eq "modify") {
     my $orig_config = decode_json($ARGV[1] // die "Missing config JSON\n");
     my $instruction = $ARGV[2]             // die "Missing instruction\n";
     my ($headers, $data, $column_types) = parse_extra_args(@ARGV[3..$#ARGV]);
