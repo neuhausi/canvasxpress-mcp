@@ -1,0 +1,300 @@
+diff --git a/build_index.py b/build_index.py
+index a1479ed..c2d8b2d 100644
+--- a/build_index.py
++++ b/build_index.py
+@@ -4,62 +4,167 @@ build_index.py
+ ==============
+ One-time script to embed all few-shot examples and store them in a
+ sqlite-vec vector database for fast semantic retrieval.
+-
++ 
+ Run this whenever you add or change few_shot_examples.json:
+     python build_index.py
+-
++ 
+ Output: data/embeddings.db  (sqlite-vec database)
+ """
+-
++ 
+ import json
+ import sqlite3
+ import struct
+ import sys
++import ctypes
++import ctypes.util
+ from pathlib import Path
+-
++ 
+ import numpy as np
+ import sqlite_vec
+ from sentence_transformers import SentenceTransformer
+-
++ 
+ BASE_DIR = Path(__file__).parent
+ EXAMPLES_FILE = BASE_DIR / "data" / "few_shot_examples.json"
+ DB_FILE = BASE_DIR / "data" / "embeddings.db"
+-
+-# Model: all-MiniLM-L6-v2 — 384 dimensions, ~22MB, fast on CPU
+-# Upgrade to all-mpnet-base-v2 (768d) for higher accuracy if needed
++ 
+ EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+ EMBEDDING_DIM = 384
+-
+-
++ 
++ 
+ def serialize(vector: list[float]) -> bytes:
+     """Serialize a float list to little-endian bytes for sqlite-vec."""
+     return struct.pack(f"{len(vector)}f", *vector)
+-
+-
++ 
++ 
++def load_libsqlite():
++    """Load libsqlite3 shared library via ctypes."""
++    for lib_path in [
++        "/usr/lib64/libsqlite3.so.0",
++        "/usr/lib64/libsqlite3.so",
++        "/usr/lib/libsqlite3.so.0",
++        "/usr/lib/x86_64-linux-gnu/libsqlite3.so.0",
++        ctypes.util.find_library("sqlite3"),
++    ]:
++        if lib_path is None:
++            continue
++        try:
++            lib = ctypes.CDLL(lib_path)
++            _ = lib.sqlite3_enable_load_extension
++            print(f"  Loaded libsqlite3 from: {lib_path}")
++            return lib
++        except (OSError, AttributeError):
++            continue
++    raise RuntimeError("Could not load libsqlite3. Cannot enable extensions.")
++ 
++ 
++class ExtensionConnection:
++    """
++    Wrapper around sqlite3.Connection that adds load_extension support
++    via ctypes when Python was compiled without --enable-loadable-sqlite-extensions.
++    Delegates all other attribute access to the real connection.
++    """
++ 
++    def __init__(self, db_path: str, libsqlite):
++        self._db = sqlite3.connect(db_path)
++        self._lib = libsqlite
++        self._db_ptr = self._find_db_ptr()
++        self._enable_extensions()
++ 
++    def _find_db_ptr(self):
++        self._lib.sqlite3_db_filename.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
++        self._lib.sqlite3_db_filename.restype = ctypes.c_char_p
++ 
++        base = id(self._db)
++        # Offset 16 confirmed for CPython 3.12 on this system via diagnostic scan
++        candidate = ctypes.c_void_p.from_address(base + 16).value
++        if not candidate:
++            raise RuntimeError("sqlite3* handle at offset 16 is null.")
++        filename = self._lib.sqlite3_db_filename(candidate, b"main")
++        print(f"  Found sqlite3* handle, db={filename}")
++        return candidate
++ 
++    def _enable_extensions(self):
++        self._lib.sqlite3_enable_load_extension.argtypes = [ctypes.c_void_p, ctypes.c_int]
++        self._lib.sqlite3_enable_load_extension.restype = ctypes.c_int
++        rc = self._lib.sqlite3_enable_load_extension(self._db_ptr, 1)
++        if rc != 0:
++            raise RuntimeError(f"sqlite3_enable_load_extension failed with code {rc}")
++        print("  Extension loading enabled via ctypes.")
++ 
++    def load_extension(self, path):
++        self._lib.sqlite3_load_extension.argtypes = [
++            ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p
++        ]
++        self._lib.sqlite3_load_extension.restype = ctypes.c_int
++        errmsg = ctypes.c_char_p()
++        rc = self._lib.sqlite3_load_extension(
++            self._db_ptr,
++            path.encode() if isinstance(path, str) else path,
++            None,
++            ctypes.byref(errmsg)
++        )
++        if rc != 0:
++            raise RuntimeError(f"load_extension failed: {errmsg.value}")
++ 
++    def enable_load_extension(self, enabled):
++        pass  # Already handled; no-op to satisfy sqlite_vec.load()
++ 
++    def __getattr__(self, name):
++        # Delegate everything else (execute, commit, close, etc.) to real connection
++        return getattr(self._db, name)
++ 
++    def __enter__(self):
++        return self
++ 
++    def __exit__(self, *args):
++        self._db.close()
++ 
++ 
++def connect(db_path: str):
++    """
++    Return a sqlite3 connection with extension loading enabled.
++    Uses native support if available, otherwise falls back to ctypes wrapper.
++    """
++    try:
++        db = sqlite3.connect(db_path)
++        db.enable_load_extension(True)
++        print("  Extension loading enabled natively.")
++        return db
++    except AttributeError:
++        print("  Native enable_load_extension unavailable, using ctypes wrapper...")
++        libsqlite = load_libsqlite()
++        return ExtensionConnection(db_path, libsqlite)
++ 
++ 
+ def main():
+     print(f"Loading examples from {EXAMPLES_FILE}...")
+     with open(EXAMPLES_FILE) as f:
+         examples = json.load(f)
+     print(f"  Found {len(examples)} examples")
+-
++ 
+     print(f"\nLoading embedding model: {EMBEDDING_MODEL}")
+     model = SentenceTransformer(EMBEDDING_MODEL)
+-
++ 
+     print("\nEmbedding descriptions...")
+     descriptions = [ex["description"] for ex in examples]
+     embeddings = model.encode(descriptions, show_progress_bar=True, normalize_embeddings=True)
+     print(f"  Embedded {len(embeddings)} descriptions → {EMBEDDING_DIM}d vectors")
+-
++ 
+     print(f"\nBuilding sqlite-vec index at {DB_FILE}...")
+     if DB_FILE.exists():
+         DB_FILE.unlink()
+-
+-    db = sqlite3.connect(str(DB_FILE))
+-    db.enable_load_extension(True)
++ 
++    db = connect(str(DB_FILE))
+     sqlite_vec.load(db)
+-    db.enable_load_extension(False)
+-
+-    # Metadata table — stores the full example data
++    print("  sqlite-vec loaded successfully.")
++ 
++    # Disable extension loading if natively supported
++    try:
++        db.enable_load_extension(False)
++    except (AttributeError, TypeError):
++        pass
++ 
++    # Metadata table
+     db.execute("""
+         CREATE TABLE examples (
+             id      INTEGER PRIMARY KEY,
+@@ -68,14 +173,14 @@ def main():
+             config  TEXT
+         )
+     """)
+-
+-    # Vector table — stores the embeddings
++ 
++    # Vector table
+     db.execute(f"""
+         CREATE VIRTUAL TABLE vec_examples USING vec0(
+             embedding float[{EMBEDDING_DIM}]
+         )
+     """)
+-
++ 
+     for i, (ex, emb) in enumerate(zip(examples, embeddings)):
+         db.execute(
+             "INSERT INTO examples(id, type, description, config) VALUES (?, ?, ?, ?)",
+@@ -85,15 +190,16 @@ def main():
+             "INSERT INTO vec_examples(rowid, embedding) VALUES (?, ?)",
+             (i + 1, serialize(emb.tolist()))
+         )
+-
++ 
+     db.commit()
+     db.close()
+-
++ 
+     size_kb = DB_FILE.stat().st_size // 1024
+     print(f"\n✅ Index built: {DB_FILE} ({size_kb} KB)")
+     print(f"   {len(examples)} examples indexed with {EMBEDDING_DIM}-dim embeddings")
+     print("\nYou can now start the server: python src/server.py")
+-
+-
++ 
++ 
+ if __name__ == "__main__":
+     main()
++
+diff --git a/src/server.py b/src/server.py
+index 3755f60..687bd76 100644
+--- a/src/server.py
++++ b/src/server.py
+@@ -20,6 +20,8 @@ import sys
+ import struct
+ import logging
+ import sqlite3
++import ctypes
++import ctypes.util
+ from pathlib import Path
+ from difflib import SequenceMatcher
+ from typing import Optional
+@@ -131,15 +133,51 @@ def _load_vector_index() -> bool:
+         return False
+ 
+ 
++
++def _sqlite_connect(db_path: str):
++    """Connect to sqlite3 with extension loading, using ctypes fallback if needed."""
++    try:
++        db = sqlite3.connect(db_path)
++        db.enable_load_extension(True)
++        return db
++    except AttributeError:
++        pass
++    lib = ctypes.CDLL('/usr/lib64/libsqlite3.so.0')
++    lib.sqlite3_db_filename.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
++    lib.sqlite3_db_filename.restype = ctypes.c_char_p
++    lib.sqlite3_enable_load_extension.argtypes = [ctypes.c_void_p, ctypes.c_int]
++    lib.sqlite3_enable_load_extension.restype = ctypes.c_int
++
++    class _ExtConn:
++        def __init__(self):
++            self._db = sqlite3.connect(db_path)
++            ptr = ctypes.c_void_p.from_address(id(self._db) + 16).value
++            lib.sqlite3_enable_load_extension(ptr, 1)
++            self._ptr = ptr
++        def load_extension(self, path):
++            lib.sqlite3_load_extension.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p]
++            lib.sqlite3_load_extension.restype = ctypes.c_int
++            errmsg = ctypes.c_char_p()
++            rc = lib.sqlite3_load_extension(self._ptr, path.encode() if isinstance(path, str) else path, None, ctypes.byref(errmsg))
++            if rc != 0:
++                raise RuntimeError(f"load_extension failed: {errmsg.value}")
++        def enable_load_extension(self, val): pass
++        def __getattr__(self, name): return getattr(self._db, name)
++
++    return _ExtConn()
++
++
+ def _vector_retrieve(query: str, top_k: int) -> list[dict]:
+     """Retrieve top-k examples using sqlite-vec cosine similarity."""
+     query_emb = _embed_model.encode([query], normalize_embeddings=True)[0]
+     query_bytes = _serialize(query_emb.tolist())
+ 
+-    db = sqlite3.connect(str(DB_FILE))
+-    db.enable_load_extension(True)
++    db = _sqlite_connect(str(DB_FILE))
+     sqlite_vec.load(db)
+-    db.enable_load_extension(False)
++    try:
++        db.enable_load_extension(False)
++    except AttributeError:
++        pass
+ 
+     rows = db.execute(
+         """
