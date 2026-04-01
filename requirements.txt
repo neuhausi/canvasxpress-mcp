@@ -5,6 +5,7 @@ sqlite-vec>=0.1.0
 sentence-transformers>=3.0.0
 numpy>=1.24.0
 httpx>=0.27.0
+python-dotenv>=1.0.0
 
 # Amazon Bedrock (LLM_PROVIDER=bedrock)
 # pip install boto3

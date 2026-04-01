@@ -84,15 +84,32 @@ python build_index.py
 Re-run whenever you add or change `data/few_shot_examples.json`. If you skip this
 step the server still works — it falls back to text-similarity matching and logs a warning.
 
-### 3. Configure your LLM provider
+### 3. Configure environment variables
 
-Choose one of the four supported providers and set the required environment variables.
-See the [LLM providers](#llm-providers) section for full details.
+All configuration is read from a `.env` file in the project root. Copy the template
+and fill in your values:
 
 ```bash
-# Quickstart — Anthropic (default)
-export ANTHROPIC_API_KEY="sk-ant-..."
+cp .env.example .env
 ```
+
+Then edit `.env`. At minimum, set your LLM provider key:
+
+```ini
+# .env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+For deployment behind a web server (see [Running in production](#running-in-production)):
+
+```ini
+MCP_HOST=127.0.0.1
+CORS_ORIGINS=https://canvasxpress.org,https://www.canvasxpress.org
+```
+
+> `.env` is listed in `.gitignore` and is never committed. `.env.example` is the
+> committed template — keep it up to date when adding new variables.
 
 ### 4. Start the server
 
@@ -109,11 +126,13 @@ Two endpoints are ready immediately:
 | `http://localhost:8100/modify` | REST: modify an existing config |
 | `http://localhost:8100/ui` | Interactive web form (open in a browser) |
 
-**To run on a different port:**
+**To run on a different port** (or set any variable inline):
 
 ```bash
 MCP_PORT=9000 python src/server.py
 ```
+
+Inline variables override `.env`, so this works without editing the file.
 
 Then point test clients at the new port:
 
@@ -126,7 +145,9 @@ MCP_URL=http://localhost:9000/mcp node test_client.mjs
 ### 5. Debug mode
 
 See the full reasoning trace per request — provider, model, tier selection, retrieved
-examples, prompt size, token usage, raw LLM response, and column validation:
+examples, prompt size, token usage, raw LLM response, and column validation.
+
+Either set `CX_DEBUG=1` in `.env`, or pass it inline:
 
 ```bash
 CX_DEBUG=1 python src/server.py
@@ -362,12 +383,16 @@ export OPENAI_ORG="org-..."
 
 ## Configuration reference
 
+All variables can be set in `.env` (preferred) or as shell environment variables
+(inline variables override `.env`).
+
 ### Core settings
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `MCP_HOST` | `0.0.0.0` | Bind host |
+| `MCP_HOST` | `0.0.0.0` | Bind host. Use `127.0.0.1` behind a reverse proxy |
 | `MCP_PORT` | `8100` | Port |
+| `CORS_ORIGINS` | `http://localhost:8100,...` | Comma-separated origins allowed by CORS. Set to `*` for fully public APIs |
 | `CX_DEBUG` | `0` | Set to `1` for full per-request debug trace |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model for the vector index |
 

@@ -24,6 +24,11 @@ from pathlib import Path
 from difflib import SequenceMatcher
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")  # load .env before any os.environ.get calls
+
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 
@@ -70,6 +75,11 @@ EMBEDDING_DIM = 384  # all-MiniLM-L6-v2; change to 768 for all-mpnet-base-v2
 
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8100"))
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:8100,http://127.0.0.1:8100").split(",")
+    if o.strip()
+]
 
 # ---------------------------------------------------------------------------
 # Few-shot examples (fallback for when vector index is not built)
@@ -885,6 +895,18 @@ mcp = FastMCP(
         "canvasxpress-LLM knowledge base (RULES, SCHEMA, DECISION-TREE, MINIMAL-PARAMETERS) "
         "for highly accurate, validated output. Scales to 3000+ examples."
     ),
+)
+
+# ---------------------------------------------------------------------------
+# CORS — allow browser requests from the origins listed in CORS_ORIGINS
+# ---------------------------------------------------------------------------
+mcp.add_middleware(
+    Middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "X-API-Key"],
+    )
 )
 
 
