@@ -246,35 +246,6 @@ def detect_tier(
     return 1
 
 
-# Load knowledge DB at startup
-_knowledge_db: Optional["KnowledgeDB"] = None
-KNOWLEDGE_FILE = DATA_DIR / "knowledge.db"
-
-
-def _load_knowledge_db() -> bool:
-    global _knowledge_db
-    if not KNOWLEDGE_FILE.exists():
-        log.warning(
-            "Knowledge DB not found at %s. Run build_knowledge_db.py to build it. "
-            "Falling back to base prompt only.", KNOWLEDGE_FILE
-        )
-        return False
-    try:
-        _knowledge_db = KnowledgeDB(KNOWLEDGE_FILE)
-        stats = _knowledge_db.get_stats()
-        log.info(
-            "Knowledge DB: %d sections (t1=%d t2=%d t3=%d)",
-            stats["total_sections"],
-            stats["by_tier"].get(1, 0),
-            stats["by_tier"].get(2, 0),
-            stats["by_tier"].get(3, 0),
-        )
-        return True
-    except Exception as e:
-        log.warning("Failed to load knowledge DB: %s. Using base prompt only.", e)
-        return False
-
-
 _SYSTEM_PROMPT_HEADER = """You are an expert CanvasXpress data visualization assistant.
 Your task is to generate a valid CanvasXpress JSON configuration object from a natural
 language description and optional column headers and column types.
@@ -457,19 +428,6 @@ def build_system_prompt(
     graph_type = detect_graph_type(description)
     prompt     = _SYSTEM_PROMPT_HEADER
 
-    if _knowledge_db is not None:
-        sections = _knowledge_db.get_sections(graph_type=graph_type, tier=tier)
-        for s in sections:
-            label = s["section"].upper().replace("_", " ")
-            prompt += f"\n## {label} (from {s['source']})\n{s['content']}\n"
-        if DEBUG:
-            log.debug(
-                "KnowledgeDB: tier=%d graph=%s sections=%d chars=%d",
-                tier, graph_type or "?", len(sections), len(prompt)
-            )
-    else:
-        log.warning("Knowledge DB not loaded — run build_knowledge_db.py for better results")
-
     # Inject live parameter+valid-values snippet from cx_knowledge
     param_snippet = cx_knowledge.get_param_snippet(graph_type=graph_type)
     if param_snippet:
@@ -477,9 +435,6 @@ def build_system_prompt(
 
     return prompt, tier, graph_type
 
-
-# Load knowledge DB now
-_load_knowledge_db()
 
 # Warm the cx_knowledge schema cache
 cx_knowledge.warm_cache()
