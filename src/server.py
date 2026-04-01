@@ -24,6 +24,9 @@ from pathlib import Path
 from difflib import SequenceMatcher
 from typing import Optional
 
+from starlette.requests import Request
+from starlette.responses import JSONResponse, HTMLResponse
+
 import numpy as np
 import sqlite_vec
 from fastmcp import FastMCP
@@ -1450,6 +1453,376 @@ def get_minimal_parameters(graph_type: str) -> dict:
         "error": f"Unknown graph type '{gt}'.",
         "tip": "Use list_chart_types to see all valid graph types.",
     }
+
+# ---------------------------------------------------------------------------
+# REST helpers — parse query params or JSON body into tool kwargs
+# ---------------------------------------------------------------------------
+
+def _parse_col_types(raw: str) -> dict:
+    """Accept JSON object OR 'Col=type,Col2=type2' shorthand."""
+    raw = raw.strip()
+    if raw.startswith("{"):
+        return json.loads(raw)
+    result = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if "=" in item:
+            k, v = item.split("=", 1)
+            result[k.strip()] = v.strip()
+    return result
+
+
+async def _kwargs_from_request(request: Request, require_description: bool = True) -> dict | tuple[dict, int, str]:
+    """Extract generate/modify kwargs from a GET query string or POST JSON/form body."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        if "application/json" in ct:
+            p = await request.json()
+        else:
+            form = await request.form()
+            p = dict(form)
+
+    kwargs: dict = {}
+
+    # description / prompt (aliases)
+    desc = p.get("description") or p.get("prompt") or p.get("q") or ""
+    if require_description and not desc:
+        return {}, 400, "'description' (or 'prompt') is required"
+    if desc:
+        kwargs["description"] = desc
+
+    # instruction (modify only)
+    if "instruction" in p:
+        kwargs["instruction"] = p["instruction"]
+
+    # config (modify only) — JSON string or object
+    if "config" in p:
+        v = p["config"]
+        kwargs["config"] = json.loads(v) if isinstance(v, str) else v
+
+    # headers — comma-separated string or JSON array
+    if "headers" in p:
+        v = p["headers"]
+        if isinstance(v, str):
+            v = v.strip()
+            kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",")]
+        else:
+            kwargs["headers"] = v
+
+    # data — JSON array of arrays
+    if "data" in p:
+        v = p["data"]
+        kwargs["data"] = json.loads(v) if isinstance(v, str) else v
+
+    # column_types — JSON object or "Col=type,Col2=type2"
+    for key in ("column_types", "types"):
+        if key in p:
+            v = p[key]
+            kwargs["column_types"] = json.loads(v) if (isinstance(v, str) and v.strip().startswith("{")) else (
+                _parse_col_types(v) if isinstance(v, str) else v
+            )
+            break
+
+    # temperature
+    if "temperature" in p:
+        kwargs["temperature"] = float(p["temperature"])
+
+    return kwargs, 200, ""
+
+
+# ---------------------------------------------------------------------------
+# REST endpoints — /generate  /modify  /ui
+# ---------------------------------------------------------------------------
+
+_UI_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CanvasXpress MCP — Web UI</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;background:#f5f5f5;color:#222}
+  h1{font-size:1.4rem;margin-bottom:4px}
+  h1 span{color:#c0392b}
+  .subtitle{color:#666;font-size:.85rem;margin-bottom:24px}
+  label{display:block;font-weight:600;font-size:.85rem;margin-top:14px;margin-bottom:3px}
+  label span{font-weight:400;color:#888}
+  input[type=text],textarea,select{width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:5px;font-size:.9rem;font-family:inherit;background:#fff}
+  textarea{resize:vertical;min-height:80px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .actions{margin-top:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:.9rem;font-weight:600}
+  .btn-primary{background:#c0392b;color:#fff}
+  .btn-secondary{background:#555;color:#fff}
+  #url-box{flex:1;min-width:200px;font-size:.78rem;color:#555;background:#fff;border:1px solid #ccc;border-radius:5px;padding:7px 10px;word-break:break-all;cursor:text;white-space:pre-wrap}
+  #result{margin-top:24px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px;display:none}
+  #result h3{margin:0 0 10px;font-size:.95rem}
+  pre{margin:0;font-size:.82rem;overflow:auto;max-height:460px;background:#f8f8f8;padding:10px;border-radius:4px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:700;margin-left:6px}
+  .valid{background:#d4edda;color:#155724}
+  .invalid{background:#f8d7da;color:#721c24}
+  .warn{background:#fff3cd;color:#856404}
+  .meta{font-size:.8rem;color:#666;margin-bottom:8px}
+  .tab-bar{display:flex;gap:4px;margin-bottom:16px}
+  .tab{padding:7px 16px;border-radius:5px 5px 0 0;border:1px solid #ccc;border-bottom:none;cursor:pointer;font-weight:600;font-size:.85rem;background:#eee}
+  .tab.active{background:#fff;border-bottom:1px solid #fff;margin-bottom:-1px}
+  .panel{display:none}
+  .panel.active{display:block}
+  .card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px}
+</style>
+</head>
+<body>
+<h1>CanvasXpress <span>MCP</span> — Web UI</h1>
+<p class="subtitle">Generate or modify CanvasXpress configs. Parameters are encoded in the URL — bookmark or share it.</p>
+
+<div class="tab-bar">
+  <div class="tab active" data-tab="generate">Generate</div>
+  <div class="tab" data-tab="modify">Modify</div>
+</div>
+
+<!-- ── GENERATE panel ─────────────────────────────────────────────── -->
+<div class="panel card active" id="panel-generate">
+  <label>Description / Prompt <span>(required)</span>
+    <input type="text" id="g-desc" placeholder="e.g. Clustered heatmap with RdBu colors and dendrograms on both axes">
+  </label>
+  <div class="row">
+    <div>
+      <label>Headers <span>comma-separated</span>
+        <input type="text" id="g-headers" placeholder="Gene, Sample1, Sample2, Treatment">
+      </label>
+    </div>
+    <div>
+      <label>Column types <span>Col=type,… or JSON</span>
+        <input type="text" id="g-types" placeholder='Gene=string,Sample1=numeric,Treatment=factor'>
+      </label>
+    </div>
+  </div>
+  <label>Data <span>JSON array of arrays — first row is headers</span>
+    <textarea id="g-data" placeholder='[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]'></textarea>
+  </label>
+  <label>Temperature <span>0 = deterministic</span>
+    <input type="text" id="g-temp" value="0" style="width:80px">
+  </label>
+</div>
+
+<!-- ── MODIFY panel ───────────────────────────────────────────────── -->
+<div class="panel card" id="panel-modify">
+  <label>Existing config <span>JSON object — required</span>
+    <textarea id="m-config" style="min-height:120px" placeholder='{"graphType":"Bar","xAxis":["Gene"]}'></textarea>
+  </label>
+  <label>Instruction <span>plain English modification — required</span>
+    <input type="text" id="m-instr" placeholder="add a title My Chart and change colorScheme to Tableau">
+  </label>
+  <div class="row">
+    <div>
+      <label>Headers <span>optional</span>
+        <input type="text" id="m-headers" placeholder="Gene, Sample1, Treatment">
+      </label>
+    </div>
+    <div>
+      <label>Column types <span>optional</span>
+        <input type="text" id="m-types" placeholder="Gene=string,Sample1=numeric">
+      </label>
+    </div>
+  </div>
+  <label>Data <span>optional JSON array</span>
+    <textarea id="m-data" placeholder='[["Gene","S1"],["BRCA1",1.2]]'></textarea>
+  </label>
+</div>
+
+<div class="actions">
+  <button class="btn-primary" onclick="submit()">&#9654; Run</button>
+  <button class="btn-secondary" onclick="copyUrl()">&#128279; Copy URL</button>
+  <div id="url-box">—</div>
+</div>
+
+<div id="result">
+  <h3 id="result-title">Result</h3>
+  <div class="meta" id="result-meta"></div>
+  <pre id="result-pre"></pre>
+</div>
+
+<script>
+const BASE = window.location.origin;
+let activeTab = 'generate';
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab, .panel').forEach(el => el.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+    activeTab = t.dataset.tab;
+    buildUrl();
+  });
+});
+
+function v(id){ return document.getElementById(id).value.trim(); }
+
+function buildUrl() {
+  const p = new URLSearchParams();
+  if (activeTab === 'generate') {
+    const desc = v('g-desc'), hdrs = v('g-headers'), types = v('g-types'),
+          data = v('g-data'), temp = v('g-temp');
+    if (desc)  p.set('description', desc);
+    if (hdrs)  p.set('headers', hdrs);
+    if (types) p.set('column_types', types);
+    if (data)  p.set('data', data);
+    if (temp && temp !== '0') p.set('temperature', temp);
+    const url = BASE + '/generate?' + p.toString();
+    document.getElementById('url-box').textContent = url;
+    return url;
+  } else {
+    const cfg = v('m-config'), instr = v('m-instr'), hdrs = v('m-headers'),
+          types = v('m-types'), data = v('m-data');
+    if (cfg)   p.set('config', cfg);
+    if (instr) p.set('instruction', instr);
+    if (hdrs)  p.set('headers', hdrs);
+    if (types) p.set('column_types', types);
+    if (data)  p.set('data', data);
+    const url = BASE + '/modify?' + p.toString();
+    document.getElementById('url-box').textContent = url;
+    return url;
+  }
+}
+
+['g-desc','g-headers','g-types','g-data','g-temp',
+ 'm-config','m-instr','m-headers','m-types','m-data'].forEach(id => {
+  document.getElementById(id).addEventListener('input', buildUrl);
+});
+
+function copyUrl() {
+  const url = buildUrl();
+  navigator.clipboard.writeText(url).catch(() => {});
+}
+
+async function submit() {
+  const url = buildUrl();
+  const resultEl = document.getElementById('result');
+  const preEl    = document.getElementById('result-pre');
+  const metaEl   = document.getElementById('result-meta');
+  const titleEl  = document.getElementById('result-title');
+  resultEl.style.display = 'block';
+  preEl.textContent = 'Loading…';
+  metaEl.textContent = '';
+  titleEl.innerHTML = activeTab === 'generate' ? 'Generated Config' : 'Modified Config';
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.error) { preEl.textContent = 'Error: ' + data.error; return; }
+
+    const cfg  = data.config  || {};
+    const valid = data.valid;
+    const warns = data.warnings || [];
+    const badge = valid
+      ? '<span class="badge valid">✓ valid</span>'
+      : '<span class="badge invalid">✗ warnings</span>';
+    const gt = cfg.graphType || '?';
+    const hdr = (data.headers_used || []).join(', ') || '—';
+    metaEl.innerHTML = `graphType: <b>${gt}</b>${badge} &nbsp; headers: ${hdr}` +
+      (warns.length ? `<br><span class="badge warn">⚠ ${warns.join(' | ')}</span>` : '');
+    if (activeTab === 'modify' && data.changes) {
+      const c = data.changes;
+      metaEl.innerHTML += `<br>added: ${(c.added||[]).join(', ')||'none'} &nbsp; ` +
+        `removed: ${(c.removed||[]).join(', ')||'none'} &nbsp; ` +
+        `changed: ${(c.changed||[]).join(', ')||'none'}`;
+    }
+    preEl.textContent = JSON.stringify(cfg, null, 2);
+  } catch(e) {
+    preEl.textContent = 'Request failed: ' + e;
+  }
+}
+
+// Populate from URL params on load (so bookmarked URLs auto-fill the form)
+(function restoreFromUrl() {
+  const p = new URLSearchParams(window.location.search);
+  const tab = p.get('_tab') || 'generate';
+  if (tab === 'modify') {
+    document.querySelector('[data-tab=modify]').click();
+    if (p.get('config'))      document.getElementById('m-config').value = p.get('config');
+    if (p.get('instruction')) document.getElementById('m-instr').value  = p.get('instruction');
+    if (p.get('headers'))     document.getElementById('m-headers').value = p.get('headers');
+    if (p.get('column_types'))document.getElementById('m-types').value  = p.get('column_types');
+    if (p.get('data'))        document.getElementById('m-data').value   = p.get('data');
+  } else {
+    if (p.get('description')) document.getElementById('g-desc').value    = p.get('description');
+    if (p.get('headers'))     document.getElementById('g-headers').value  = p.get('headers');
+    if (p.get('column_types'))document.getElementById('g-types').value   = p.get('column_types');
+    if (p.get('data'))        document.getElementById('g-data').value    = p.get('data');
+    if (p.get('temperature')) document.getElementById('g-temp').value    = p.get('temperature');
+  }
+  buildUrl();
+})();
+</script>
+</body>
+</html>
+"""
+
+
+@mcp.custom_route("/generate", methods=["GET", "POST"])
+async def rest_generate(request: Request) -> JSONResponse:
+    """
+    REST endpoint for generate_canvasxpress_config.
+
+    GET  /generate?description=Violin+plot&headers=Gene,Expr,CellType&column_types=Gene%3Dstring%2CExpr%3Dnumeric%2CCellType%3Dfactor
+    POST /generate   (JSON body with same keys, or application/x-www-form-urlencoded)
+
+    Query / body parameters:
+      description   (str, required) — plain English chart description. Alias: prompt, q.
+      headers       (str)           — comma-separated column names, or JSON array.
+      data          (str)           — JSON array of arrays (first row = header row).
+      column_types  (str)           — "Col=type,…" or JSON object. Alias: types.
+                                      Valid types: string, numeric, factor, date.
+      temperature   (float)         — 0.0–1.0, default 0.
+    """
+    kwargs, status, err = await _kwargs_from_request(request, require_description=True)
+    if status != 200:
+        return JSONResponse({"error": err}, status_code=status)
+    try:
+        result = generate_canvasxpress_config(**kwargs)
+    except Exception as exc:
+        log.exception("REST /generate error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/modify", methods=["GET", "POST"])
+async def rest_modify(request: Request) -> JSONResponse:
+    """
+    REST endpoint for modify_canvasxpress_config.
+
+    GET  /modify?config={"graphType":"Bar","xAxis":["Gene"]}&instruction=add+a+title+My+Chart
+    POST /modify   (JSON body with same keys)
+
+    Query / body parameters:
+      config        (str|obj, required) — existing CanvasXpress JSON config.
+      instruction   (str, required)     — plain English modification instruction.
+      headers       (str)               — optional comma-separated column names.
+      data          (str)               — optional JSON array of arrays.
+      column_types  (str)               — optional "Col=type,…" or JSON object.
+      temperature   (float)             — 0.0–1.0, default 0.
+    """
+    kwargs, status, err = await _kwargs_from_request(request, require_description=False)
+    if status != 200:
+        return JSONResponse({"error": err}, status_code=status)
+    if "config" not in kwargs:
+        return JSONResponse({"error": "'config' is required"}, status_code=400)
+    if "instruction" not in kwargs:
+        return JSONResponse({"error": "'instruction' is required"}, status_code=400)
+    try:
+        result = modify_canvasxpress_config(**kwargs)
+    except Exception as exc:
+        log.exception("REST /modify error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/ui", methods=["GET"])
+async def rest_ui(request: Request) -> HTMLResponse:
+    """Serve the browser-based form UI at /ui."""
+    return HTMLResponse(_UI_HTML)
 
 
 # ---------------------------------------------------------------------------
