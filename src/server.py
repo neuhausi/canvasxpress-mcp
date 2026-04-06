@@ -52,16 +52,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("cx-mcp")
 
-def _sep(title: str = "") -> None:
-    """Print a debug separator to stderr."""
-    if DEBUG:
-        bar = "─" * 60
-        print("", file=sys.stderr)
-        print(bar, file=sys.stderr)
-        if title:
-            print("  " + title, file=sys.stderr)
-            print(bar, file=sys.stderr)
-
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -246,7 +236,7 @@ def detect_tier(
     return 1
 
 
-_SYSTEM_PROMPT_HEADER = """You are an expert CanvasXpress data visualization assistant.
+SYSTEM_PROMPT = """You are an expert CanvasXpress data visualization assistant.
 Your task is to generate a valid CanvasXpress JSON configuration object from a natural
 language description and optional column headers and column types.
 
@@ -427,7 +417,7 @@ def build_system_prompt(
     """
     tier       = detect_tier(description, headers, data)
     graph_type = detect_graph_type(description)
-    prompt     = _SYSTEM_PROMPT_HEADER
+    prompt     = SYSTEM_PROMPT
 
     # Inject live parameter+valid-values snippet from cx_knowledge
     param_snippet = cx_knowledge.get_param_snippet(graph_type=graph_type)
@@ -440,8 +430,6 @@ def build_system_prompt(
 # Warm the cx_knowledge schema cache
 cx_knowledge.warm_cache()
 
-# Alias for legacy references
-SYSTEM_PROMPT = _SYSTEM_PROMPT_HEADER
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
@@ -766,8 +754,9 @@ COLUMN_REF_KEYS = [
     "xAxis", "xAxis2", "yAxis", "zAxis",
     "groupingFactors", "segregateSamplesBy", "segregateVariablesBy",
     "smpOverlays", "varOverlays", "sankeyAxes",
-    "colorBy", "shapeBy", "sizeBy", "stackBy", "pivotBy",
+    "colorBy", "shapeBy", "sizeBy", "ellipseBy", "stackBy", "pivotBy",
     "ridgeBy", "splitSamplesBy", "splitVariablesBy",
+    "hierarchy",
 ]
 
 
@@ -986,7 +975,6 @@ def generate_canvasxpress_config(
 
 
 
-
 @mcp.tool(
     description=(
         "Modify an existing CanvasXpress config using a plain English instruction. "
@@ -1117,50 +1105,44 @@ def modify_canvasxpress_config(
 
 @mcp.tool(
     description=(
-        "Generate, validate, and annotate Kaplan-Meier survival plot configs for CanvasXpress. "
+        "Generate, validate, and detect columns for Kaplan-Meier survival plot configs. "
         "Accepts any combination of: a plain English description, column headers or a full data "
         "array, and/or an existing config to validate and fix. "
         "Automatically detects which columns are time, event, and grouping from the dataset. "
-        "Computes median survival and log-rank p-value from data and embeds them as decorations. "
+        "KM statistics (median survival, confidence intervals, log-rank p-value) are computed "
+        "and rendered by CanvasXpress itself. "
         "Examples: description='OS curve by treatment arm' with headers=['PatientID','OS_Time','OS_Status','Treatment']; "
-        "or config={...} to validate an existing KM config; "
-        "or data=[['ID','Time','Event','Arm'],[...]] to generate with annotations."
+        "or config={...} to validate an existing KM config."
     )
 )
 def generate_km_config(
-    description:     str | None = None,
-    headers:         list[str] | None = None,
-    data:            list[list] | None = None,
-    config:          dict | None = None,
-    add_annotations: bool = True,
-    temperature:     float = 0.0,
+    description: str | None = None,
+    headers:     list[str] | None = None,
+    data:        list[list] | None = None,
+    config:      dict | None = None,
+    temperature: float = 0.0,
 ) -> dict:
     """
     Args:
-        description:     Plain English description of the KM plot you want.
-                         e.g. "Overall survival by treatment arm with 95% CI"
-        headers:         Column names from your dataset.
-                         e.g. ["PatientID", "OS_Time", "OS_Status", "Treatment"]
-        data:            Full data array — first row must be column headers.
-                         e.g. [["ID","Time","Event","Arm"],["P1",24,1,"A"],...]
-                         When provided, headers are extracted automatically and
-                         statistics + decorations are computed from the data.
-        config:          An existing KM config to validate, fix, and/or enrich.
-                         e.g. {"graphType":"KaplanMeier","xAxis":["OS_Time"],...}
-        add_annotations: Whether to compute median survival and log-rank p-value
-                         from data and add them as decorations (default True).
-        temperature:     LLM creativity 0.0–1.0 (default 0.0 = deterministic).
+        description: Plain English description of the KM plot you want.
+                     e.g. "Overall survival by treatment arm with 95% CI"
+        headers:     Column names from your dataset.
+                     e.g. ["PatientID", "OS_Time", "OS_Status", "Treatment"]
+        data:        Full data array — first row must be column headers.
+                     e.g. [["ID","Time","Event","Arm"],["P1",24,1,"A"],...]
+                     When provided, headers are extracted automatically.
+        config:      An existing KM config to validate, fix, and/or enrich.
+                     e.g. {"graphType":"KaplanMeier","xAxis":["OS_Time"],...}
+        temperature: LLM creativity 0.0–1.0 (default 0.0 = deterministic).
 
     Returns:
         Dict with keys:
-          config            (dict)       - the CanvasXpress KM JSON config
-          valid             (bool)       - True if config passes all KM validation rules
-          errors            (list)       - must-fix issues (e.g. missing xAxis)
-          warnings          (list)       - should-fix issues and notes
-          suggestions       (list)       - optional improvements
-          column_detection  (dict|None)  - detected time/event/group columns + confidence
-          statistics        (dict|None)  - per-group n, n_events, median survival + log-rank p
-          decorations_added (bool)       - whether median/p-value decorations were added
+          config           (dict)      - the CanvasXpress KM JSON config
+          valid            (bool)      - True if config passes all KM validation rules
+          errors           (list)      - must-fix issues (e.g. missing xAxis)
+          warnings         (list)      - should-fix issues and notes
+          suggestions      (list)      - optional improvements
+          column_detection (dict|None) - detected time/event/group columns + confidence
     """
     log.info(
         "KM skill: description=%s headers=%s data_rows=%s config_keys=%s",
@@ -1171,14 +1153,12 @@ def generate_km_config(
 
     if not any([description, headers, data, config]):
         return {
-            "config":            {"graphType": "KaplanMeier"},
-            "valid":             False,
-            "errors":            ["At least one of description, headers, data, or config must be provided."],
-            "warnings":          [],
-            "suggestions":       ["Pass headers or data so columns can be detected automatically."],
-            "column_detection":  None,
-            "statistics":        None,
-            "decorations_added": False,
+            "config":           {"graphType": "KaplanMeier"},
+            "valid":            False,
+            "errors":           ["At least one of description, headers, data, or config must be provided."],
+            "warnings":         [],
+            "suggestions":      ["Pass headers or data so columns can be detected automatically."],
+            "column_detection": None,
         }
 
     return cx_survival.handle_generate_km(
@@ -1186,7 +1166,6 @@ def generate_km_config(
         headers         = headers,
         data            = data,
         config          = config,
-        add_annotations = add_annotations,
         temperature     = temperature,
         llm_complete_fn = llm_complete,
     )
