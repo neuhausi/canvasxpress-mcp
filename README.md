@@ -44,7 +44,7 @@ canvasxpress-mcp/
 │   ├── server.py           — FastMCP HTTP server (main entry point)
 │   ├── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI)
 │   ├── cx_knowledge.py     — Parameter knowledge skill (fetch, parse, validate, inject)
-│   └── cx_survival.py      — Kaplan-Meier skill (generate, detect columns, validate, annotate)
+│   └── cx_survival.py      — Kaplan-Meier skill (generate, detect columns, validate)
 │
 ├── data/
 │   ├── few_shot_examples.json  — RAG examples (add more to improve accuracy)
@@ -624,7 +624,7 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 |------|-------------|
 | `generate_canvasxpress_config` | Plain English + optional data/headers/types → validated JSON config |
 | `modify_canvasxpress_config` | Modify an existing config using a plain English instruction |
-| `generate_km_config` | Generate, validate, and annotate Kaplan-Meier survival plot configs |
+| `generate_km_config` | Generate, validate, and detect columns for Kaplan-Meier survival plot configs |
 | `query_canvasxpress_params` | Look up parameters, valid values, and descriptions from the live schema |
 | `get_axes_info` | Axis assignment rules for a given chart type (valid axes, forbidden axes, title params) |
 | `list_chart_types` | All 70+ chart types organised by category |
@@ -647,7 +647,11 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 
 A dedicated skill for Kaplan-Meier survival plots. Accepts any combination of a plain
 English description, column headers, a full data array, or an existing config — and
-handles all four capabilities automatically based on what you provide.
+handles three capabilities automatically based on what you provide.
+
+KM statistics (median survival, confidence intervals, log-rank p-value) are computed
+and rendered by CanvasXpress itself using `kmRiskTable`, `showKMConfidenceIntervals`,
+and `showKMMedianSurvivalTime`.
 
 **Arguments:**
 
@@ -655,9 +659,8 @@ handles all four capabilities automatically based on what you provide.
 |----------|------|----------|-------------|
 | `description` | string | ❌ | Plain English description of the KM plot |
 | `headers` | string[] | ❌ | Column names from your dataset |
-| `data` | array[][] | ❌ | Full data array — first row = headers. Enables statistics + decorations |
-| `config` | object | ❌ | Existing KM config to validate, fix, and enrich |
-| `add_annotations` | boolean | ❌ | Compute and embed median survival + log-rank p-value (default `true`) |
+| `data` | array[][] | ❌ | Full data array — first row = headers |
+| `config` | object | ❌ | Existing KM config to validate and fix |
 | `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
 
 At least one of `description`, `headers`, `data`, or `config` must be provided.
@@ -670,16 +673,14 @@ At least one of `description`, `headers`, `data`, or `config` must be provided.
     "graphType": "KaplanMeier",
     "xAxis": ["OS_Time"],
     "yAxis": ["OS_Status"],
-    "groupingFactors": ["Treatment"],
+    "colorBy": "Treatment",
     "xAxisTitle": "Time (months)",
     "yAxisTitle": "Survival Probability",
     "colorScheme": "Tableau",
     "showLegend": true,
-    "decorations": [
-      { "type": "line",  "value": 14.2, "color": "#1f77b4", "label": "Median Control: 14.2 months" },
-      { "type": "line",  "value": 22.8, "color": "#ff7f0e", "label": "Median Drug A: 22.8 months" },
-      { "type": "text",  "value": 0,    "color": "#333333", "label": "Log-rank p = 0.031" }
-    ]
+    "showKMConfidenceIntervals": true,
+    "showKMMedianSurvivalTime": true,
+    "kmRiskTable": true
   },
   "valid": true,
   "errors": [],
@@ -688,22 +689,22 @@ At least one of `description`, `headers`, `data`, or `config` must be provided.
   "column_detection": {
     "time_col":   "OS_Time",
     "event_col":  "OS_Status",
-    "group_cols": ["Treatment"],
+    "color_cols": ["Treatment"],
     "unassigned": ["PatientID"],
     "confidence": "high",
     "notes": []
-  },
-  "statistics": {
-    "groups": {
-      "Control": { "n": 45, "n_events": 38, "median_survival": 14.2 },
-      "Drug A":  { "n": 48, "n_events": 31, "median_survival": 22.8 }
-    },
-    "logrank_pvalue": 0.031,
-    "pvalue_str": "p = 0.031"
-  },
-  "decorations_added": true
+  }
 }
 ```
+
+**KM-specific visual parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `colorBy` | string | Column used to color/separate curves (e.g. `"Treatment"`) |
+| `kmRiskTable` | boolean | Show at-risk counts table below the plot |
+| `showKMConfidenceIntervals` | boolean | Show 95% confidence bands around each curve |
+| `showKMMedianSurvivalTime` | boolean | Annotate each curve with its median survival time |
 
 **What each capability does:**
 
@@ -720,15 +721,9 @@ Column roles from detection are injected directly into the prompt.
 
 **3. Config validation** — checks any provided or generated config against KM
 rules: `graphType` must be `"KaplanMeier"`, `xAxis` must hold the time column,
-`yAxis` must hold the event column, no forbidden single-dimensional params.
-Returns `errors` (must-fix), `warnings` (should-fix), and `suggestions`
-(nice-to-have), plus an auto-corrected `fixed_config`.
-
-**4. Statistical annotations** — when `data` is provided, computes per-group
-KM curves (pure Python, no scipy needed), extracts median survival times,
-and runs a log-rank test for two-group comparisons. Results are embedded
-as `decorations` in the config: vertical lines at each group's median
-survival time, and a text annotation with the log-rank p-value.
+`yAxis` must hold the event column, `colorBy` must be a plain string (not a list),
+`groupingFactors` is invalid and is auto-corrected to `colorBy`.
+Returns `errors` (must-fix), `warnings` (should-fix), and `suggestions` (nice-to-have).
 
 **Usage examples:**
 
@@ -744,13 +739,12 @@ generate_km_config(
     headers=["PatientID", "PFS_Time", "PFS_Status", "Stage"]
 )
 
-# From full data — generates config + computes statistics + adds decorations
+# From full data — detects columns and generates config
 generate_km_config(
     data=[
         ["PatientID", "Time", "Event", "Treatment"],
         ["P001", 24, 1, "Control"],
         ["P002", 18, 0, "Drug A"],
-        ...
     ]
 )
 
