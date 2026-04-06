@@ -245,8 +245,8 @@ index 3755f60..687bd76 100644
  from typing import Optional
 @@ -131,15 +133,51 @@ def _load_vector_index() -> bool:
          return False
- 
- 
+
+
 +
 +def _sqlite_connect(db_path: str):
 +    """Connect to sqlite3 with extension loading, using ctypes fallback if needed."""
@@ -285,7 +285,7 @@ index 3755f60..687bd76 100644
      """Retrieve top-k examples using sqlite-vec cosine similarity."""
      query_emb = _embed_model.encode([query], normalize_embeddings=True)[0]
      query_bytes = _serialize(query_emb.tolist())
- 
+
 -    db = sqlite3.connect(str(DB_FILE))
 -    db.enable_load_extension(True)
 +    db = _sqlite_connect(str(DB_FILE))
@@ -295,6 +295,6 @@ index 3755f60..687bd76 100644
 +        db.enable_load_extension(False)
 +    except AttributeError:
 +        pass
- 
+
      rows = db.execute(
          """
