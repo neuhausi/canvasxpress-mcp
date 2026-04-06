@@ -626,6 +626,7 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 | `modify_canvasxpress_config` | Modify an existing config using a plain English instruction |
 | `generate_km_config` | Generate, validate, and annotate Kaplan-Meier survival plot configs |
 | `query_canvasxpress_params` | Look up parameters, valid values, and descriptions from the live schema |
+| `get_axes_info` | Axis assignment rules for a given chart type (valid axes, forbidden axes, title params) |
 | `list_chart_types` | All 70+ chart types organised by category |
 | `explain_config_property` | Explains any CanvasXpress config property |
 | `get_minimal_parameters` | Required parameters for a given graph type |
@@ -826,6 +827,66 @@ The skill powers three things at once, automatically — you don't need to call 
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to always use cache / bundled schema (no GitHub fetch) |
 
+
+---
+
+### `get_axes_info`
+
+Returns axis assignment rules for any CanvasXpress graph type — which axis keys are
+valid, which are forbidden, and which axis title parameter to use.
+
+**Arguments:**
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `graph_type` | string | ✅ | Chart type e.g. `"Bar"`, `"Scatter2D"`, `"BarLine"` |
+
+**Response:**
+
+```json
+// get_axes_info(graph_type="Bar")
+{
+  "graph_type":       "Bar",
+  "category":         "single_dim",
+  "valid_axes":       ["xAxis"],
+  "invalid_axes":     ["yAxis"],
+  "axis_title_param": "smpTitle",
+  "notes": "Bar is single-dimensional: xAxis holds the NUMERIC column(s). The categorical dimension (samples) is populated automatically from the data — do not put category names in xAxis. Use smpTitle to label the sample axis. Never use yAxis or yAxisTitle.",
+  "schema_snippet":   "..."
+}
+
+// get_axes_info(graph_type="Scatter2D")
+{
+  "graph_type":       "Scatter2D",
+  "category":         "multi_dim",
+  "valid_axes":       ["xAxis", "yAxis"],
+  "invalid_axes":     [],
+  "axis_title_param": "xAxisTitle / yAxisTitle",
+  "notes": "Scatter2D requires both xAxis (numeric) and yAxis (numeric). Use xAxisTitle and yAxisTitle for axis labels. Never use smpTitle.",
+  "schema_snippet":   "..."
+}
+
+// get_axes_info(graph_type="BarLine")
+{
+  "graph_type":       "BarLine",
+  "category":         "combined",
+  "valid_axes":       ["xAxis", "xAxis2"],
+  "invalid_axes":     ["yAxis"],
+  "axis_title_param": "smpTitle",
+  "notes": "BarLine uses xAxis for the primary numeric series and xAxis2 for the secondary numeric series. Never use yAxis. Use smpTitle to label the categorical sample axis, never yAxisTitle.",
+  "schema_snippet":   "..."
+}
+```
+
+**Categories:**
+
+| Category | Chart types | Valid axes | Axis title param |
+|----------|-------------|------------|-----------------|
+| `single_dim` | Bar, Boxplot, Violin, Heatmap, Line, Area, Histogram, Pie, Donut, and most others | `xAxis` only | `smpTitle` |
+| `multi_dim` | Scatter2D, Scatter3D, ScatterBubble2D, Volcano, KaplanMeier, TimeSeries, Spaghetti, Contour, Streamgraph, Bump | `xAxis` + `yAxis` (+ `zAxis` for 3D/bubble) | `xAxisTitle` / `yAxisTitle` |
+| `combined` | AreaLine, BarLine, DotLine, Pareto, StackedLine, StackedPercentLine | `xAxis` + `xAxis2` | `smpTitle` |
+
+This tool is a fast, no-LLM lookup — it returns immediately from in-memory rules.
 
 ---
 

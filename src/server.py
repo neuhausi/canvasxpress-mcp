@@ -1231,6 +1231,92 @@ def query_canvasxpress_params(
         param_name=param_name,
     )
 
+@mcp.tool(
+    description=(
+        "Return axis assignment rules for a given CanvasXpress graph type. "
+        "Explains which axis keys are valid (xAxis, yAxis, zAxis, xAxis2), "
+        "which are forbidden, what data types belong on each axis, and which "
+        "axis title parameter applies (smpTitle vs xAxisTitle/yAxisTitle). "
+        "Use this before generating or modifying a config when you are unsure "
+        "about axis structure for a chart type. "
+        "Examples: graph_type='Bar', 'Scatter2D', 'Heatmap', 'KaplanMeier', 'BarLine'."
+    )
+)
+def get_axes_info(graph_type: str) -> dict:
+    """
+    Args:
+        graph_type: CanvasXpress graph type string, e.g. "Bar", "Scatter2D", "Heatmap".
+
+    Returns:
+        Dict with keys:
+          graph_type        (str)  - the requested graph type
+          category          (str)  - "single_dim" | "multi_dim" | "combined"
+          valid_axes        (list) - axis keys that apply (e.g. ["xAxis"])
+          invalid_axes      (list) - axis keys that must NOT be used
+          axis_title_param  (str)  - correct axis title param for the category
+          notes             (str)  - human-readable summary of the axis rules
+          schema_snippet    (str)  - relevant axis params from the live cx_knowledge schema
+    """
+    COMBINED = {"AreaLine", "BarLine", "DotLine", "Pareto", "StackedLine", "StackedPercentLine"}
+    MULTI_DIM = {
+        "Scatter2D", "Scatter3D", "ScatterBubble2D", "Volcano", "Spaghetti",
+        "Contour", "Streamgraph", "Bump", "KaplanMeier", "TimeSeries",
+    }
+
+    gt = graph_type.strip()
+
+    if gt in MULTI_DIM:
+        needs_z = gt in {"Scatter3D", "ScatterBubble2D"}
+        valid_axes = ["xAxis", "yAxis"] + (["zAxis"] if needs_z else [])
+        category = "multi_dim"
+        invalid_axes = []
+        axis_title_param = "xAxisTitle / yAxisTitle"
+        notes = (
+            f"{gt} requires both xAxis (numeric) and yAxis (numeric). "
+            + ("Also requires zAxis. " if needs_z else "")
+            + "Use xAxisTitle and yAxisTitle for axis labels. Never use smpTitle."
+        )
+    elif gt in COMBINED:
+        valid_axes = ["xAxis", "xAxis2"]
+        category = "combined"
+        invalid_axes = ["yAxis"]
+        axis_title_param = "smpTitle"
+        notes = (
+            f"{gt} uses xAxis for the primary numeric series and xAxis2 for the "
+            "secondary numeric series. Never use yAxis. "
+            "Use smpTitle to label the categorical sample axis, never yAxisTitle."
+        )
+    else:
+        # Default to single_dim (covers known + unknown graph types)
+        valid_axes = ["xAxis"]
+        category = "single_dim"
+        invalid_axes = ["yAxis"]
+        axis_title_param = "smpTitle"
+        heatmap_note = (
+            " Exception: for Heatmap, the variable names (genes/features) go in "
+            "xAxis because that is how CanvasXpress structures heatmap data."
+            if gt == "Heatmap" else ""
+        )
+        notes = (
+            f"{gt} is single-dimensional: xAxis holds the NUMERIC column(s). "
+            "The categorical dimension (samples) is populated automatically from the data — "
+            "do not put category names in xAxis. "
+            "Use smpTitle to label the sample axis. "
+            "Never use yAxis or yAxisTitle." + heatmap_note
+        )
+
+    snippet = cx_knowledge.get_param_snippet(graph_type=gt)
+    return {
+        "graph_type":       gt,
+        "category":         category,
+        "valid_axes":       valid_axes,
+        "invalid_axes":     invalid_axes,
+        "axis_title_param": axis_title_param,
+        "notes":            notes,
+        "schema_snippet":   snippet or "(schema not loaded)",
+    }
+
+
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
 def list_chart_types() -> dict:
     """Returns chart types organized by category."""
