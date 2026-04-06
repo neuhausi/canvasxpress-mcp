@@ -222,13 +222,22 @@ _BUNDLED_SCHEMA: dict[str, dict] = {
     "xAxisTitle":     {"description":"Label for the x-axis.",                          "type":"string", "graph_types":["all"],"valid_values":[]},
     "yAxisTitle":     {"description":"Label for the y-axis (multi-dimensional charts).","type":"string", "graph_types":["Scatter2D","Scatter3D","ScatterBubble2D","Spaghetti","Volcano","KaplanMeier","Contour","Streamgraph","Bump"],"valid_values":[]},
     "zAxisTitle":     {"description":"Label for the z-axis (3D charts).",              "type":"string", "graph_types":["Scatter3D","ScatterBubble2D"],"valid_values":[]},
+
     "smpTitle":              {"description":"Sample axis label for single-dimensional and combined charts. Use instead of yAxisTitle for 1D/combined types.","type":"string","graph_types":["all"],"valid_values":[]},
     "smpTextColor":          {"description":"Colour of sample axis tick labels (1D/combined charts only).","type":"string","graph_types":["all"],"valid_values":[]},
     "smpTextFontStyle":      {"description":"Font style of sample axis tick labels.","type":"string","graph_types":["all"],"valid_values":["normal","bold","italic","bold italic"]},
     "smpTextScaleFontFactor":{"description":"Scale factor for sample axis tick label font size.","type":"numeric","graph_types":["all"],"valid_values":[]},
+    "smpTextRotate":         {"description":"Rotation angle for sample labels.","type":"numeric","graph_types":["Area","Bar","Boxplot","Dotplot","Line","Stacked","StackedPercent","Violin"],"valid_values":[]},
     "smpTitleColor":         {"description":"Colour of the smpTitle text.","type":"string","graph_types":["all"],"valid_values":[]},
     "smpTitleFontStyle":     {"description":"Font style of the smpTitle text.","type":"string","graph_types":["all"],"valid_values":["normal","bold","italic","bold italic"]},
     "smpTitleScaleFontFactor":{"description":"Scale factor for smpTitle font size.","type":"numeric","graph_types":["all"],"valid_values":[]},
+
+
+
+
+
+
+
     "background":     {"description":"Canvas background colour (any CSS colour string).","type":"string","graph_types":["all"],"valid_values":[]},
     "dataPointSize":  {"description":"Radius of individual data points in pixels.",    "type":"numeric","graph_types":["Scatter2D","Scatter3D","ScatterBubble2D","Spaghetti","Contour"],"valid_values":[]},
     "dendrogramSpace":{"description":"Pixels reserved for dendrograms on heatmaps.",  "type":"numeric","graph_types":["Heatmap","Correlation"],"valid_values":[]},
@@ -725,31 +734,63 @@ def filter_unknown_params(config: dict) -> tuple[dict, list[str]]:
     _ALWAYS_ALLOWED = {
         "graphType", "data", "events",
         "xAxis", "xAxis2", "yAxis", "zAxis",
-        "groupingFactors", "colorBy", "shapeBy", "sizeBy",
-        "sankeyAxes", "hierarchy", "vennGroups",
-        "decorations", "filterData", "sortData",
-        "smpOverlays", "varOverlays",
-        "segregateSamplesBy", "segregateVariablesBy",
-        "ridgeBy", "stackBy", "pivotBy", "lineBy",
         "ganttStart", "ganttEnd",
-        "ellipseBy",
-        "smpTitle","smpTextColor","smpTextFontStyle","smpTextScaleFontFactor",
-        "smpTitleColor","smpTitleFontStyle","smpTitleScaleFontFactor",
-        "title", "background",
-        "xAxisTitle", "yAxisTitle", "zAxisTitle", "smpTitle",
-        "setMinX", "setMaxX", "setMinY", "setMaxY",
-        "showLegend", "legendPosition",
-        "colorScheme", "theme", "graphOrientation",
-        "transformData", "xAxisTransform", "yAxisTransform",
-        "samplesClustered", "variablesClustered",
-        "heatmapIndicator", "dendrogramSpace",
-        "showRegressionFit", "showLoessFit", "showConfidenceIntervals",
-        "regressionType", "dataPointSize", "jitter",
-        "showBoxplotOriginalData", "boxplotNotched", "boxplotType",
-        "showViolinBoxplot", "showViolinQuantiles", "violinScale", "violinTrim",
-        "showDataPoints", "lineType", "lineErrorType", "areaType",
-        "histogramType", "densityPosition", "dumbbellType",
-        "sortDir", "barZero", "stackBy",
+        # Sorting and Filtering
+        "sortData", "filterData",
+        # Grouping and Hierarchy
+        "groupingFactors", "hierarchy", "sankeyAxes",
+        # Labeling and Selecting
+        "labelBy", "labelSelect", "optimizeTextPosition",
+        # Axis and Data Transformations
+        "xAxisTransform", "yAxisTransform", "transformData",
+        # Range and Scales
+        "setMinX", "setMaxX", "setMinY", "setMaxY", "setMin", "setMax",
+        # Graph Orientation
+        "graphOrientation",
+        # Themes and color schemes
+        "theme", "colorScheme",
+        # Graph Title
+        "title", "titleScaleFontFactor", "titleColor",
+        # X Axis Titles & Ticks
+        "xAxisTitle", "xAxisTitleScaleFontFactor", "xAxisTextColor", "xAxisTextScaleFontFactor", "xAxisTextColor",
+        # Y Axis Titles & Ticks
+        "yAxisTitle", "yAxisTitleScaleFontFactor", "yAxisTextColor", "yAxisTextScaleFontFactor", "yAxisTextColor",
+        # Z Axis Titles & Ticks
+        "zAxisTitle", "zAxisTitleScaleFontFactor", "zAxisTextColor", "zAxisTextScaleFontFactor", "zAxisTextColor",
+        # Sample Titles & Labels
+        "smpTitle", "smpTitleScaleFontFactor", "smpTitleColor", "smpTextScaleFontFactor", "smpTextColor", "smpTextRotate",
+        # Variable Titles & Labels
+        "varTitle", "varTitleScaleFontFactor", "varTitleColor", "varTextScaleFontFactor", "varTextColor", "varTextRotate",
+        # Sankey Titles & Labels
+        "sankeyTitleScaleFontFactor", "sankeyTitleColor", "sankeyTextScaleFontFactor", "sankeyTextColor",
+        # Aesthetics by Column Mapping
+        "colorBy", "shapeBy", "sizeBy", "lineBy", "ridgeBy", "ellipseBy",
+        # Data point sizing & layout styles
+        "dataPointSizeScaleFactor", "showBoxplotOriginalData", "jitter", "sina", "binned", "binAlignment",
+        # Legends
+        "showLegend", "legendPosition", "legendColumns",
+        # Fits
+        "showRegressionFit", "showLoessFit", "showQuantileRegressionFit", "showConfidenceIntervals", "regressionType",
+        # Data Overlays
+        "smpOverlays", "varOverlays",
+        # Line Decorations
+        "decorations",
+        # Area & Line styles
+        "areaType", "areaStyle", "lineType",
+        # Boxplot & Violin plots
+        "boxplotWhiskersType", "showBoxplotIfViolin", "violinTrim", "boxplotNotched", "boxplotType", "violinScale",
+        # Distributions (Density, Histogram, Ridgeline)
+        "histogramType", "showHistogramDensity", "showFilledHistogramDensity", "showHistogramMedian",
+        "showHistogramBars", "densityPosition","showHistogramQuantiles", "showHistogramDataPoints",
+        # Contour Plots
+        "contourFilled", "showContourDataPoints",
+        # Clustering, Heatmap, Circular, Venn, Bullet
+        "variablesClustered", "samplesClustered", "bulletTargetVarName", "rangeStack",
+        "rAxis", "circularTrackName", "vennGroups",
+        # Faceting and Pivoting
+        "segregateSamplesBy", "segregateVariablesBy", "pivotBy",
+        ## Other
+        "showViolinQuantiles", "lineErrorType", "dumbbellType", "sortDir", "barZero", "stackBy",
     }
 
     filtered: dict = {}

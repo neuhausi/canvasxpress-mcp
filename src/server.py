@@ -30,7 +30,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")  # load .env before any os.en
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse
+from starlette.responses import JSONResponse, HTMLResponse, Response
 
 import numpy as np
 import sqlite_vec
@@ -77,7 +77,7 @@ HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8100"))
 CORS_ORIGINS = [
     o.strip()
-    for o in os.environ.get("CORS_ORIGINS", "http://localhost:8100,http://127.0.0.1:8100").split(",")
+    for o in os.environ.get("CORS_ORIGINS", "*").split(",")
     if o.strip()
 ]
 
@@ -281,7 +281,8 @@ SINGLE-DIMENSIONAL (xAxis ONLY — NEVER yAxis):
                 Samples are NOT set via a parameter — they come from the data automatically.
   - smpTitle labels the sample/categorical axis. It is the equivalent of what yAxisTitle
     is for multi-dimensional graphs, but for the categorical dimension of 1D charts.
-    Use smpTitle instead of yAxisTitle on all single-dimensional chart types.
+    Use smpTitle instead of yAxisTitle on all single-dimensional chart types; use
+    smpText, smpTextColor, smpTextScaleFontFactor, smpTextRotate, etc, for sample axis labels.
 
   Examples of correct xAxis assignment:
     "Bar chart of Expression values per Gene"
@@ -1435,21 +1436,33 @@ def get_minimal_parameters(graph_type: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _parse_col_types(raw: str) -> dict:
-    """Accept JSON object OR 'Col=type,Col2=type2' shorthand."""
+    """
+    Accept either format:
+      JSON object :  '{"Gene":"string","Sample1":"numeric"}'
+      name=type   :  'Gene=string, Sample1=numeric, Treatment=factor'  (CanvasXpress JS format)
+    Returns {} for blank input.
+    """
     raw = raw.strip()
+    if not raw:
+        return {}
     if raw.startswith("{"):
         return json.loads(raw)
     result = {}
     for item in raw.split(","):
         item = item.strip()
         if "=" in item:
-            k, v = item.split("=", 1)
-            result[k.strip()] = v.strip()
+            k, _, v = item.partition("=")
+            k, v = k.strip(), v.strip()
+            if k and v:
+                result[k] = v
     return result
 
 
-async def _kwargs_from_request(request: Request, require_description: bool = True) -> dict | tuple[dict, int, str]:
-    """Extract generate/modify kwargs from a GET query string or POST JSON/form body."""
+async def _kwargs_from_request(request: Request, require_description: bool = True) -> tuple[dict, int, str]:
+    """Extract generate/modify kwargs from a GET query string or POST JSON/form body.
+    Also returns any CanvasXpress pass-through params (target, client_id) in the dict
+    under the key '_cx' so callers can include them in JSONP responses.
+    """
     if request.method == "GET":
         p = dict(request.query_params)
     else:
@@ -1464,6 +1477,7 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
 
     # description / prompt (aliases)
     desc = p.get("description") or p.get("prompt") or p.get("q") or ""
+    desc = desc.strip()
     if require_description and not desc:
         return {}, 400, "'description' (or 'prompt') is required"
     if desc:
@@ -1478,32 +1492,38 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
         v = p["config"]
         kwargs["config"] = json.loads(v) if isinstance(v, str) else v
 
-    # headers — comma-separated string or JSON array
-    if "headers" in p:
-        v = p["headers"]
-        if isinstance(v, str):
-            v = v.strip()
-            kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",")]
-        else:
-            kwargs["headers"] = v
+    # headers — comma-separated string or JSON array; skip if empty
+    if p.get("headers", "").strip():
+        v = p["headers"].strip()
+        kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",") if h.strip()]
 
     # data — JSON array of arrays
     if "data" in p:
         v = p["data"]
         kwargs["data"] = json.loads(v) if isinstance(v, str) else v
 
-    # column_types — JSON object or "Col=type,Col2=type2"
+    # column_types — JSON object or "Col=type, Col2=type2"; skip if empty
     for key in ("column_types", "types"):
-        if key in p:
-            v = p[key]
-            kwargs["column_types"] = json.loads(v) if (isinstance(v, str) and v.strip().startswith("{")) else (
-                _parse_col_types(v) if isinstance(v, str) else v
-            )
+        if p.get(key, "").strip():
+            parsed = _parse_col_types(p[key])
+            if parsed:
+                kwargs["column_types"] = parsed
             break
 
     # temperature
     if "temperature" in p:
-        kwargs["temperature"] = float(p["temperature"])
+        try:
+            kwargs["temperature"] = float(p["temperature"])
+        except (ValueError, TypeError):
+            pass  # ignore bad values, use default
+
+    # CanvasXpress pass-through params — stored under _cx, not forwarded to tools
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]    = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]    = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"]  = p["callback"].strip()
+    if desc:                           cx["prompt"]     = desc
+    kwargs["_cx"] = cx
 
     return kwargs, 200, ""
 
@@ -1737,39 +1757,87 @@ async function submit() {
 """
 
 
-@mcp.custom_route("/generate", methods=["GET", "POST"])
-async def rest_generate(request: Request) -> JSONResponse:
+def _cx_response(result: dict, cx: dict, status: int = 200) -> Response:
     """
-    REST endpoint for generate_canvasxpress_config.
+    Return either a JSONP or plain JSON response depending on whether the
+    CanvasXpress 'callback' parameter was present in the request.
 
-    GET  /generate?description=Violin+plot&headers=Gene,Expr,CellType&column_types=Gene%3Dstring%2CExpr%3Dnumeric%2CCellType%3Dfactor
-    POST /generate   (JSON body with same keys, or application/x-www-form-urlencoded)
+    JSONP format (used by CanvasXpress askLLM() script-tag injection):
+        CanvasXpress.callbackLLM({...json...});
+        Content-Type: application/javascript
+
+    Plain JSON (used by fetch() / REST clients):
+        {...json...}
+        Content-Type: application/json
+
+    Also enriches the result with the fields callbackLLM expects:
+        success, prompt, datetime, target, client
+    """
+    import re
+    from datetime import datetime, timezone
+
+    # Enrich with CanvasXpress-expected fields
+    result.setdefault("success", result.get("valid", True))
+    if cx.get("prompt"):
+        result.setdefault("prompt", cx["prompt"])
+    if cx.get("target"):
+        result["target"] = cx["target"]
+    if cx.get("client"):
+        result["client"] = cx["client"]
+    result["datetime"] = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    callback = cx.get("callback", "").strip()
+    if callback:
+        # Sanitise callback name — allow only alphanumeric, dots, underscores
+        safe_cb = re.sub(r"[^a-zA-Z0-9_.]", "", callback)
+        body = f"{safe_cb}({json.dumps(result)});".encode("utf-8")
+        return Response(
+            content=body,
+            status_code=status,
+            media_type="application/javascript; charset=utf-8",
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    return JSONResponse(result, status_code=status)
+
+
+@mcp.custom_route("/generate", methods=["GET", "POST"])
+async def rest_generate(request: Request) -> Response:
+    """
+    REST / JSONP endpoint for generate_canvasxpress_config.
+
+    JSON  (fetch):  GET /generate?description=Violin+plot&headers=Gene,Expr
+    JSONP (script): GET /generate?callback=CanvasXpress.callbackLLM&target=myChart
+                        &description=...&headers=...&column_types=Gene=string,Expr=numeric
+                        &temperature=0&client_id=...
 
     Query / body parameters:
       description   (str, required) — plain English chart description. Alias: prompt, q.
       headers       (str)           — comma-separated column names, or JSON array.
       data          (str)           — JSON array of arrays (first row = header row).
-      column_types  (str)           — "Col=type,…" or JSON object. Alias: types.
-                                      Valid types: string, numeric, factor, date.
+      column_types  (str)           — "Col=type, …" or JSON object. Alias: types.
       temperature   (float)         — 0.0–1.0, default 0.
+      callback      (str)           — JSONP callback (CanvasXpress.callbackLLM).
+      target        (str)           — CanvasXpress chart target ID (passed through).
+      client_id     (str)           — CanvasXpress client ID (passed through as 'client').
     """
     kwargs, status, err = await _kwargs_from_request(request, require_description=True)
+    cx = kwargs.pop("_cx", {})
     if status != 200:
-        return JSONResponse({"error": err}, status_code=status)
+        return _cx_response({"error": err, "success": False}, cx, status)
     try:
         result = generate_canvasxpress_config(**kwargs)
     except Exception as exc:
         log.exception("REST /generate error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/modify", methods=["GET", "POST"])
-async def rest_modify(request: Request) -> JSONResponse:
+async def rest_modify(request: Request) -> Response:
     """
-    REST endpoint for modify_canvasxpress_config.
+    REST / JSONP endpoint for modify_canvasxpress_config.
 
-    GET  /modify?config={"graphType":"Bar","xAxis":["Gene"]}&instruction=add+a+title+My+Chart
+    GET  /modify?config={"graphType":"Bar",...}&instruction=add+a+title
     POST /modify   (JSON body with same keys)
 
     Query / body parameters:
@@ -1779,20 +1847,24 @@ async def rest_modify(request: Request) -> JSONResponse:
       data          (str)               — optional JSON array of arrays.
       column_types  (str)               — optional "Col=type,…" or JSON object.
       temperature   (float)             — 0.0–1.0, default 0.
+      callback      (str)               — JSONP callback name.
+      target        (str)               — CanvasXpress chart target ID (passed through).
+      client_id     (str)               — CanvasXpress client ID (passed through).
     """
     kwargs, status, err = await _kwargs_from_request(request, require_description=False)
+    cx = kwargs.pop("_cx", {})
     if status != 200:
-        return JSONResponse({"error": err}, status_code=status)
+        return _cx_response({"error": err, "success": False}, cx, status)
     if "config" not in kwargs:
-        return JSONResponse({"error": "'config' is required"}, status_code=400)
+        return _cx_response({"error": "'config' is required", "success": False}, cx, 400)
     if "instruction" not in kwargs:
-        return JSONResponse({"error": "'instruction' is required"}, status_code=400)
+        return _cx_response({"error": "'instruction' is required", "success": False}, cx, 400)
     try:
         result = modify_canvasxpress_config(**kwargs)
     except Exception as exc:
         log.exception("REST /modify error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/ui", methods=["GET"])
