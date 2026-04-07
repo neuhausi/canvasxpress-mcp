@@ -16,5 +16,5 @@ python-dotenv>=1.0.0
 # openai>=1.30.0
 
 # Google Gemini (LLM_PROVIDER=gemini)
-# pip install google-generativeai
-# google-generativeai>=0.8.0
+# pip install google-genai
+# google-genai>=1.0.0

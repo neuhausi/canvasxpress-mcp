@@ -58,8 +58,8 @@ OPENAI_CORPORATE  (LLM_PROVIDER=openai_corporate)
 GEMINI     (LLM_PROVIDER=gemini)
   GEMINI_API_KEY      — required (Google AI Studio key)
   LLM_MODEL           — default: gemini-2.0-flash
-                        Other options: gemini-2.0-pro, gemini-1.5-flash,
-                          gemini-1.5-pro
+                        Other options: gemini-2.5-flash, gemini-2.5-pro,
+                          gemini-2.0-pro
 
 ────────────────────────────────────────────────────────────────────────────
 Quick start
@@ -245,11 +245,11 @@ def _get_gemini():
     global _gemini_client
     if _gemini_client is None:
         try:
-            import google.generativeai as _genai
+            from google import genai as _genai
         except ImportError:
             raise ImportError(
-                "google-generativeai is required for the Gemini provider. Install it:\n"
-                "  pip install google-generativeai"
+                "google-genai is required for the Gemini provider. Install it:\n"
+                "  pip install google-genai"
             )
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
@@ -257,8 +257,7 @@ def _get_gemini():
                 "GEMINI_API_KEY is not set. "
                 "Get a key from Google AI Studio and export it before starting the server."
             )
-        _genai.configure(api_key=api_key)
-        _gemini_client = _genai
+        _gemini_client = _genai.Client(api_key=api_key)
         log.info("Gemini client initialised (model: %s)", MODEL)
     return _gemini_client
 
@@ -457,20 +456,19 @@ def _complete_gemini(
     max_tokens: int,
 ) -> tuple[str, dict]:
     """Call the Google Gemini API."""
-    genai = _get_gemini()
+    from google.genai import types as _genai_types
 
-    generation_config = genai.types.GenerationConfig(
-        temperature=temperature,
-        max_output_tokens=max_tokens,
+    client = _get_gemini()
+
+    response = client.models.generate_content(
+        model=model,
+        contents=user,
+        config=_genai_types.GenerateContentConfig(
+            system_instruction=system,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        ),
     )
-
-    gemini_model = genai.GenerativeModel(
-        model_name=model,
-        system_instruction=system,
-        generation_config=generation_config,
-    )
-
-    response = gemini_model.generate_content(user)
 
     text = response.text or ""
     candidate = response.candidates[0] if response.candidates else None
