@@ -669,6 +669,8 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 | `list_chart_types` | All 70+ chart types organised by category |
 | `explain_config_property` | Explains any CanvasXpress config property |
 | `get_minimal_parameters` | Required parameters for a given graph type |
+| `explain_canvasxpress_r` | How to use CanvasXpress in R — installation, data format, Shiny, R Markdown |
+| `explain_canvasxpress_ggplot` | How to convert a ggplot2 object to an interactive CanvasXpress widget |
 
 ### `generate_canvasxpress_config` arguments
 
@@ -994,3 +996,112 @@ modified = modify_canvasxpress_config(
 #                       "title": "Expression Heatmap", ...}
 # modified["changes"] = {"added": ["title"], "removed": [], "changed": ["colorScheme"]}
 ```
+
+---
+
+### `explain_canvasxpress_r`
+
+Explains how to use CanvasXpress in R. The canvasXpress R package wraps the CanvasXpress
+JavaScript library as an htmlwidget, enabling interactive charts in RStudio, Shiny apps,
+and R Markdown / Quarto documents.
+
+**Arguments:**
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `topic` | string | ❌ | Filter by topic: `installation`, `basic`, `data`, `config`, `shiny`, `rmarkdown`. Returns all topics if omitted. |
+
+**Topics:**
+
+| Topic | Content |
+|-------|---------|
+| `installation` | Install from CRAN or GitHub, `library(canvasXpress)` |
+| `basic` | `canvasXpress()` function, bar chart and scatter plot examples |
+| `data` | Standard matrix orientation vs. `asSampleData = TRUE`, `smpAnnot` / `varAnnot` |
+| `config` | Mapping JSON config params to R function arguments, using the `config` list |
+| `shiny` | `canvasXpressOutput()` / `renderCanvasXpress()`, reactive updates |
+| `rmarkdown` | Interactive HTML widget in R Markdown and Quarto, exporting to static HTML |
+
+**Quick example:**
+
+```r
+library(canvasXpress)
+
+# Bar chart — data: rows = variables, columns = samples
+canvasXpress(
+  data        = t(mtcars[1:5, 1:4]),
+  graphType   = "Bar",
+  title       = "My Bar Chart",
+  colorScheme = "Blues"
+)
+
+# Scatter plot using sample-as-rows orientation
+canvasXpress(
+  data         = mtcars,
+  asSampleData = TRUE,
+  graphType    = "Scatter2D",
+  xAxis        = list("wt"),
+  yAxis        = list("mpg"),
+  colorBy      = "cyl",
+  title        = "Weight vs MPG"
+)
+```
+
+All CanvasXpress JSON config parameters map directly to R function arguments.
+Use `do.call(canvasXpress, c(list(data = data), cfg))` to pass a named list of parameters.
+
+---
+
+### `explain_canvasxpress_ggplot`
+
+Explains how to convert a ggplot2 plot into an interactive CanvasXpress widget.
+`canvasXpress()` accepts a ggplot object directly — no separate bridge function needed.
+It parses the ggplot object's layers, geoms, and aesthetic mappings, converts them to a
+CanvasXpress JSON config, and renders an interactive chart with tooltips, zooming, and
+legend toggling.
+
+**Arguments:**
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `topic` | string | ❌ | Filter by topic: `overview`, `installation`, `geoms`, `example`. Returns all topics if omitted. |
+
+**Supported geom types (22+):**
+
+| Category | Geoms |
+|----------|-------|
+| Statistical & Density | `geom_density()`, `geom_density_2d()`, `geom_smooth()`, `geom_contour()` |
+| Categorical | `geom_bar()`, `geom_col()`, `geom_boxplot()`, `geom_violin()` |
+| Positional | `geom_point()`, `geom_jitter()`, `geom_dotplot()`, `geom_rug()` |
+| Connectors | `geom_path()`, `geom_line()`, `geom_step()`, `geom_ribbon()`, `geom_area()` |
+| Annotations | `geom_text()`, `geom_label()`, `geom_abline()`, `geom_hline()`, `geom_vline()` |
+| Binning | `geom_bin2d()`, `geom_hex()` |
+| Other | `geom_qq()`, `geom_quantile()`, `geom_raster()` |
+
+**Quick example:**
+
+```r
+library(ggplot2)
+library(canvasXpress)
+
+# Build a ggplot as normal, then pass it to canvasXpress()
+p <- ggplot(iris, aes(x = Petal.Length, y = Petal.Width, color = Species)) +
+       geom_point(size = 3) +
+       labs(title = "Iris Petal Length vs. Width") +
+       theme_minimal()
+
+canvasXpress(p)  # renders as an interactive CanvasXpress widget
+
+# Boxplot
+p2 <- ggplot(iris, aes(x = Species, y = Sepal.Length, fill = Species)) +
+        geom_boxplot()
+canvasXpress(p2)
+
+# Scatter with smoothing
+p3 <- ggplot(mtcars, aes(x = wt, y = mpg)) +
+        geom_point() +
+        geom_smooth(method = "lm")
+canvasXpress(p3)
+```
+
+The resulting widget includes interactive tooltips, zooming, pan, and legend toggling.

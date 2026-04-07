@@ -1424,6 +1424,315 @@ def explain_config_property(property: str) -> str:
     )
 
 
+@mcp.tool(
+    description=(
+        "Explain how to use CanvasXpress in R. "
+        "Covers installation, basic usage, creating charts with canvasXpress(), "
+        "passing data frames, setting config parameters, and running in Shiny or R Markdown. "
+        "Optionally filter by topic: 'installation', 'basic', 'shiny', 'rmarkdown', 'data', 'config'. "
+        "Use this when a user asks how to use CanvasXpress in R or wants R code examples."
+    )
+)
+def explain_canvasxpress_r(topic: str | None = None) -> dict:
+    """
+    Args:
+        topic: Optional topic filter. One of: 'installation', 'basic', 'shiny',
+               'rmarkdown', 'data', 'config'. Returns all topics if omitted.
+
+    Returns:
+        Dict with topic sections explaining CanvasXpress usage in R.
+    """
+    sections = {
+        "installation": {
+            "title": "Installation",
+            "content": (
+                "Install from CRAN:\n"
+                "  install.packages('canvasXpress')\n\n"
+                "Or install the development version from GitHub:\n"
+                "  # install.packages('devtools')\n"
+                "  devtools::install_github('neuhausi/canvasXpress')\n\n"
+                "Load the package:\n"
+                "  library(canvasXpress)"
+            ),
+        },
+        "basic": {
+            "title": "Basic Usage",
+            "content": (
+                "The main function is canvasXpress(). It accepts a data matrix/data frame "
+                "and a list of configuration options.\n\n"
+                "Simple bar chart example:\n"
+                "  library(canvasXpress)\n\n"
+                "  # Data: rows = variables/genes, cols = samples\n"
+                "  data <- t(mtcars[1:5, 1:4])\n\n"
+                "  canvasXpress(\n"
+                "    data            = data,\n"
+                "    graphType       = 'Bar',\n"
+                "    title           = 'My Bar Chart',\n"
+                "    colorScheme     = 'Blues'\n"
+                "  )\n\n"
+                "Scatter plot example:\n"
+                "  canvasXpress(\n"
+                "    data            = mtcars,\n"
+                "    asSampleData    = TRUE,\n"
+                "    graphType       = 'Scatter2D',\n"
+                "    xAxis           = list('wt'),\n"
+                "    yAxis           = list('mpg'),\n"
+                "    colorBy         = 'cyl',\n"
+                "    title           = 'Weight vs MPG'\n"
+                "  )"
+            ),
+        },
+        "data": {
+            "title": "Data Format",
+            "content": (
+                "CanvasXpress in R expects data in one of two orientations:\n\n"
+                "1. Standard matrix orientation (default):\n"
+                "   - Rows = variables (genes, features, metrics)\n"
+                "   - Columns = samples\n"
+                "   - Use for heatmaps, bar charts, boxplots, etc.\n\n"
+                "   data <- matrix(rnorm(20), nrow=4,\n"
+                "                  dimnames=list(c('GeneA','GeneB','GeneC','GeneD'),\n"
+                "                               c('S1','S2','S3','S4','S5')))\n\n"
+                "2. Sample-as-rows orientation (asSampleData = TRUE):\n"
+                "   - Rows = observations/samples\n"
+                "   - Columns = variables\n"
+                "   - Use for scatter plots, PCA, regression, etc.\n\n"
+                "   canvasXpress(data = iris, asSampleData = TRUE, ...)\n\n"
+                "3. Annotation data (smpAnnot / varAnnot):\n"
+                "   - smpAnnot: data frame of sample metadata (rows = samples)\n"
+                "   - varAnnot: data frame of variable metadata (rows = variables)\n\n"
+                "   smp_meta <- data.frame(Treatment = c('A','A','B','B','B'),\n"
+                "                          row.names  = colnames(data))\n"
+                "   canvasXpress(\n"
+                "     data     = data,\n"
+                "     smpAnnot = smp_meta,\n"
+                "     graphType = 'Heatmap',\n"
+                "     smpOverlays = list('Treatment')\n"
+                "   )"
+            ),
+        },
+        "config": {
+            "title": "Configuration Parameters",
+            "content": (
+                "All CanvasXpress JSON config parameters map directly to R function arguments "
+                "or can be passed via the 'config' list.\n\n"
+                "Passing parameters directly:\n"
+                "  canvasXpress(\n"
+                "    data             = data,\n"
+                "    graphType        = 'Heatmap',\n"
+                "    colorScheme      = 'RdBu',\n"
+                "    samplesClustered = TRUE,\n"
+                "    variablesClustered = TRUE,\n"
+                "    showLegend       = TRUE,\n"
+                "    title            = 'Gene Expression Heatmap'\n"
+                "  )\n\n"
+                "Using the config list for bulk parameter passing:\n"
+                "  cfg <- list(\n"
+                "    graphType        = 'Heatmap',\n"
+                "    colorScheme      = 'RdBu',\n"
+                "    samplesClustered = TRUE\n"
+                "  )\n"
+                "  do.call(canvasXpress, c(list(data = data), cfg))\n\n"
+                "Key parameters:\n"
+                "  graphType        - chart type (Bar, Scatter2D, Heatmap, Violin, etc.)\n"
+                "  xAxis            - list of column names for x-axis\n"
+                "  yAxis            - list of column names for y-axis (multi-dim only)\n"
+                "  groupingFactors  - list of columns to group/color by\n"
+                "  colorScheme      - color palette name\n"
+                "  colorBy          - column to color points by\n"
+                "  title            - chart title\n"
+                "  width / height   - widget dimensions in pixels"
+            ),
+        },
+        "shiny": {
+            "title": "Using CanvasXpress in Shiny",
+            "content": (
+                "CanvasXpress integrates with Shiny via canvasXpressOutput() and renderCanvasXpress().\n\n"
+                "  library(shiny)\n"
+                "  library(canvasXpress)\n\n"
+                "  ui <- fluidPage(\n"
+                "    canvasXpressOutput('myPlot', width = '800px', height = '500px')\n"
+                "  )\n\n"
+                "  server <- function(input, output) {\n"
+                "    output$myPlot <- renderCanvasXpress({\n"
+                "      canvasXpress(\n"
+                "        data        = t(mtcars[1:5, 1:4]),\n"
+                "        graphType   = 'Bar',\n"
+                "        colorScheme = 'Tableau'\n"
+                "      )\n"
+                "    })\n"
+                "  }\n\n"
+                "  shinyApp(ui, server)\n\n"
+                "Reactive updates: rebuild the canvasXpress() call inside renderCanvasXpress() "
+                "using reactive inputs normally — the widget re-renders automatically."
+            ),
+        },
+        "rmarkdown": {
+            "title": "Using CanvasXpress in R Markdown / Quarto",
+            "content": (
+                "CanvasXpress renders as an interactive HTML widget in R Markdown and Quarto documents.\n\n"
+                "In an R Markdown chunk:\n"
+                "  ```{r}\n"
+                "  library(canvasXpress)\n\n"
+                "  canvasXpress(\n"
+                "    data      = t(mtcars[1:8, 1:5]),\n"
+                "    graphType = 'Boxplot',\n"
+                "    title     = 'mtcars Boxplot'\n"
+                "  )\n"
+                "  ```\n\n"
+                "For static PDF output, use the saveAsPng argument or htmltools::save_html() "
+                "to export as a standalone HTML file first:\n"
+                "  library(htmltools)\n"
+                "  cx <- canvasXpress(data = t(mtcars), graphType = 'Bar')\n"
+                "  save_html(cx, 'my_chart.html')"
+            ),
+        },
+    }
+
+    topic_lower = topic.strip().lower() if topic else None
+    if topic_lower and topic_lower in sections:
+        return {
+            "topic": topic_lower,
+            "section": sections[topic_lower],
+            "available_topics": list(sections.keys()),
+        }
+
+    if topic_lower and topic_lower not in sections:
+        return {
+            "error": f"Unknown topic '{topic}'. Valid topics: {list(sections.keys())}",
+            "available_topics": list(sections.keys()),
+        }
+
+    return {
+        "overview": (
+            "The canvasXpress R package wraps the CanvasXpress JavaScript library as an "
+            "htmlwidget, enabling interactive charts in RStudio, Shiny apps, and R Markdown "
+            "documents. All CanvasXpress chart types and config parameters are supported."
+        ),
+        "sections": sections,
+        "available_topics": list(sections.keys()),
+    }
+
+
+@mcp.tool(
+    description=(
+        "Explain how to use CanvasXpress with ggplot2 in R. "
+        "canvasXpress() accepts a ggplot object directly and converts it to an interactive widget — "
+        "no separate bridge function needed. Covers supported geoms, a usage example, and how the "
+        "translation works. Use this when a user asks about ggplot2 + CanvasXpress."
+    )
+)
+def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
+    """
+    Args:
+        topic: Optional topic filter. One of: 'overview', 'installation', 'geoms', 'example'.
+               Returns all topics if omitted.
+
+    Returns:
+        Dict with topic sections explaining CanvasXpress ggplot2 integration.
+    """
+    sections = {
+        "overview": {
+            "title": "Overview",
+            "content": (
+                "canvasXpress() accepts a ggplot2 object directly and converts it into an interactive "
+                "CanvasXpress HTML widget. It acts as a translator: it parses the ggplot object's "
+                "layers, geoms, and aesthetic mappings, converts them to a CanvasXpress JSON "
+                "configuration, and renders an interactive chart with tooltips, zooming, and "
+                "interactive legends.\n\n"
+                "You build your plot with standard ggplot2 syntax, then pass the ggplot object to "
+                "canvasXpress() instead of printing it:\n\n"
+                "  library(ggplot2)\n"
+                "  library(canvasXpress)\n\n"
+                "  p <- ggplot(iris, aes(x = Petal.Length, y = Petal.Width, color = Species)) +\n"
+                "         geom_point(size = 3) +\n"
+                "         labs(title = 'Iris Petal Length vs. Width') +\n"
+                "         theme_minimal()\n\n"
+                "  canvasXpress(p)  # renders as an interactive CanvasXpress widget"
+            ),
+        },
+        "installation": {
+            "title": "Installation",
+            "content": (
+                "Both packages are needed — the ggplot2 integration is built into canvasXpress.\n\n"
+                "  install.packages('canvasXpress')\n"
+                "  install.packages('ggplot2')\n\n"
+                "  library(canvasXpress)\n"
+                "  library(ggplot2)\n\n"
+                "Or install the development version of canvasXpress:\n"
+                "  devtools::install_github('neuhausi/canvasXpress')\n\n"
+                "The result renders as an interactive htmlwidget in RStudio, Shiny, and R Markdown."
+            ),
+        },
+        "geoms": {
+            "title": "Supported Geoms",
+            "content": (
+                "canvasXpress() supports 22+ ggplot2 geom types:\n\n"
+                "Statistical & Density:\n"
+                "  geom_density(), geom_density_2d(), geom_smooth(), geom_contour()\n\n"
+                "Categorical:\n"
+                "  geom_bar(), geom_col(), geom_boxplot(), geom_violin()\n\n"
+                "Positional:\n"
+                "  geom_point(), geom_jitter(), geom_dotplot(), geom_rug()\n\n"
+                "Connectors:\n"
+                "  geom_path(), geom_line(), geom_step(), geom_ribbon(), geom_area()\n\n"
+                "Annotations:\n"
+                "  geom_text(), geom_label(), geom_abline(), geom_hline(), geom_vline()\n\n"
+                "Binning:\n"
+                "  geom_bin2d(), geom_hex()\n\n"
+                "Other:\n"
+                "  geom_qq(), geom_quantile(), geom_raster()"
+            ),
+        },
+        "example": {
+            "title": "Usage Example",
+            "content": (
+                "Build any ggplot2 plot as normal, then pass the object to canvasXpress():\n\n"
+                "  library(ggplot2)\n"
+                "  library(canvasXpress)\n\n"
+                "  # Scatter plot\n"
+                "  p <- ggplot(iris, aes(x = Petal.Length, y = Petal.Width, color = Species)) +\n"
+                "         geom_point(size = 3) +\n"
+                "         labs(title = 'Iris Petal Length vs. Width')\n"
+                "  canvasXpress(p)\n\n"
+                "  # Boxplot\n"
+                "  p2 <- ggplot(iris, aes(x = Species, y = Sepal.Length, fill = Species)) +\n"
+                "          geom_boxplot()\n"
+                "  canvasXpress(p2)\n\n"
+                "  # Density with smoothing\n"
+                "  p3 <- ggplot(mtcars, aes(x = wt, y = mpg)) +\n"
+                "          geom_point() +\n"
+                "          geom_smooth(method = 'lm')\n"
+                "  canvasXpress(p3)\n\n"
+                "The resulting widget includes interactive tooltips, zooming, pan, and legend toggling."
+            ),
+        },
+    }
+
+    topic_lower = topic.strip().lower() if topic else None
+    if topic_lower and topic_lower in sections:
+        return {
+            "topic": topic_lower,
+            "section": sections[topic_lower],
+            "available_topics": list(sections.keys()),
+        }
+
+    if topic_lower and topic_lower not in sections:
+        return {
+            "error": f"Unknown topic '{topic}'. Valid topics: {list(sections.keys())}",
+            "available_topics": list(sections.keys()),
+        }
+
+    return {
+        "overview": (
+            "canvasXpress() accepts a ggplot2 object directly — build your plot with ggplot2 syntax "
+            "and pass it to canvasXpress() to get an interactive widget. Supports 22+ geom types."
+        ),
+        "sections": sections,
+        "available_topics": list(sections.keys()),
+    }
+
+
 @mcp.tool(description="Get the minimal required parameters for a specific CanvasXpress graph type.")
 def get_minimal_parameters(graph_type: str) -> dict:
     """
