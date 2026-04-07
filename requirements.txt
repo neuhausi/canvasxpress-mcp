@@ -11,6 +11,10 @@ python-dotenv>=1.0.0
 # pip install boto3
 # boto3>=1.34.0
 
-# OpenAI / corporate gateway (LLM_PROVIDER=openai)
+# OpenAI / corporate gateway (LLM_PROVIDER=openai or openai_corporate)
 # pip install openai
 # openai>=1.30.0
+
+# Google Gemini (LLM_PROVIDER=gemini)
+# pip install google-generativeai
+# google-generativeai>=0.8.0

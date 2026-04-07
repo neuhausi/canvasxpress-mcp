@@ -17,8 +17,8 @@ Exposes two interfaces on the same port:
 "PCA scatter plot colored by Treatment with regression ellipses"
 ```
 
-Supports four LLM backends: **Anthropic API**, **Amazon Bedrock**, **Ollama** (local),
-and **OpenAI-compatible** APIs including corporate gateways.
+Supports six LLM backends: **Anthropic API**, **Amazon Bedrock**, **Ollama** (local),
+**OpenAI** (direct), **OpenAI corporate** (custom gateways), and **Google Gemini**.
 
 ---
 
@@ -42,7 +42,7 @@ canvasxpress-mcp/
 │
 ├── src/
 │   ├── server.py           — FastMCP HTTP server (main entry point)
-│   ├── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI)
+│   ├── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI, Gemini)
 │   ├── cx_knowledge.py     — Parameter knowledge skill (fetch, parse, validate, inject)
 │   └── cx_survival.py      — Kaplan-Meier skill (generate, detect columns, validate)
 │
@@ -338,38 +338,16 @@ ollama pull gemma3
 Note: smaller local models will generally produce less accurate CanvasXpress configs
 than Claude. For best results use `llama3.2` (8B) or larger.
 
-### OpenAI / corporate gateway
+### OpenAI
 
-Any OpenAI-compatible API — including your company's internal gateway, Azure OpenAI,
-or OpenAI directly. Set `OPENAI_BASE_URL` to point at your gateway instead of
-`api.openai.com`.
+Direct access to the OpenAI API at `api.openai.com`.
 
 ```bash
 pip install openai
 
 export LLM_PROVIDER=openai
-export OPENAI_API_KEY="your-gateway-token"
-export OPENAI_BASE_URL="https://api.your-company.com/openai/v1"
-export LLM_MODEL=gpt-4o
-python src/server.py
-```
-
-**OpenAI directly:**
-
-```bash
-export LLM_PROVIDER=openai
 export OPENAI_API_KEY="sk-..."
 export LLM_MODEL=gpt-4o        # or o3, gpt-4o-mini, etc.
-python src/server.py
-```
-
-**Azure OpenAI:**
-
-```bash
-export LLM_PROVIDER=openai
-export OPENAI_API_KEY="your-azure-key"
-export OPENAI_BASE_URL="https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT/v1"
-export LLM_MODEL=gpt-4o
 python src/server.py
 ```
 
@@ -378,6 +356,54 @@ python src/server.py
 ```bash
 export OPENAI_ORG="org-..."
 ```
+
+### OpenAI corporate gateway
+
+For corporate gateways or Azure OpenAI — any OpenAI-compatible
+`/chat/completions` endpoint. Requires `OPENAI_BASE_URL`.
+
+```bash
+pip install openai
+
+export LLM_PROVIDER=openai_corporate
+export OPENAI_API_KEY="your-gateway-token"
+export OPENAI_BASE_URL="https://api.your-company.com/openai/v1"
+export LLM_MODEL=gpt-4o
+python src/server.py
+```
+
+**Azure OpenAI:**
+
+```bash
+export LLM_PROVIDER=openai_corporate
+export OPENAI_API_KEY="your-azure-key"
+export OPENAI_BASE_URL="https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT/v1"
+export LLM_MODEL=gpt-4o
+python src/server.py
+```
+
+### Google Gemini
+
+Access Google's Gemini models via the Google AI Studio API.
+Get a free key at [aistudio.google.com](https://aistudio.google.com).
+
+```bash
+pip install google-generativeai
+
+export LLM_PROVIDER=gemini
+export GEMINI_API_KEY="AIza..."
+export LLM_MODEL=gemini-2.0-flash   # default
+python src/server.py
+```
+
+**Available models:**
+
+| Model | Notes |
+|-------|-------|
+| `gemini-2.0-flash` (default) | Fast, low cost |
+| `gemini-2.0-pro` | Higher quality |
+| `gemini-1.5-flash` | Previous generation, fast |
+| `gemini-1.5-pro` | Previous generation, high quality |
 
 ---
 
@@ -400,7 +426,7 @@ All variables can be set in `.env` (preferred) or as shell environment variables
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `LLM_PROVIDER` | `anthropic` | Active provider: `anthropic`, `bedrock`, `ollama`, `openai` |
+| `LLM_PROVIDER` | `anthropic` | Active provider: `anthropic`, `bedrock`, `ollama`, `openai`, `openai_corporate`, `gemini` |
 | `LLM_MODEL` | *(provider default)* | Model ID — overrides the provider default |
 
 ### Anthropic
@@ -425,13 +451,26 @@ All variables can be set in `.env` (preferred) or as shell environment variables
 |---------|---------|-------------|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 
-### OpenAI / gateway
+### OpenAI
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `OPENAI_API_KEY` | — | **Required** — your API key or gateway token |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for corporate gateways or Azure |
+| `OPENAI_API_KEY` | — | **Required** — your OpenAI API key |
 | `OPENAI_ORG` | — | Optional organisation ID |
+
+### OpenAI corporate gateway
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `OPENAI_API_KEY` | — | **Required** — your gateway token |
+| `OPENAI_BASE_URL` | — | **Required** — corporate gateway or Azure endpoint URL |
+| `OPENAI_ORG` | — | Optional organisation ID |
+
+### Gemini
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `GEMINI_API_KEY` | — | **Required** — Google AI Studio API key |
 
 ---
 

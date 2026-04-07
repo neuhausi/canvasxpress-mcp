@@ -4,12 +4,14 @@ llm_providers.py
 ================
 Unified LLM provider abstraction for the CanvasXpress MCP server.
 
-Supports four providers, selected via the LLM_PROVIDER environment variable:
+Supports six providers, selected via the LLM_PROVIDER environment variable:
 
   anthropic  — Direct Anthropic API (default)
   bedrock    — Anthropic models via Amazon Bedrock
   ollama     — Locally hosted models via Ollama
-  openai     — OpenAI-compatible API (including corporate gateways)
+  openai     — Direct OpenAI API (api.openai.com)
+  openai_corporate — OpenAI-compatible API via a corporate/custom gateway
+  gemini     — Google Gemini API
 
 Each provider exposes a single function:
 
@@ -43,11 +45,21 @@ OLLAMA     (LLM_PROVIDER=ollama)
                         Any model pulled via `ollama pull <model>`
 
 OPENAI     (LLM_PROVIDER=openai)
-  OPENAI_API_KEY      — required (use your gateway key / token)
-  OPENAI_BASE_URL     — default: https://api.openai.com/v1
-                        Override with your corporate gateway URL
+  OPENAI_API_KEY      — required (your OpenAI API key)
   LLM_MODEL           — default: gpt-4o
   OPENAI_ORG          — optional organisation ID
+
+OPENAI_CORPORATE  (LLM_PROVIDER=openai_corporate)
+  OPENAI_API_KEY      — required (use your gateway key / token)
+  OPENAI_BASE_URL     — required, your corporate gateway URL
+  LLM_MODEL           — default: gpt-4o
+  OPENAI_ORG          — optional organisation ID
+
+GEMINI     (LLM_PROVIDER=gemini)
+  GEMINI_API_KEY      — required (Google AI Studio key)
+  LLM_MODEL           — default: gemini-2.0-flash
+                        Other options: gemini-2.0-pro, gemini-1.5-flash,
+                          gemini-1.5-pro
 
 ────────────────────────────────────────────────────────────────────────────
 Quick start
@@ -74,11 +86,23 @@ export LLM_PROVIDER=ollama
 export LLM_MODEL=llama3.2
 python src/server.py
 
-# OpenAI via corporate gateway
+# OpenAI (direct)
 export LLM_PROVIDER=openai
+export OPENAI_API_KEY="sk-..."
+export LLM_MODEL=gpt-4o
+python src/server.py
+
+# OpenAI via corporate gateway
+export LLM_PROVIDER=openai_corporate
 export OPENAI_API_KEY="your-gateway-token"
 export OPENAI_BASE_URL="https://api.your-company.com/openai/v1"
 export LLM_MODEL=gpt-4o
+python src/server.py
+
+# Gemini
+export LLM_PROVIDER=gemini
+export GEMINI_API_KEY="AIza..."
+export LLM_MODEL=gemini-2.0-flash
 python src/server.py
 """
 
@@ -96,10 +120,12 @@ log = logging.getLogger("cx-mcp.providers")
 PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic").lower().strip()
 
 _DEFAULTS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-20250514",
-    "bedrock":   "anthropic.claude-sonnet-4-5-20251001-v1:0",
-    "ollama":    "llama3.2",
-    "openai":    "gpt-4o",
+    "anthropic":        "claude-sonnet-4-20250514",
+    "bedrock":          "anthropic.claude-sonnet-4-5-20251001-v1:0",
+    "ollama":           "llama3.2",
+    "openai":           "gpt-4o",
+    "openai_corporate": "gpt-4o",
+    "gemini":           "gemini-2.0-flash",
 }
 
 MODEL = os.environ.get("LLM_MODEL", "") or _DEFAULTS.get(PROVIDER, "")
@@ -114,6 +140,8 @@ VALID_PROVIDERS = set(_DEFAULTS.keys())
 _anthropic_client: Any = None
 _bedrock_client: Any = None
 _openai_client: Any = None
+_openai_corporate_client: Any = None
+_gemini_client: Any = None
 
 
 def _get_anthropic():
@@ -169,18 +197,70 @@ def _get_openai():
                 "OPENAI_API_KEY is not set. "
                 "Export it before starting the server."
             )
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
         org = os.environ.get("OPENAI_ORG")
         _openai_client = _openai_sdk.OpenAI(
+            api_key=api_key,
+            organization=org or None,
+        )
+        log.info("OpenAI client initialised (model: %s)", MODEL)
+    return _openai_client
+
+
+def _get_openai_corporate():
+    global _openai_corporate_client
+    if _openai_corporate_client is None:
+        try:
+            import openai as _openai_sdk
+        except ImportError:
+            raise ImportError(
+                "openai is required for the openai_corporate provider. Install it:\n"
+                "  pip install openai"
+            )
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise EnvironmentError(
+                "OPENAI_API_KEY is not set. "
+                "Export it before starting the server."
+            )
+        base_url = os.environ.get("OPENAI_BASE_URL")
+        if not base_url:
+            raise EnvironmentError(
+                "OPENAI_BASE_URL is not set. "
+                "Set it to your corporate gateway URL."
+            )
+        org = os.environ.get("OPENAI_ORG")
+        _openai_corporate_client = _openai_sdk.OpenAI(
             api_key=api_key,
             base_url=base_url,
             organization=org or None,
         )
         log.info(
-            "OpenAI client initialised (base_url: %s, model: %s)",
+            "OpenAI corporate client initialised (base_url: %s, model: %s)",
             base_url, MODEL,
         )
-    return _openai_client
+    return _openai_corporate_client
+
+
+def _get_gemini():
+    global _gemini_client
+    if _gemini_client is None:
+        try:
+            import google.generativeai as _genai
+        except ImportError:
+            raise ImportError(
+                "google-generativeai is required for the Gemini provider. Install it:\n"
+                "  pip install google-generativeai"
+            )
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise EnvironmentError(
+                "GEMINI_API_KEY is not set. "
+                "Get a key from Google AI Studio and export it before starting the server."
+            )
+        _genai.configure(api_key=api_key)
+        _gemini_client = _genai
+        log.info("Gemini client initialised (model: %s)", MODEL)
+    return _gemini_client
 
 
 # ---------------------------------------------------------------------------
@@ -313,14 +393,7 @@ def _complete_openai(
     temperature: float,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """
-    Call an OpenAI-compatible API.
-
-    Works with:
-      - OpenAI directly (api.openai.com)
-      - Azure OpenAI (set OPENAI_BASE_URL to your Azure endpoint)
-      - Corporate gateways that expose an OpenAI-compatible /chat/completions endpoint
-    """
+    """Call the OpenAI API directly (api.openai.com)."""
     client = _get_openai()
 
     response = client.chat.completions.create(
@@ -342,15 +415,85 @@ def _complete_openai(
     return text, usage
 
 
+def _complete_openai_corporate(
+    system: str,
+    user: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+) -> tuple[str, dict]:
+    """
+    Call an OpenAI-compatible API via a corporate/custom gateway.
+
+    Requires OPENAI_BASE_URL pointing to your gateway endpoint.
+    Works with Azure OpenAI and any OpenAI-compatible /chat/completions gateway.
+    """
+    client = _get_openai_corporate()
+
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+    )
+
+    text  = response.choices[0].message.content or ""
+    usage = {
+        "input_tokens":  response.usage.prompt_tokens,
+        "output_tokens": response.usage.completion_tokens,
+        "stop_reason":   response.choices[0].finish_reason,
+    }
+    return text, usage
+
+
+def _complete_gemini(
+    system: str,
+    user: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+) -> tuple[str, dict]:
+    """Call the Google Gemini API."""
+    genai = _get_gemini()
+
+    generation_config = genai.types.GenerationConfig(
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+    )
+
+    gemini_model = genai.GenerativeModel(
+        model_name=model,
+        system_instruction=system,
+        generation_config=generation_config,
+    )
+
+    response = gemini_model.generate_content(user)
+
+    text = response.text or ""
+    candidate = response.candidates[0] if response.candidates else None
+    usage_meta = response.usage_metadata
+    usage = {
+        "input_tokens":  usage_meta.prompt_token_count if usage_meta else 0,
+        "output_tokens": usage_meta.candidates_token_count if usage_meta else 0,
+        "stop_reason":   candidate.finish_reason.name if candidate else "stop",
+    }
+    return text, usage
+
+
 # ---------------------------------------------------------------------------
 # Public interface
 # ---------------------------------------------------------------------------
 
 _DISPATCH = {
-    "anthropic": _complete_anthropic,
-    "bedrock":   _complete_bedrock,
-    "ollama":    _complete_ollama,
-    "openai":    _complete_openai,
+    "anthropic":        _complete_anthropic,
+    "bedrock":          _complete_bedrock,
+    "ollama":           _complete_ollama,
+    "openai":           _complete_openai,
+    "openai_corporate": _complete_openai_corporate,
+    "gemini":           _complete_gemini,
 }
 
 
@@ -413,9 +556,11 @@ def provider_info() -> dict:
             "anthropic": {"api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY"))},
             "bedrock":   {"region": os.environ.get("AWS_REGION", "us-east-1")},
             "ollama":    {"base_url": os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")},
-            "openai":    {
-                "base_url": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            "openai":    {"api_key_set": bool(os.environ.get("OPENAI_API_KEY"))},
+            "openai_corporate": {
+                "base_url":    os.environ.get("OPENAI_BASE_URL", ""),
                 "api_key_set": bool(os.environ.get("OPENAI_API_KEY")),
             },
+            "gemini": {"api_key_set": bool(os.environ.get("GEMINI_API_KEY"))},
         }.get(PROVIDER, {}),
     }
