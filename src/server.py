@@ -559,9 +559,13 @@ def generate_config(
     if not raw or raw == "''":
         if DEBUG:
             print("\n  ⚠️  Model returned empty string — could not generate valid config", file=sys.stderr)
-        return {}
+        return {}, []
 
-    config = json.loads(raw)
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.warning("LLM returned non-JSON response (%s). raw=%s", e, raw[:200])
+        return {}, []
 
     # Strip any hallucinated parameter names not present in the known schema
     config, removed_keys = cx_knowledge.filter_unknown_params(config)
@@ -720,9 +724,13 @@ def modify_config(
     if not raw or raw in ("''", '""'):
         if DEBUG:
             print("\n  ⚠️  Model returned empty — returning original config unchanged", file=sys.stderr)
-        return config
+        return config, []
 
-    modified = json.loads(raw)
+    try:
+        modified = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.warning("LLM returned non-JSON in modify (%s). Returning original config.", e)
+        return config, []
 
     # Strip hallucinated parameter names
     modified, removed_keys = cx_knowledge.filter_unknown_params(modified)
@@ -936,8 +944,29 @@ def generate_canvasxpress_config(
             print(f"  {col:25s} → {typ}", file=sys.stderr)
 
     log.info("Generating config for: %s", description)
-    config, removed_params = generate_config(description, resolved_headers, column_types, temperature)
-    graph_type = config.get("graphType", "unknown") if config else "none"
+    result = generate_config(description, resolved_headers, column_types, temperature)
+    if isinstance(result, tuple):
+        config, removed_params = result
+    else:
+        config, removed_params = result, []
+
+    if not config:
+        log.warning("LLM did not return a usable config for description: %s", description)
+        return {
+            "config":         {},
+            "valid":          False,
+            "warnings":       [
+                "The description did not produce a valid CanvasXpress configuration. "
+                "Try rephrasing — for example: 'Bar chart of expression values by gene', "
+                "'Heatmap with RdBu colors', or 'Violin plot of score grouped by treatment'."
+            ],
+            "invalid_refs":   {},
+            "headers_used":   resolved_headers or [],
+            "types_used":     column_types or {},
+            "removed_params": [],
+        }
+
+    graph_type = config.get("graphType", "unknown")
     log.info("Generated graphType: %s", graph_type)
 
     # ── Validate column references ───────────────────────────────────────────
@@ -1064,7 +1093,11 @@ def modify_canvasxpress_config(
             print(f"  Headers       : {resolved_headers}", file=sys.stderr)
 
     log.info("Modifying config — instruction: %s", instruction)
-    modified, removed_params = modify_config(config, instruction, resolved_headers, column_types, temperature)
+    result = modify_config(config, instruction, resolved_headers, column_types, temperature)
+    if isinstance(result, tuple):
+        modified, removed_params = result
+    else:
+        modified, removed_params = result, []
 
     # ── Build change summary ─────────────────────────────────────────────────
     changes = {
@@ -2202,7 +2235,11 @@ async def rest_generate(request: Request) -> Response:
         result = generate_canvasxpress_config(**kwargs)
     except Exception as exc:
         log.exception("REST /generate error")
-        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+        return _cx_response({
+            "config": {}, "valid": False, "success": False,
+            "warnings": ["Could not generate configuration: " + str(exc)],
+            "invalid_refs": {}, "headers_used": [], "types_used": {}, "removed_params": [],
+        }, cx, 200)
     return _cx_response(result, cx)
 
 
@@ -2237,7 +2274,11 @@ async def rest_modify(request: Request) -> Response:
         result = modify_canvasxpress_config(**kwargs)
     except Exception as exc:
         log.exception("REST /modify error")
-        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+        return _cx_response({
+            "config": {}, "valid": False, "success": False,
+            "warnings": ["Could not modify configuration: " + str(exc)],
+            "invalid_refs": {}, "headers_used": [], "types_used": {}, "removed_params": [],
+        }, cx, 200)
     return _cx_response(result, cx)
 
 
