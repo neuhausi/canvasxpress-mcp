@@ -35,28 +35,133 @@ Supports six LLM backends: **Anthropic API**, **Amazon Bedrock**, **Ollama** (lo
 
 ---
 
+## Deployment modes
+
+| Mode | URL | When to use |
+|------|-----|-------------|
+| **Production service** | `https://www.canvasxpress.org/` | Simplest — no server to run |
+| **Client → Production** | `http://localhost:8100/` via SSH tunnel | Local development against production LLM |
+| **Client → Local server** | `http://localhost:8100/` | Full local stack, own API keys |
+
+### Mode 1 — Production service at canvasxpress.org
+
+The MCP server runs on `canvasxpress.org` and is exposed via Apache at
+`https://www.canvasxpress.org/generate`. No installation required.
+
+**CanvasXpress integration** — set `llmServiceURL` to the production root before
+initialising your chart. CanvasXpress appends `generate` automatically:
+
+```javascript
+var cx = new CanvasXpress({
+    renderTo: "myChart",
+    data: { ... },
+    config: { graphType: "Bar" },
+    llmServiceURL: "https://www.canvasxpress.org/"
+});
+// Calls: https://www.canvasxpress.org/generate?callback=CanvasXpress.callbackLLM&...
+```
+
+**Direct REST call:**
+
+```javascript
+const params = new URLSearchParams({
+    description: "Violin plot of expression grouped by treatment, Tableau colors",
+    headers:     "Sample, Expression, Treatment",
+    column_types:"Expression=numeric, Treatment=factor",
+    temperature: "0"
+});
+const result = await fetch(`https://www.canvasxpress.org/generate?${params}`).then(r => r.json());
+console.log(result.config);  // ready to pass to new CanvasXpress()
+```
+
+```bash
+curl -s "https://www.canvasxpress.org/generate?\
+description=Clustered+heatmap+with+RdBu+colors\
+&headers=Gene,Control1,Control2,Drug1\
+&column_types=Gene=string,Control1=numeric,Control2=numeric,Drug1=numeric"
+```
+
+The interactive web form is also available at `https://www.canvasxpress.org/ui`.
+
+### Mode 2 — Local client → production service (SSH tunnel)
+
+Use this during local development to test your page locally while using the production
+LLM — no local server to run, no API keys to manage.
+
+**Step 1 — Open an SSH tunnel** (leave this terminal open):
+
+```bash
+ssh -L 8100:127.0.0.1:8100 canvasxpress@canvasxpress.org -N
+```
+
+Or add a named entry to `~/.ssh/config`:
+
+```
+Host cxmcp
+    HostName canvasxpress.org
+    User canvasxpress
+    LocalForward 8100 127.0.0.1:8100
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+```
+
+Then run: `ssh -N cxmcp`
+
+**Step 2 — Verify the tunnel:**
+
+```bash
+curl -s "http://localhost:8100/generate?description=test+heatmap" | python3 -m json.tool
+```
+
+**Step 3 — Point your local page at the tunnel:**
+
+```javascript
+var cx = new CanvasXpress({
+    renderTo: "myChart",
+    data: { ... },
+    config: { graphType: "Bar" },
+    llmServiceURL: "http://localhost:8100/"
+});
+```
+
+To close the tunnel: `pkill -f "ssh.*8100"`
+
+> Port 8100 is not publicly exposed — the tunnel forwards your local port to the
+> server's internal port over SSH. No firewall changes are needed.
+
+### Mode 3 — Full local server
+
+Run the complete stack locally with your own LLM API key. See [Setup](#setup) below.
+Point CanvasXpress at the local server:
+
+```javascript
+llmServiceURL: "http://localhost:8100/"
+```
+
+---
+
 ## Project structure
 
 ```
 canvasxpress-mcp/
 │
 ├── src/
-│   ├── server.py           — FastMCP HTTP server (main entry point)
-│   ├── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI, Gemini)
-│   ├── cx_knowledge.py     — Parameter knowledge skill (fetch, parse, validate, inject)
-│   └── cx_survival.py      — Kaplan-Meier skill (generate, detect columns, validate)
+│   ├── server.py           ← FastMCP HTTP server (main entry point)
+│   ├── llm_providers.py    ← Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI, Gemini)
+│   ├── cx_knowledge.py     ← Parameter knowledge skill (fetch, parse, validate, inject)
+│   └── cx_survival.py      ← Kaplan-Meier skill (generate, detect columns, validate)
 │
 ├── data/
-│   ├── few_shot_examples.json  — RAG examples (add more to improve accuracy)
-│   └── embeddings.db           — sqlite-vec vector index (built by build_index.py)
+│   ├── few_shot_examples.json  ← RAG examples (add more to improve accuracy)
+│   └── embeddings.db           ← sqlite-vec vector index (built by build_index.py)
 │
-├── build_index.py          — builds the vector index from few_shot_examples.json
+├── build_index.py          ← builds the vector index from few_shot_examples.json
 │
-├── test_client.py          — Python test client
-├── test_client.pl          — Perl test client
-├── test_client.mjs         — Node.js test client (Node 18+)
+├── test_client.py          ← Python test client
+├── test_client.pl          ← Perl test client
+├── test_client.mjs         ← Node.js test client (Node 18+)
 │
-├── knowledge_base_flow.svg — architecture diagram
+├── knowledge_base_flow.svg ← architecture diagram
 ├── requirements.txt
 └── README.md
 ```
@@ -156,14 +261,14 @@ CX_DEBUG=1 python src/server.py
 Each request prints 6 labelled steps to stderr:
 
 ```
-── STEP 1 — RETRIEVAL ──   query matched, 6 examples in 8ms
-── STEP 2 — PROMPT ──      system 4821 chars, user 2103 chars
+── STEP 1 – RETRIEVAL ──   query matched, 6 examples in 8ms
+── STEP 2 – PROMPT ──      system 4821 chars, user 2103 chars
 ── TIERED PROMPT ──        Tier 2 (base+schema+data)  GraphType: Heatmap
-── STEP 3 — LLM CALL ──    Provider: bedrock  Model: anthropic.claude-sonnet-...
+── STEP 3 – LLM CALL ──    Provider: bedrock  Model: anthropic.claude-sonnet-...
                             Latency: 1243ms  Input: 3847 tokens  Output: 89 tokens
-── STEP 4 — RAW RESPONSE   {"graphType": "Heatmap", ...}
-── STEP 5 — PARSED CONFIG  graphType: Heatmap, keys: [...]
-── STEP 6 — VALIDATION ──  ✅ All column references valid
+── STEP 4 – RAW RESPONSE   {"graphType": "Heatmap", ...}
+── STEP 5 – PARSED CONFIG  graphType: Heatmap, keys: [...]
+── STEP 6 – VALIDATION ──  ✓ All column references valid
 ```
 ---
 
@@ -636,10 +741,13 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
   "invalid_refs": {},
   "headers_used": ["Gene", "Sample1", "Sample2", "Treatment"],
   "types_used": {"Gene": "string", "Sample1": "numeric", "Treatment": "factor"},
+  "removed_params": [],
 
+  "success":   true,
   "prompt":    "clustered heatmap with RdBu colors",
   "target":    "myCanvas",
-  "client_id": "req-1"
+  "client_id": "req-1",
+  "datetime":  "Fri, 10 Apr 2026 19:00:00 GMT"
 }
 ```
 
@@ -647,13 +755,34 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 |-------|-------------|
 | `config` | CanvasXpress JSON config — pass directly to `new CanvasXpress()` |
 | `valid` | `true` if all column references exist in the provided columns |
-| `warnings` | Column validation warnings (empty if valid) |
+| `warnings` | Column validation warnings and parameter value warnings (empty if valid) |
 | `invalid_refs` | Map of config key → missing column names |
 | `headers_used` | Column names used for validation |
 | `types_used` | Column types passed in (if provided) |
+| `removed_params` | Parameter names the LLM invented that were stripped from the config |
+| `success` | Same as `valid` — included for CanvasXpress `callbackLLM` compatibility |
 | `prompt` | *(REST only)* The originating description or instruction, echoed verbatim |
 | `target` | *(REST only)* Echoed from `?target=` — canvas element id |
 | `client_id` | *(REST only)* Echoed from `?client_id=` — opaque correlation id |
+| `datetime` | *(REST only)* UTC timestamp of the response |
+
+---
+
+## Common descriptions
+
+These examples work well as `description` values and cover the most common chart types:
+
+```
+"Clustered heatmap with RdBu colors and dendrograms on both axes"
+"Volcano plot with log2 fold change on x-axis and -log10 p-value on y-axis"
+"Violin plot of gene expression grouped by cell type, Tableau colors"
+"PCA scatter plot of PC1 vs PC2 colored by Treatment with regression ellipses"
+"Kaplan-Meier survival curve for two treatment groups"
+"Stacked percent bar chart of market share by year and company"
+"Bar chart of expression values filtered to Control group only"
+"Horizontal bar chart sorted descending by value"
+"Scatter plot with vertical threshold lines at log2FC ±2 and significance line at 1.3"
+```
 
 ---
 
@@ -676,11 +805,11 @@ REST_URL=http://my-server:9000 python test_client.py --rest generate "Bar chart"
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `description` | string | ✅ | Plain English chart description |
-| `headers` | string[] | ❌ | Column names from your dataset |
-| `data` | array[][] | ❌ | CSV-style data array — first row = headers. Overrides `headers` |
-| `column_types` | object | ❌ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
-| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+| `description` | string | ✓ | Plain English chart description |
+| `headers` | string[] | ✗ | Column names from your dataset |
+| `data` | array[][] | ✗ | CSV-style data array — first row = headers. Overrides `headers` |
+| `column_types` | object | ✗ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
+| `temperature` | float | ✗ | LLM creativity 0–1 (default 0.0) |
 
 ---
 
@@ -698,11 +827,11 @@ and `showKMMedianSurvivalTime`.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `description` | string | ❌ | Plain English description of the KM plot |
-| `headers` | string[] | ❌ | Column names from your dataset |
-| `data` | array[][] | ❌ | Full data array — first row = headers |
-| `config` | object | ❌ | Existing KM config to validate and fix |
-| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+| `description` | string | ✗ | Plain English description of the KM plot |
+| `headers` | string[] | ✗ | Column names from your dataset |
+| `data` | array[][] | ✗ | Full data array — first row = headers |
+| `config` | object | ✗ | Existing KM config to validate and fix |
+| `temperature` | float | ✗ | LLM creativity 0–1 (default 0.0) |
 
 At least one of `description`, `headers`, `data`, or `config` must be provided.
 
@@ -809,9 +938,9 @@ with automatic local cache fallback.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `graph_type` | string | ❌ | Chart type e.g. `"Heatmap"`, `"Scatter2D"` — returns all parameters for this type |
-| `param_name` | string | ❌ | Parameter name e.g. `"colorScheme"`, `"areaType"` — returns full definition |
-| `refresh` | boolean | ❌ | Force re-fetch from GitHub even if cache is fresh (default `false`) |
+| `graph_type` | string | ✗ | Chart type e.g. `"Heatmap"`, `"Scatter2D"` — returns all parameters for this type |
+| `param_name` | string | ✗ | Parameter name e.g. `"colorScheme"`, `"areaType"` — returns full definition |
+| `refresh` | boolean | ✗ | Force re-fetch from GitHub even if cache is fresh (default `false`) |
 
 Pass `graph_type` alone, `param_name` alone, both together, or neither for a full summary.
 
@@ -874,7 +1003,7 @@ valid, which are forbidden, and which axis title parameter to use.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `graph_type` | string | ✅ | Chart type e.g. `"Bar"`, `"Scatter2D"`, `"BarLine"` |
+| `graph_type` | string | ✓ | Chart type e.g. `"Bar"`, `"Scatter2D"`, `"BarLine"` |
 
 **Response:**
 
@@ -934,12 +1063,12 @@ The full config is preserved except for the modifications you request.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `config` | object | ✅ | The existing CanvasXpress JSON config to modify |
-| `instruction` | string | ✅ | Plain English description of the change to apply |
-| `headers` | string[] | ❌ | Column names — used to validate any new column references |
-| `data` | array[][] | ❌ | CSV-style data array — first row = headers. Overrides `headers` |
-| `column_types` | object | ❌ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
-| `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+| `config` | object | ✓ | The existing CanvasXpress JSON config to modify |
+| `instruction` | string | ✓ | Plain English description of the change to apply |
+| `headers` | string[] | ✗ | Column names — used to validate any new column references |
+| `data` | array[][] | ✗ | CSV-style data array — first row = headers. Overrides `headers` |
+| `column_types` | object | ✗ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
+| `temperature` | float | ✗ | LLM creativity 0–1 (default 0.0) |
 
 **Response** includes all the same fields as `generate_canvasxpress_config`, plus a `changes` field:
 
@@ -1009,7 +1138,7 @@ and R Markdown / Quarto documents.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `topic` | string | ❌ | Filter by topic: `installation`, `basic`, `data`, `config`, `shiny`, `rmarkdown`. Returns all topics if omitted. |
+| `topic` | string | ✗ | Filter by topic: `installation`, `basic`, `data`, `config`, `shiny`, `rmarkdown`. Returns all topics if omitted. |
 
 **Topics:**
 
@@ -1064,7 +1193,7 @@ legend toggling.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `topic` | string | ❌ | Filter by topic: `overview`, `installation`, `geoms`, `example`. Returns all topics if omitted. |
+| `topic` | string | ✗ | Filter by topic: `overview`, `installation`, `geoms`, `example`. Returns all topics if omitted. |
 
 **Supported geom types (22+):**
 
@@ -1105,3 +1234,33 @@ canvasXpress(p3)
 ```
 
 The resulting widget includes interactive tooltips, zooming, pan, and legend toggling.
+
+---
+
+## Troubleshooting
+
+**`curl` to port 8100 gives "Connection refused"**
+Port 8100 is not publicly exposed — this is intentional. Use the SSH tunnel
+(Mode 2) for local development, or run a local server (Mode 3).
+
+**JSONP callback not firing in the browser**
+Open DevTools → Network and check that the `/generate` response starts with
+`CanvasXpress.callbackLLM(` and has `Content-Type: application/javascript`.
+If it returns plain JSON, the `callback=` parameter is not being sent —
+check that `llmServiceURL` ends with a trailing slash.
+
+**`removed_params` is non-empty**
+The LLM generated parameter names that don't exist in the CanvasXpress schema.
+They were automatically stripped. The config is still valid — the removed names
+are shown so you can refine the description if needed.
+
+**Column validation warnings**
+The generated config references column names that weren't found in your `headers`.
+Either the LLM inferred column names from the description (which may not match
+your actual data), or the headers weren't passed in. Add `headers=` to your
+request for accurate validation.
+
+**"It works! Python 3.x" appears on my website**
+Remove the Passenger configuration from `/home/canvasxpress/public_html/.htaccess`.
+Look for and delete the lines between `CLOUDLINUX PASSENGER CONFIGURATION BEGIN`
+and `CLOUDLINUX PASSENGER CONFIGURATION END`.
