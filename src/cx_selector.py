@@ -1,9 +1,10 @@
 """
 cx_selector.py — structured, deterministic chart-type recommender.
 
-Fills the gap BEFORE generate_canvasxpress_config: given a dict of
-{column_name: type} and a plain-English intent, it returns a ranked
-list of CanvasXpress graphType candidates with rationale.
+Two-layer scoring system ported from recommendCharts.es5.js:
+  Layer 1: Structural scores  (column type counts + row count + cardinality)
+  Layer 2: Semantic adjustments (column name regex pattern matching)
+  Layer 3: Intent boosts       (clinical/domain keyword overrides from intent)
 
 No LLM call. No API key. Zero extra dependencies.
 Designed to be called first, then the chosen graphType passed to
@@ -11,7 +12,11 @@ generate_canvasxpress_config via the generate_hint field.
 """
 
 from __future__ import annotations
+
+import re
+from dataclasses import dataclass
 from typing import Optional
+
 
 # ---------------------------------------------------------------------------
 # Column-type normalisation
@@ -20,18 +25,23 @@ from typing import Optional
 _NUMERIC_ALIASES = {"numeric", "continuous", "integer", "float", "count", "number"}
 _FACTOR_ALIASES  = {"factor", "string", "categorical", "nominal", "ordinal", "binary", "character"}
 _TIME_ALIASES    = {"time", "date", "datetime", "temporal"}
+_BOOL_ALIASES    = {"boolean", "bool", "logical", "flag"}
+_TEXT_ALIASES    = {"text", "freetext", "free_text", "long_text", "varchar"}
 
 
-def _count_types(column_types: dict[str, str]) -> tuple[int, int, int]:
-    """Return (n_factor, n_numeric, n_time)."""
+def _count_types(column_types: dict[str, str]) -> tuple[int, int, int, int, int]:
+    """Return (n_factor, n_numeric, n_time, n_bool, n_text)."""
     n_fac  = sum(1 for t in column_types.values() if t.lower() in _FACTOR_ALIASES)
     n_num  = sum(1 for t in column_types.values() if t.lower() in _NUMERIC_ALIASES)
     n_time = sum(1 for t in column_types.values() if t.lower() in _TIME_ALIASES)
-    return n_fac, n_num, n_time
+    n_bool = sum(1 for t in column_types.values() if t.lower() in _BOOL_ALIASES)
+    n_text = sum(1 for t in column_types.values() if t.lower() in _TEXT_ALIASES)
+    return n_fac, n_num, n_time, n_bool, n_text
+
 
 
 # ---------------------------------------------------------------------------
-# Chart catalogue
+# Chart catalogue  (53 graphTypes)
 # ---------------------------------------------------------------------------
 
 CHART_CATALOGUE: dict[str, dict] = {
@@ -99,6 +109,14 @@ CHART_CATALOGUE: dict[str, dict] = {
         "clinical_use": "Lab values over visits, PK concentration-time profiles",
         "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
     },
+    "Area": {
+        "category": "single_dimensional",
+        "description": "Line chart with filled area beneath — emphasises volume over time.",
+        "best_for": ["area", "cumulative", "volume over time"],
+        "requires": {"n_time": 1, "n_num": 1},
+        "clinical_use": "Cumulative event counts, drug exposure over time",
+        "next_step": "generate_canvasxpress_config with description='area chart of <numeric> over <time>'",
+    },
     "Scatter2D": {
         "category": "multi_dimensional",
         "description": "Points on x/y axes revealing correlation between two numeric variables.",
@@ -127,7 +145,7 @@ CHART_CATALOGUE: dict[str, dict] = {
         "category": "multi_dimensional",
         "description": "Kaplan-Meier survival curve with optional CI and risk table.",
         "best_for": ["survival", "kaplan", "km", "time-to-event", "overall survival", "progression free"],
-        "requires": {"n_num": 1, "n_fac": 1},  # time col often typed numeric; n_time not enforced
+        "requires": {"n_num": 1, "n_fac": 1},
         "clinical_use": "OS, PFS, EFS by treatment arm",
         "next_step": "generate_km_config — use the dedicated KM skill for best results",
     },
@@ -195,72 +213,1409 @@ CHART_CATALOGUE: dict[str, dict] = {
         "clinical_use": "Overlapping AE populations, gene set comparison",
         "next_step": "generate_canvasxpress_config with description='Venn diagram of overlapping sets'",
     },
+    # ----- additional chart types -----
+    "BarLine": {
+        "category": "multi_dimensional",
+        "description": "Combined bar + line on dual axes — compare count (bars) with rate (line).",
+        "best_for": ["bar line", "dual axis", "count and rate"],
+        "requires": {"n_fac": 1, "n_num": 2},
+        "clinical_use": "AE count bars with cumulative incidence line",
+        "next_step": "generate_canvasxpress_config with description='bar-line chart of <num1> bars and <num2> line by <factor>'",
+    },
+    "Ridgeline": {
+        "category": "single_dimensional",
+        "description": "Stacked density plots per group — compare distributions without overlap.",
+        "best_for": ["ridgeline", "ridge plot", "joy plot", "group distributions"],
+        "requires": {"n_fac": 1, "n_num": 1},
+        "clinical_use": "Lab distributions across multiple visits or arms",
+        "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
+    },
+    "Hexplot": {
+        "category": "multi_dimensional",
+        "description": "Hexagonal binning for large scatter datasets to avoid overplotting.",
+        "best_for": ["hexplot", "hex bin", "large scatter", "overplotting", "density scatter"],
+        "requires": {"n_num": 2},
+        "clinical_use": "Large-scale biomarker vs response, high-n scatter",
+        "next_step": "generate_canvasxpress_config with description='hexplot of <num1> vs <num2>'",
+    },
+    "Contour": {
+        "category": "multi_dimensional",
+        "description": "2D density contour lines over a scatter.",
+        "best_for": ["contour", "2d density", "density contour"],
+        "requires": {"n_num": 2},
+        "clinical_use": "Population density of two continuous biomarkers",
+        "next_step": "generate_canvasxpress_config with description='contour plot of <num1> vs <num2>'",
+    },
+    "Sunburst": {
+        "category": "single_dimensional",
+        "description": "Radial hierarchical treemap — outer rings are children.",
+        "best_for": ["sunburst", "radial hierarchy", "multilevel pie"],
+        "requires": {"n_fac": 2, "n_num": 1},
+        "clinical_use": "Hierarchical AE breakdown (SOC → PT → severity)",
+        "next_step": "generate_canvasxpress_config with description='sunburst of <numeric> by nested <factor> hierarchy'",
+    },
+    "Chord": {
+        "category": "network",
+        "description": "Circular chord diagram — pairwise flow between categories.",
+        "best_for": ["chord", "circular flow", "pairwise flow", "migration"],
+        "requires": {"n_fac": 2, "n_num": 1},
+        "clinical_use": "Cross-arm patient movement, co-medication flows",
+        "next_step": "generate_canvasxpress_config with description='chord diagram of flow between <factor1> and <factor2>'",
+    },
+    "ParallelCoordinates": {
+        "category": "multi_dimensional",
+        "description": "Parallel axes — each line is an observation, axes are variables.",
+        "best_for": ["parallel coordinates", "multivariate", "multiple variables", "high dimensional"],
+        "requires": {"n_num": 3},
+        "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+        "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+    },
+    "SPLOM": {
+        "category": "multi_dimensional",
+        "description": "Scatter plot matrix — all pairwise scatter plots in a grid.",
+        "best_for": ["splom", "scatter matrix", "pairs plot", "pairwise scatter"],
+        "requires": {"n_num": 3},
+        "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+        "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+    },
+    "Radar": {
+        "category": "multi_dimensional",
+        "description": "Spider/radar chart — compare profiles across multiple axes.",
+        "best_for": ["radar", "spider", "radial", "profile comparison", "multivariate comparison"],
+        "requires": {"n_fac": 1, "n_num": 3},
+        "clinical_use": "Safety profile comparison across arms",
+        "next_step": "generate_canvasxpress_config with description='radar chart of <numeric axes> by <factor>'",
+    },
+    "Streamgraph": {
+        "category": "single_dimensional",
+        "description": "Stacked area with smooth flow — shows relative composition over time.",
+        "best_for": ["streamgraph", "stream", "flow over time", "stacked area"],
+        "requires": {"n_time": 1, "n_fac": 1, "n_num": 1},
+        "clinical_use": "Concomitant medication use over study duration",
+        "next_step": "generate_canvasxpress_config with description='streamgraph of <numeric> by <factor> over <time>'",
+    },
+    "Gantt": {
+        "category": "single_dimensional",
+        "description": "Horizontal bars with start/end times — subject-level timelines.",
+        "best_for": ["gantt", "timeline", "exposure", "treatment duration", "interval"],
+        "requires": {"n_fac": 1, "n_time": 2},
+        "clinical_use": "Subject treatment timelines, concomitant medication exposure",
+        "next_step": "generate_canvasxpress_config with description='Gantt chart of <factor> from <start_time> to <end_time>'",
+    },
+    "Lollipop": {
+        "category": "single_dimensional",
+        "description": "Point-on-stem variant of bar chart — cleaner for many categories.",
+        "best_for": ["lollipop", "dot bar", "many categories"],
+        "requires": {"n_fac": 1, "n_num": 1},
+        "clinical_use": "Gene/protein expression ranked list",
+        "next_step": "generate_canvasxpress_config with description='lollipop chart of <numeric> by <factor>'",
+    },
+    "TagCloud": {
+        "category": "single_dimensional",
+        "description": "Word/tag cloud sized by frequency.",
+        "best_for": ["word cloud", "tag cloud", "text frequency", "term frequency"],
+        "requires": {"n_fac": 1},
+        "clinical_use": "Frequently reported terms, SAE narratives word frequency",
+        "next_step": "generate_canvasxpress_config with description='word cloud of <factor> sized by frequency'",
+    },
+    "DotLine": {
+        "category": "single_dimensional",
+        "description": "Forest-plot style: horizontal CI lines with central estimate dot.",
+        "best_for": ["forest plot", "confidence interval", "meta analysis", "hazard ratio"],
+        "requires": {"n_fac": 1, "n_num": 1},
+        "clinical_use": "Hazard ratios, odds ratios, risk differences",
+        "next_step": "generate_canvasxpress_config with description='forest plot of <estimate> with CI by <factor>'",
+    },
+    "ScatterBubble2D": {
+        "category": "multi_dimensional",
+        "description": "Bubble chart — 2D scatter where bubble size encodes a third variable.",
+        "best_for": ["bubble", "three dimensions", "size encoded", "bubble chart"],
+        "requires": {"n_num": 3},
+        "clinical_use": "Efficacy vs safety vs sample size, three-dimensional biomarker",
+        "next_step": "generate_canvasxpress_config with description='bubble chart of <num1> vs <num2> sized by <num3>'",
+    },
+    # ----- alias chart types -----
+    "Alluvial": {
+        "category": "single_dimensional",
+        "description": "Alluvial / Sankey-style flow diagram.",
+        "best_for": ["alluvial", "flow diagram", "category flow"],
+        "requires": {"n_fac": 2, "n_num": 1},
+        "clinical_use": "Patient pathway flow across study visits",
+        "next_step": "generate_canvasxpress_config with description='alluvial diagram from <factor1> to <factor2>'",
+    },
+    "Binplot": {
+        "category": "multi_dimensional",
+        "description": "Binned scatter — alternative to Hexplot for large datasets.",
+        "best_for": ["binplot", "bin plot", "binned scatter"],
+        "requires": {"n_num": 2},
+        "clinical_use": "High-density scatter of continuous biomarkers",
+        "next_step": "generate_canvasxpress_config with description='binplot of <num1> vs <num2>'",
+    },
+    "Bubble": {
+        "category": "multi_dimensional",
+        "description": "Bubble chart alias — scatter with size-encoded third variable.",
+        "best_for": ["bubble chart", "bubble plot"],
+        "requires": {"n_num": 3},
+        "clinical_use": "Three-dimensional biomarker exploration",
+        "next_step": "generate_canvasxpress_config with description='bubble chart of <num1> vs <num2> sized by <num3>'",
+    },
+    "Bullet": {
+        "category": "single_dimensional",
+        "description": "Bullet chart — performance vs target reference line.",
+        "best_for": ["bullet chart", "target", "kpi", "gauge"],
+        "requires": {"n_fac": 1, "n_num": 2},
+        "clinical_use": "Endpoint vs pre-specified threshold",
+        "next_step": "generate_canvasxpress_config with description='bullet chart of <metric> vs target by <factor>'",
+    },
+    "Bump": {
+        "category": "single_dimensional",
+        "description": "Rank-over-time (bump) chart — tracks rank changes longitudinally.",
+        "best_for": ["bump chart", "rank over time", "ranking change"],
+        "requires": {"n_fac": 1, "n_time": 1, "n_num": 1},
+        "clinical_use": "Site or patient ranking across visits",
+        "next_step": "generate_canvasxpress_config with description='bump chart of <factor> rank over <time>'",
+    },
+    "CDF": {
+        "category": "single_dimensional",
+        "description": "Cumulative distribution function plot.",
+        "best_for": ["cdf", "cumulative distribution", "ecdf", "percentile"],
+        "requires": {"n_num": 1},
+        "clinical_use": "CDF of time-to-event, PK exposure CDF",
+        "next_step": "generate_canvasxpress_config with description='CDF of <numeric>'",
+    },
+    "Cleveland": {
+        "category": "single_dimensional",
+        "description": "Cleveland dot plot — cleaner alternative to bar chart for many categories.",
+        "best_for": ["cleveland", "dot chart", "cleveland plot"],
+        "requires": {"n_fac": 1, "n_num": 1},
+        "clinical_use": "Incidence rates by SOC/PT sorted list",
+        "next_step": "generate_canvasxpress_config with description='Cleveland dot plot of <numeric> by <factor>'",
+    },
+    "Dumbbell": {
+        "category": "single_dimensional",
+        "description": "Dumbbell / connected dot plot — before/after comparison per category.",
+        "best_for": ["dumbbell", "before after", "paired comparison", "change from baseline"],
+        "requires": {"n_fac": 1, "n_num": 2},
+        "clinical_use": "Baseline vs post-treatment comparison by patient group",
+        "next_step": "generate_canvasxpress_config with description='dumbbell plot of <baseline> to <followup> by <factor>'",
+    },
+    "Pareto": {
+        "category": "single_dimensional",
+        "description": "Bar chart sorted descending with cumulative % line (80/20 rule).",
+        "best_for": ["pareto", "80 20", "cumulative percent", "ranked bar"],
+        "requires": {"n_fac": 1, "n_num": 1},
+        "clinical_use": "Top AEs by frequency with cumulative %",
+        "next_step": "generate_canvasxpress_config with description='Pareto chart of <numeric> by <factor>'",
+    },
+    "QQ": {
+        "category": "multi_dimensional",
+        "description": "Quantile-quantile plot for normality or distribution comparison.",
+        "best_for": ["qq plot", "quantile quantile", "normality test", "qqplot"],
+        "requires": {"n_num": 1},
+        "clinical_use": "Normality assessment of lab endpoints",
+        "next_step": "generate_canvasxpress_config with description='QQ plot of <numeric>'",
+    },
+    "Ribbon": {
+        "category": "single_dimensional",
+        "description": "Ribbon chart — area between two lines showing range over time.",
+        "best_for": ["ribbon", "band chart", "range band", "confidence band"],
+        "requires": {"n_time": 1, "n_num": 2},
+        "clinical_use": "Mean ± SD lab value band over visits",
+        "next_step": "generate_canvasxpress_config with description='ribbon chart of <lower> to <upper> over <time>'",
+    },
+    "Spaghetti": {
+        "category": "single_dimensional",
+        "description": "Individual trajectory lines per subject over time.",
+        "best_for": ["spaghetti", "individual trajectories", "per subject", "subject level"],
+        "requires": {"n_time": 1, "n_num": 1, "n_fac": 1},
+        "clinical_use": "Individual patient lab trajectories, PK per-subject profiles",
+        "next_step": "generate_canvasxpress_config with description='spaghetti plot of <numeric> over <time> per <subject_id>'",
+    },
+    "TimeSeries": {
+        "category": "single_dimensional",
+        "description": "Generic time series line chart.",
+        "best_for": ["time series", "timeseries", "temporal trend"],
+        "requires": {"n_time": 1, "n_num": 1},
+        "clinical_use": "Lab values, vital signs over study time",
+        "next_step": "generate_canvasxpress_config with description='time series of <numeric> over <time>'",
+    },
+    "Tornado": {
+        "category": "single_dimensional",
+        "description": "Tornado (butterfly) chart — diverging bars from centre for sensitivity analysis.",
+        "best_for": ["tornado", "butterfly chart", "sensitivity", "diverging bar", "forest sensitivity"],
+        "requires": {"n_fac": 1, "n_num": 2},
+        "clinical_use": "Sensitivity analysis of model parameters, risk factor comparison",
+        "next_step": "generate_canvasxpress_config with description='tornado chart of <low> vs <high> by <factor>'",
+    },
+    "TreeBracket": {
+        "category": "single_dimensional",
+        "description": "Tree/dendrogram with bracket annotations.",
+        "best_for": ["tree bracket", "dendrogram", "hierarchical clustering", "phylogenetic"],
+        "requires": {"n_fac": 1},
+        "clinical_use": "Hierarchical clustering of samples or genes",
+        "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
+    },
+    "Upset": {
+        "category": "single_dimensional",
+        "description": "UpSet plot — scalable alternative to Venn for many sets.",
+        "best_for": ["upset", "upset plot", "multiple set intersection", "many sets"],
+        "requires": {"n_fac": 2},
+        "clinical_use": "Multi-way AE overlap, multi-drug co-occurrence",
+        "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
+    },
 }
 
+
 # ---------------------------------------------------------------------------
-# Decision rules — ordered, first keyword match wins
+# Regex patterns  (ported from PATTERNS in recommendCharts.es5.js)
 # ---------------------------------------------------------------------------
 
-_RULES: list[dict] = [
-    {"kws": ["kaplan", "km ", "survival", "overall survival", "progression free",
-             "time-to-event", "efs", " os ", " pfs "],
-     "types": ["KaplanMeier"]},
-    {"kws": ["volcano", "fold change", "deg", "differential expression", "gwas"],
-     "types": ["Volcano"]},
-    {"kws": ["waterfall", "recist", "tumour shrinkage", "best change", "best percentage"],
-     "types": ["Waterfall"]},
-    {"kws": ["sankey", "alluvial", "flow", "disposition", "patient journey"],
-     "types": ["Sankey"]},
-    {"kws": ["network", "pathway", "protein interaction"],
-     "types": ["Network"]},
-    {"kws": ["venn", "set overlap", "intersection"],
-     "types": ["Venn"]},
-    {"kws": ["treemap", "tree map", "hierarchy"],
-     "types": ["Treemap"]},
-    {"kws": ["correlation matrix", "pairwise correlation"],
-     "types": ["Correlation", "Heatmap"]},
-    {"kws": ["heatmap", "heat map", "ae matrix", "gene expression matrix"],
-     "types": ["Heatmap", "Correlation"]},
-    {"kws": ["pca", "umap", "tsne", "t-sne", "embedding", "dimensionality"],
-     "types": ["Scatter2D", "Scatter3D"]},
-    {"kws": ["scatter", "regression", "bivariate"],
-     "types": ["Scatter2D", "Correlation"]},
-    {"kws": ["3d", "three dimensional", "three numeric"],
-     "types": ["Scatter3D"]},
-    {"kws": ["violin"],
-     "types": ["Violin", "Boxplot"]},
-    {"kws": ["distribution", "spread", "variability", "iqr", "outlier"],
-     "types": ["Boxplot", "Violin", "Dotplot"]},
-    {"kws": ["histogram", "frequency distribution"],
-     "types": ["Histogram", "Density"]},
-    {"kws": ["density", "kde"],
-     "types": ["Density", "Histogram"]},
-    {"kws": ["trend", "longitudinal", "over time", "over visit", "pk profile", "concentration"],
-     "types": ["Line", "Area"]},
-    {"kws": ["100%", "100 percent", "percent stack", "relative proportion"],
-     "types": ["StackedPercent", "Stacked"]},
-    {"kws": ["proportion", "part of whole", "composition", "breakdown", "percentage"],
-     "types": ["Stacked", "StackedPercent"]},
-    {"kws": ["pattern", "across groups", "across arms", "ae incidence by"],
-     "types": ["Heatmap", "Bar"]},
-    {"kws": ["individual patient", "individual subject", "per subject", "small n"],
-     "types": ["Dotplot", "Scatter2D"]},
-    # default magnitude comparison — catches "count by", "by soc", "by arm", etc.
-    {"kws": ["count", "frequency", "incidence", "ae count", "compare", "by soc",
-             "by arm", "magnitude", "bar"],
-     "types": ["Bar", "Stacked", "Heatmap"]},
+_PATTERNS_RAW: dict[str, list[str]] = {
+    "pvalue":         [r"p[\s_]?val", r"pval", r"p\.value", r"significance", r"sig$", r"adj[\s_]?p"],
+    "foldchange":     [r"fold[\s_]?change", r"fc$", r"log2fc", r"log2[\s_]?fold", r"lfc"],
+    "expression":     [r"expr", r"fpkm", r"rpkm", r"tpm", r"cpm", r"count$", r"reads", r"umi"],
+    "survival":       [r"surv", r"os$", r"pfs$", r"efs$", r"dfs$", r"ttp$", r"time[\s_]?to"],
+    "event":          [r"event$", r"status$", r"censor", r"death", r"progress"],
+    "time":           [r"time$", r"day$", r"week$", r"month$", r"year$", r"date", r"visit"],
+    "group":          [r"arm$", r"group$", r"cohort$", r"treatment$", r"trt$", r"therapy$"],
+    "subject":        [r"subject", r"patient", r"participant", r"id$", r"subj", r"ptid"],
+    "genomic":        [r"gene$", r"gene_", r"symbol$", r"hugo", r"entrez", r"ensembl", r"locus"],
+    "chromosome":     [r"chr$", r"chrom", r"chromosome", r"position", r"pos$", r"bp$"],
+    "effect":         [r"effect", r"beta$", r"coef", r"estimate", r"or$", r"hr$", r"rr$"],
+    "confidence":     [r"ci_", r"ci$", r"lower", r"upper", r"lb$", r"ub$", r"conf"],
+    "frequency":      [r"freq", r"count$", r"n_", r"num_", r"incidence", r"rate$"],
+    "category":       [r"cat$", r"category", r"class$", r"type$", r"grade$", r"soc$", r"pt$"],
+    "severity":       [r"sever", r"grade$", r"ctcae", r"toxicity", r"ae_grade"],
+    "response":       [r"response", r"recist", r"bcr", r"best", r"change", r"pct_change", r"delta"],
+    "biomarker":      [r"marker", r"biomarker", r"level$", r"conc", r"concentration", r"titer"],
+    "pk":             [r"auc$", r"cmax$", r"tmax$", r"t1_2", r"half[\s_]?life", r"cl$", r"vd$"],
+    "correlation":    [r"corr", r"pearson", r"spearman", r"rho$", r"r2$", r"r_squared"],
+    "proportion":     [r"prop$", r"pct$", r"percent", r"ratio$", r"fraction"],
+    "weight":         [r"weight$", r"wt$", r"mass$", r"size$", r"area$"],
+    "source":         [r"source$", r"from$", r"origin"],
+    "target":         [r"target$", r"to$", r"dest", r"destination"],
+    "node":           [r"node$", r"vertex", r"vertices", r"gene_a", r"gene_b"],
+    "edge":           [r"edge$", r"link$", r"interact", r"pathway$"],
+    "set":            [r"set$", r"list$", r"group_", r"genes_"],
+    "hierarchy":      [r"parent$", r"child$", r"level$", r"depth$", r"hier"],
+    "start":          [r"start$", r"begin$", r"onset$", r"from_date"],
+    "end":            [r"end$", r"stop$", r"finish$", r"to_date"],
+    "x":              [r"^x$", r"x_", r"_x$", r"x\d$", r"xval"],
+    "y":              [r"^y$", r"y_", r"_y$", r"y\d$", r"yval"],
+    "z":              [r"^z$", r"z_", r"_z$", r"z\d$", r"zval"],
+    "component":      [r"pc\d", r"pca\d", r"component\d", r"dim\d", r"umap\d", r"tsne\d"],
+    "cluster":        [r"cluster", r"clust$", r"group$", r"celltype", r"cell_type"],
+    "label":          [r"label$", r"name$", r"word$", r"term$", r"tag$", r"text$"],
+    "frequency2":     [r"freq$", r"weight$", r"count$", r"n$", r"tf$"],
+    "rank":           [r"rank$", r"position$", r"order$", r"place$"],
+    "lower":          [r"lower", r"low$", r"min$", r"lb$", r"q1$", r"p25$"],
+    "upper":          [r"upper", r"high$", r"max$", r"ub$", r"q3$", r"p75$"],
+}
+
+_PATTERNS: dict[str, list[re.Pattern]] = {
+    k: [re.compile(p, re.IGNORECASE) for p in pats]
+    for k, pats in _PATTERNS_RAW.items()
+}
+
+
+def _col_matches(col: str, group: str) -> bool:
+    return any(p.search(col) for p in _PATTERNS.get(group, []))
+
+
+def _any_col_matches(cols: list[str], group: str) -> bool:
+    return any(_col_matches(c, group) for c in cols)
+
+
+def _count_col_matches(cols: list[str], group: str) -> int:
+    return sum(1 for c in cols if _col_matches(c, group))
+
+
+# ---------------------------------------------------------------------------
+# Context dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _Ctx:
+    numeric:         int   # n_numeric columns
+    category:        int   # n_factor columns
+    datetime:        int   # n_time columns
+    boolean:         int   # n_bool columns
+    text:            int   # n_text columns
+    row_count:       int   # n_samples
+    min_cat_unique:  int   # min unique values among categorical cols
+    max_cat_unique:  int   # max unique values among categorical cols
+    cat0:            int   # unique values in first categorical col (0 if none)
+    has_high_variance: bool
+
+
+def _clamp(v: float) -> float:
+    return max(0.0, min(1.0, v))
+
+
+# ---------------------------------------------------------------------------
+# Layer 1: Structural scorer functions  (one per chart type)
+# ---------------------------------------------------------------------------
+
+def _score_bar(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.6
+        factors.append("1+ category + 1+ numeric")
+    if ctx.category == 1 and ctx.numeric == 1:
+        score += 0.2
+        factors.append("exactly 1 cat, 1 num — classic bar")
+    if ctx.row_count < 200:
+        score += 0.1
+        factors.append("small-medium dataset")
+    if ctx.cat0 and ctx.cat0 <= 20:
+        score += 0.1
+        factors.append("manageable category count")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_stacked(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.7
+        factors.append("2+ categories ideal for stacking")
+    elif ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.4
+        factors.append("1 cat + numeric — possible stacked")
+    if ctx.cat0 and 2 <= ctx.cat0 <= 8:
+        score += 0.2
+        factors.append("few stack levels")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_stacked_percent(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.65
+        factors.append("2+ cats → proportion comparison")
+    if ctx.cat0 and 2 <= ctx.cat0 <= 6:
+        score += 0.2
+        factors.append("few stack segments")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_boxplot(ctx: _Ctx) -> dict:
+    if ctx.category < 1:
+        return {"score": 0.0, "factors": ["no grouping factor — boxplot requires categories"]}
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.6
+        factors.append("cat + numeric → distribution by group")
+    if ctx.row_count >= 20:
+        score += 0.2
+        factors.append("sufficient n for box stats")
+    if ctx.numeric >= 2:
+        score += 0.1
+        factors.append("multiple numeric vars")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_violin(ctx: _Ctx) -> dict:
+    if ctx.category < 1:
+        return {"score": 0.0, "factors": ["no grouping factor — violin requires categories"]}
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.55
+        factors.append("cat + numeric → distribution shape")
+    if ctx.row_count >= 50:
+        score += 0.25
+        factors.append("enough data for density estimate")
+    if ctx.has_high_variance:
+        score += 0.1
+        factors.append("high variance → shape informative")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_dotplot(ctx: _Ctx) -> dict:
+    if ctx.category < 1:
+        return {"score": 0.0, "factors": ["no grouping factor — dotplot requires categories"]}
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.5
+        factors.append("cat + numeric")
+    if ctx.row_count < 50:
+        score += 0.35
+        factors.append("small n — show every point")
+    elif ctx.row_count < 200:
+        score += 0.1
+        factors.append("medium n — dotplot still viable")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_heatmap(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.7
+        factors.append("2 cats as row/col + numeric value")
+    if ctx.numeric >= 5:
+        score += 0.2
+        factors.append("many numeric vars → matrix view")
+    if ctx.row_count > 10:
+        score += 0.05
+        factors.append("enough rows for matrix")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_line(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.numeric >= 1:
+        score += 0.75
+        factors.append("time + numeric → trend line")
+    if ctx.category >= 1:
+        score += 0.1
+        factors.append("colour by category")
+    if ctx.row_count > 5:
+        score += 0.1
+        factors.append("enough time points")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_area(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.numeric >= 1:
+        score += 0.65
+        factors.append("time + numeric → area trend")
+    if ctx.category >= 1:
+        score += 0.1
+        factors.append("stacked area by category")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_scatter2d(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 2:
+        score += 0.7
+        factors.append("2+ numeric → x/y scatter")
+    if ctx.category >= 1:
+        score += 0.1
+        factors.append("colour by category")
+    if ctx.row_count > 10:
+        score += 0.1
+        factors.append("sufficient points")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_scatter3d(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 3:
+        score += 0.75
+        factors.append("3 numeric → x/y/z scatter")
+    if ctx.category >= 1:
+        score += 0.1
+        factors.append("colour by category")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_volcano(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 2:
+        score += 0.4
+        factors.append("2 numeric — possible volcano")
+    # semantic boost applied in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_kaplan_meier(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1 and ctx.category >= 1:
+        score += 0.4
+        factors.append("numeric time + category group")
+    # Boolean event/censoring indicator is a strong structural signal
+    # but only when a grouping factor AND multiple numerics are present
+    # (avoids false positives on binary flag columns like vs/am in mtcars)
+    if ctx.boolean >= 1 and ctx.numeric >= 1 and ctx.category >= 1 and ctx.numeric <= 3:
+        score += 0.4
+        factors.append("binary event indicator + numeric time")
+    # semantic boost applied in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_correlation(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 2:
+        score += 0.5
+        factors.append("2+ numeric → pairwise corr")
+    if ctx.numeric >= 4:
+        score += 0.25
+        factors.append("many numeric vars → matrix useful")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_sankey(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.6
+        factors.append("2 cats as source/target + flow value")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_waterfall(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1 and ctx.category >= 1:
+        score += 0.45
+        factors.append("numeric response + subject identifier")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_histogram(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.55
+        factors.append("1+ numeric → frequency distribution")
+    if ctx.category == 0:
+        score += 0.2
+        factors.append("no category → single variable focus")
+    if ctx.row_count >= 30:
+        score += 0.15
+        factors.append("enough data for bins")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_density(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.5
+        factors.append("1+ numeric → density estimate")
+    if ctx.category >= 1:
+        score += 0.15
+        factors.append("overlay groups by category")
+    if ctx.row_count >= 50:
+        score += 0.2
+        factors.append("enough n for smooth density")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_treemap(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.5
+        factors.append("cat + numeric → hierarchical size")
+    if ctx.category >= 2:
+        score += 0.2
+        factors.append("nested hierarchy")
+    if ctx.cat0 and ctx.cat0 > 10:
+        score += 0.15
+        factors.append("many categories → treemap handles well")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_network(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2:
+        score += 0.3
+        factors.append("2 cats — possible node/edge pairs")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_venn(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2:
+        score += 0.3
+        factors.append("2+ cats — possible set membership")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_bar_line(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 2:
+        score += 0.6
+        factors.append("1 cat + 2 numeric → dual axis bar-line")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_ridgeline(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.45
+        factors.append("cat + numeric → stacked densities")
+    if ctx.cat0 and 3 <= ctx.cat0 <= 15:
+        score += 0.2
+        factors.append("several groups to compare")
+    if ctx.row_count >= 100:
+        score += 0.2
+        factors.append("enough n per group for density")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_hexplot(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 2:
+        score += 0.4
+        factors.append("2 numeric → hex binning")
+    if ctx.row_count > 500:
+        score += 0.4
+        factors.append("large n — hexplot prevents overplotting")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_contour(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 2:
+        score += 0.45
+        factors.append("2 numeric → 2D density contour")
+    if ctx.row_count > 200:
+        score += 0.2
+        factors.append("large n — contour informative")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_sunburst(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.6
+        factors.append("2+ cats + numeric → radial hierarchy")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_chord(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.5
+        factors.append("2 cats + numeric → circular flow")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_parallel_coordinates(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 3:
+        score += 0.6
+        factors.append("3+ numeric → parallel axes")
+    if ctx.category >= 1:
+        score += 0.15
+        factors.append("colour lines by category")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_splom(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if 2 <= ctx.numeric <= 4:
+        score += 0.7
+        factors.append("2–4 numeric → compact pairwise matrix")
+    elif ctx.numeric >= 5:
+        score += 0.6
+        factors.append("5+ numeric → pairwise scatter matrix")
+    if ctx.numeric > 8:
+        score -= 0.2
+        factors.append("too many variables — matrix too busy")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_radar(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 3 and ctx.category >= 1:
+        score += 0.55
+        factors.append("3+ numeric axes + category groups")
+    if ctx.category >= 1 and ctx.cat0 and ctx.cat0 <= 5:
+        score += 0.15
+        factors.append("few groups → readable radar")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_streamgraph(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.7
+        factors.append("time + cat + numeric → stacked stream")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_gantt(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 2 and ctx.category >= 1:
+        score += 0.75
+        factors.append("start/end dates + category")
+    elif ctx.numeric >= 2 and ctx.category >= 1:
+        score += 0.4
+        factors.append("numeric start/end + category — possible Gantt")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_lollipop(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.45
+        factors.append("cat + numeric → lollipop")
+    if ctx.cat0 and ctx.cat0 > 15:
+        score += 0.2
+        factors.append("many categories — lollipop cleaner than bar")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_tag_cloud(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1:
+        score += 0.3
+        factors.append("category labels → word cloud")
+    if ctx.text >= 1:
+        score += 0.4
+        factors.append("text column → tag cloud")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_dot_line(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.4
+        factors.append("cat + numeric — possible forest plot")
+    if ctx.numeric >= 3:
+        score += 0.3
+        factors.append("estimate + CI bounds pattern")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_scatter_bubble_2d(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 3:
+        score += 0.65
+        factors.append("3 numeric → x, y, size")
+    if ctx.category >= 1:
+        score += 0.1
+        factors.append("colour bubbles by category")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_alluvial(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2 and ctx.numeric >= 1:
+        score += 0.55
+        factors.append("2+ cats + numeric → alluvial flow")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_binplot(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 2:
+        score += 0.4
+        factors.append("2 numeric → binned scatter")
+    if ctx.row_count > 500:
+        score += 0.35
+        factors.append("large n → binning reduces overplot")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_bubble(ctx: _Ctx) -> dict:
+    return _score_scatter_bubble_2d(ctx)
+
+
+def _score_bullet(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 2:
+        score += 0.55
+        factors.append("cat + 2 numeric (value + target)")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_bump(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.6
+        factors.append("time + cat + numeric rank")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_cdf(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.45
+        factors.append("1+ numeric → CDF")
+    if ctx.row_count >= 30:
+        score += 0.2
+        factors.append("enough data for smooth CDF")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_cleveland(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.45
+        factors.append("cat + numeric → Cleveland dot")
+    if ctx.cat0 and ctx.cat0 > 10:
+        score += 0.2
+        factors.append("many categories — Cleveland cleaner than bar")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_dumbbell(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 2:
+        score += 0.6
+        factors.append("cat + 2 numeric → before/after")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_pareto(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 1:
+        score += 0.5
+        factors.append("cat + numeric → ranked bar + cumulative %")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_qq(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.numeric >= 1:
+        score += 0.4
+        factors.append("1+ numeric → quantile comparison")
+    if ctx.row_count >= 20:
+        score += 0.2
+        factors.append("sufficient n for quantiles")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_ribbon(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.numeric >= 2:
+        score += 0.65
+        factors.append("time + 2 numeric → band range")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_spaghetti(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.numeric >= 1 and ctx.category >= 1:
+        score += 0.65
+        factors.append("time + numeric + subject id")
+    if ctx.row_count < 500:
+        score += 0.15
+        factors.append("moderate n — trajectories readable")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_time_series(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.datetime >= 1 and ctx.numeric >= 1:
+        score += 0.7
+        factors.append("time + numeric → time series")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_tornado(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1 and ctx.numeric >= 2:
+        score += 0.55
+        factors.append("cat + 2 numeric → diverging bar")
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_tree_bracket(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 1:
+        score += 0.35
+        factors.append("category labels → dendrogram leaves")
+    # semantic boost in Layer 2
+    return {"score": _clamp(score), "factors": factors}
+
+
+def _score_upset(ctx: _Ctx) -> dict:
+    score = 0.0
+    factors = []
+    if ctx.category >= 2:
+        score += 0.4
+        factors.append("2+ cats → set membership")
+    if ctx.category >= 4:
+        score += 0.25
+        factors.append("4+ sets → better than Venn")
+    return {"score": _clamp(score), "factors": factors}
+
+
+# ---------------------------------------------------------------------------
+# Scorers registry
+# ---------------------------------------------------------------------------
+
+_SCORERS: list[dict] = [
+    {"name": "Bar",                 "graphType": "Bar",                 "fn": _score_bar},
+    {"name": "Stacked",             "graphType": "Stacked",             "fn": _score_stacked},
+    {"name": "StackedPercent",      "graphType": "StackedPercent",      "fn": _score_stacked_percent},
+    {"name": "Boxplot",             "graphType": "Boxplot",             "fn": _score_boxplot},
+    {"name": "Violin",              "graphType": "Violin",              "fn": _score_violin},
+    {"name": "Dotplot",             "graphType": "Dotplot",             "fn": _score_dotplot},
+    {"name": "Heatmap",             "graphType": "Heatmap",             "fn": _score_heatmap},
+    {"name": "Line",                "graphType": "Line",                "fn": _score_line},
+    {"name": "Area",                "graphType": "Area",                "fn": _score_area},
+    {"name": "Scatter2D",           "graphType": "Scatter2D",           "fn": _score_scatter2d},
+    {"name": "Scatter3D",           "graphType": "Scatter3D",           "fn": _score_scatter3d},
+    {"name": "Volcano",             "graphType": "Volcano",             "fn": _score_volcano},
+    {"name": "KaplanMeier",         "graphType": "KaplanMeier",         "fn": _score_kaplan_meier},
+    {"name": "Correlation",         "graphType": "Correlation",         "fn": _score_correlation},
+    {"name": "Sankey",              "graphType": "Sankey",              "fn": _score_sankey},
+    {"name": "Waterfall",           "graphType": "Waterfall",           "fn": _score_waterfall},
+    {"name": "Histogram",           "graphType": "Histogram",           "fn": _score_histogram},
+    {"name": "Density",             "graphType": "Density",             "fn": _score_density},
+    {"name": "Treemap",             "graphType": "Treemap",             "fn": _score_treemap},
+    {"name": "Network",             "graphType": "Network",             "fn": _score_network},
+    {"name": "Venn",                "graphType": "Venn",                "fn": _score_venn},
+    {"name": "BarLine",             "graphType": "BarLine",             "fn": _score_bar_line},
+    {"name": "Ridgeline",           "graphType": "Ridgeline",           "fn": _score_ridgeline},
+    {"name": "Hexplot",             "graphType": "Hexplot",             "fn": _score_hexplot},
+    {"name": "Contour",             "graphType": "Contour",             "fn": _score_contour},
+    {"name": "Sunburst",            "graphType": "Sunburst",            "fn": _score_sunburst},
+    {"name": "Chord",               "graphType": "Chord",               "fn": _score_chord},
+    {"name": "ParallelCoordinates", "graphType": "ParallelCoordinates", "fn": _score_parallel_coordinates},
+    {"name": "SPLOM",               "graphType": "SPLOM",               "fn": _score_splom},
+    {"name": "Radar",               "graphType": "Radar",               "fn": _score_radar},
+    {"name": "Streamgraph",         "graphType": "Streamgraph",         "fn": _score_streamgraph},
+    {"name": "Gantt",               "graphType": "Gantt",               "fn": _score_gantt},
+    {"name": "Lollipop",            "graphType": "Lollipop",            "fn": _score_lollipop},
+    {"name": "TagCloud",            "graphType": "TagCloud",            "fn": _score_tag_cloud},
+    {"name": "DotLine",             "graphType": "DotLine",             "fn": _score_dot_line},
+    {"name": "ScatterBubble2D",     "graphType": "ScatterBubble2D",     "fn": _score_scatter_bubble_2d},
+    {"name": "Alluvial",            "graphType": "Alluvial",            "fn": _score_alluvial},
+    {"name": "Binplot",             "graphType": "Binplot",             "fn": _score_binplot},
+    {"name": "Bubble",              "graphType": "Bubble",              "fn": _score_bubble},
+    {"name": "Bullet",              "graphType": "Bullet",              "fn": _score_bullet},
+    {"name": "Bump",                "graphType": "Bump",                "fn": _score_bump},
+    {"name": "CDF",                 "graphType": "CDF",                 "fn": _score_cdf},
+    {"name": "Cleveland",           "graphType": "Cleveland",           "fn": _score_cleveland},
+    {"name": "Dumbbell",            "graphType": "Dumbbell",            "fn": _score_dumbbell},
+    {"name": "Pareto",              "graphType": "Pareto",              "fn": _score_pareto},
+    {"name": "QQ",                  "graphType": "QQ",                  "fn": _score_qq},
+    {"name": "Ribbon",              "graphType": "Ribbon",              "fn": _score_ribbon},
+    {"name": "Spaghetti",           "graphType": "Spaghetti",           "fn": _score_spaghetti},
+    {"name": "TimeSeries",          "graphType": "TimeSeries",          "fn": _score_time_series},
+    {"name": "Tornado",             "graphType": "Tornado",             "fn": _score_tornado},
+    {"name": "TreeBracket",         "graphType": "TreeBracket",         "fn": _score_tree_bracket},
+    {"name": "Upset",               "graphType": "Upset",               "fn": _score_upset},
 ]
 
 
-def _requirements_met(graph_type: str, n_fac: int, n_num: int, n_time: int) -> bool:
-    req = CHART_CATALOGUE.get(graph_type, {}).get("requires", {})
-    if req.get("n_fac", 0) > n_fac:
-        return False
-    if req.get("n_num", 0) > n_num:
-        return False
-    if req.get("n_time", 0) > n_time:
-        return False
-    return True
+# ---------------------------------------------------------------------------
+# Layer 2: Semantic adjustments  (column name regex → score deltas)
+# ---------------------------------------------------------------------------
+
+def _col_stem_similarity(names: list[str]) -> float:
+    """
+    Return fraction of name pairs that share a common prefix or suffix of >= 3 chars.
+    E.g. ['Sepal.Length','Sepal.Width','Petal.Length','Petal.Width'] → high similarity.
+    """
+    if len(names) < 2:
+        return 0.0
+    pairs = 0
+    similar = 0
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            pairs += 1
+            a, b = names[i].lower(), names[j].lower()
+            # common prefix of length >= 3
+            pfx = 0
+            for ca, cb in zip(a, b):
+                if ca == cb:
+                    pfx += 1
+                else:
+                    break
+            # common suffix of length >= 3
+            sfx = 0
+            for ca, cb in zip(reversed(a), reversed(b)):
+                if ca == cb:
+                    sfx += 1
+                else:
+                    break
+            if pfx >= 3 or sfx >= 3:
+                similar += 1
+    return similar / pairs if pairs else 0.0
+
+
+def _compute_semantic_adjustments(col_names: list[str], column_types: dict[str, str] | None = None) -> dict[str, float]:
+    """
+    Returns a dict of {graphType: delta} where delta is added to the
+    Layer 1 structural score.  Ported directly from computeSemanticAdjustments
+    in recommendCharts.es5.js.
+    """
+    adj: dict[str, float] = {}
+
+    def add(gt: str, delta: float) -> None:
+        adj[gt] = adj.get(gt, 0.0) + delta
+
+    # Volcano: p-value + fold-change columns
+    if _any_col_matches(col_names, "pvalue") and _any_col_matches(col_names, "foldchange"):
+        add("Volcano", 0.9)
+
+    # Kaplan-Meier: survival + event columns
+    if _any_col_matches(col_names, "survival") and _any_col_matches(col_names, "event"):
+        add("KaplanMeier", 0.9)
+    if _any_col_matches(col_names, "survival") and _any_col_matches(col_names, "time"):
+        add("KaplanMeier", 0.5)
+    # Most common survival format: explicit time + event/censoring columns
+    if _any_col_matches(col_names, "time") and _any_col_matches(col_names, "event"):
+        add("KaplanMeier", 0.9)
+    # time + group (e.g. Time/Group without explicit Event column)
+    if _any_col_matches(col_names, "time") and _any_col_matches(col_names, "group"):
+        add("KaplanMeier", 0.4)
+
+    # Heatmap / Correlation: expression matrix or many numeric vars
+    if _any_col_matches(col_names, "expression"):
+        add("Heatmap", 0.5)
+        add("Violin", 0.2)
+        add("Boxplot", 0.2)
+    if _count_col_matches(col_names, "correlation") >= 2:
+        add("Correlation", 0.6)
+
+    # Waterfall: response/RECIST columns
+    if _any_col_matches(col_names, "response"):
+        add("Waterfall", 0.5)
+        add("Bar", 0.1)
+
+    # Network: node + edge columns
+    if _any_col_matches(col_names, "node") and _any_col_matches(col_names, "edge"):
+        add("Network", 0.8)
+    if _any_col_matches(col_names, "node"):
+        add("Network", 0.3)
+
+    # Sankey / Alluvial: source + target
+    if _any_col_matches(col_names, "source") and _any_col_matches(col_names, "target"):
+        add("Sankey", 0.7)
+        add("Alluvial", 0.6)
+        add("Chord", 0.4)
+
+    # Venn / Upset: set membership columns
+    if _count_col_matches(col_names, "set") >= 2:
+        add("Venn", 0.6)
+        add("Upset", 0.7)
+
+    # Treemap / Sunburst: hierarchy columns
+    if _any_col_matches(col_names, "hierarchy"):
+        add("Treemap", 0.5)
+        add("Sunburst", 0.5)
+
+    # GWAS: chromosome + p-value → Manhattan (use Scatter2D + semantic label)
+    if _any_col_matches(col_names, "chromosome") and _any_col_matches(col_names, "pvalue"):
+        add("Scatter2D", 0.5)
+        add("Volcano", 0.3)
+
+    # PK: AUC/Cmax/Tmax → Line
+    if _any_col_matches(col_names, "pk"):
+        add("Line", 0.4)
+        add("Scatter2D", 0.2)
+
+    # Forest / DotLine: effect + CI columns
+    if _any_col_matches(col_names, "effect") and _any_col_matches(col_names, "confidence"):
+        add("DotLine", 0.75)
+
+    # Spaghetti: subject + time
+    if _any_col_matches(col_names, "subject") and _any_col_matches(col_names, "time"):
+        add("Spaghetti", 0.6)
+        add("Line", 0.2)
+
+    # Gantt: start + end time columns
+    if _any_col_matches(col_names, "start") and _any_col_matches(col_names, "end"):
+        add("Gantt", 0.75)
+
+    # Scatter: x + y coords
+    if _any_col_matches(col_names, "x") and _any_col_matches(col_names, "y"):
+        add("Scatter2D", 0.35)
+    if (_any_col_matches(col_names, "x") and _any_col_matches(col_names, "y")
+            and _any_col_matches(col_names, "z")):
+        add("Scatter3D", 0.45)
+
+    # PCA / UMAP / tSNE components
+    if _count_col_matches(col_names, "component") >= 2:
+        add("Scatter2D", 0.5)
+        add("Scatter3D", 0.2)
+
+    # Bubble: x + y + weight/size
+    if (_any_col_matches(col_names, "x") and _any_col_matches(col_names, "y")
+            and _any_col_matches(col_names, "weight")):
+        add("ScatterBubble2D", 0.6)
+        add("Bubble", 0.6)
+
+    # TagCloud: label + frequency
+    if _any_col_matches(col_names, "label") and _any_col_matches(col_names, "frequency2"):
+        add("TagCloud", 0.75)
+
+    # Bump: rank + time
+    if _any_col_matches(col_names, "rank") and _any_col_matches(col_names, "time"):
+        add("Bump", 0.7)
+
+    # Ribbon: lower + upper bounds over time
+    if _any_col_matches(col_names, "lower") and _any_col_matches(col_names, "upper"):
+        add("Ribbon", 0.65)
+        add("DotLine", 0.3)
+
+    # Dumbbell: two numeric measures per category
+    if (_count_col_matches(col_names, "lower") >= 1
+            and _count_col_matches(col_names, "upper") >= 1
+            and _any_col_matches(col_names, "category")):
+        add("Dumbbell", 0.5)
+
+    # TreeBracket: hierarchy/cluster
+    if _any_col_matches(col_names, "cluster"):
+        add("TreeBracket", 0.5)
+        add("Heatmap", 0.2)
+
+    # Biomarker → Violin / Boxplot
+    if _any_col_matches(col_names, "biomarker"):
+        add("Violin", 0.3)
+        add("Boxplot", 0.2)
+
+    # Group / arm → Bar / Line (Boxplot already has strong structural score without a boost)
+    if _any_col_matches(col_names, "group"):
+        add("Bar", 0.15)
+        add("Line", 0.1)
+
+    # SPLOM: similar numeric column names (e.g. Sepal.Length/Sepal.Width/Petal.Length/Petal.Width)
+    # indicates a family of related measurements — ideal for pairwise scatter matrix.
+    # Exclude row-label columns (Id/subject) from the similarity check.
+    if column_types is not None:
+        num_cols = [
+            c for c, t in column_types.items()
+            if t.lower() in _NUMERIC_ALIASES
+            and not (_col_matches(c, "subject") and not _col_matches(c, "group"))
+        ]
+        if 2 <= len(num_cols) <= 8:
+            sim = _col_stem_similarity(num_cols)
+            if sim >= 0.5:
+                add("SPLOM", 0.6)
+            elif sim >= 0.25:
+                add("SPLOM", 0.3)
+
+    return adj
+
+
+# ---------------------------------------------------------------------------
+# Layer 3: Intent keyword boosts
+# ---------------------------------------------------------------------------
+
+_INTENT_BOOSTS: list[dict] = [
+    # clinical survival
+    {"kws": ["survival", "kaplan", "km ", " os ", " pfs ", "time-to-event", "efs", "overall survival"],
+     "boosts": {"KaplanMeier": 0.9}},
+    # volcano / DEG
+    {"kws": ["volcano", "fold change", "deg", "differential expression", "gwas"],
+     "boosts": {"Volcano": 0.9}},
+    # RECIST / waterfall
+    {"kws": ["waterfall", "recist", "tumour shrinkage", "best change", "best percentage"],
+     "boosts": {"Waterfall": 0.8}},
+    # sankey / flow
+    {"kws": ["sankey", "alluvial", "flow", "disposition", "patient journey"],
+     "boosts": {"Sankey": 0.7, "Alluvial": 0.5}},
+    # network
+    {"kws": ["network", "pathway", "protein interaction"],
+     "boosts": {"Network": 0.8}},
+    # venn / overlap
+    {"kws": ["venn", "overlap", "set intersection"],
+     "boosts": {"Venn": 0.7, "Upset": 0.4}},
+    # heatmap
+    {"kws": ["heatmap", "heat map", "ae matrix", "gene expression matrix", "expression matrix"],
+     "boosts": {"Heatmap": 0.75}},
+    # PCA / UMAP / embedding
+    {"kws": ["pca", "umap", "tsne", "t-sne", "embedding", "dimensionality reduction"],
+     "boosts": {"Scatter2D": 0.6}},
+    # correlation
+    {"kws": ["correlation matrix", "pairwise correlation", "correlat"],
+     "boosts": {"Correlation": 0.7}},
+    # scatter
+    {"kws": ["scatter", "regression", "bivariate", "x vs y"],
+     "boosts": {"Scatter2D": 0.5}},
+    # 3d
+    {"kws": ["3d", "three dimensional"],
+     "boosts": {"Scatter3D": 0.6}},
+    # violin
+    {"kws": ["violin"],
+     "boosts": {"Violin": 0.7}},
+    # distribution
+    {"kws": ["distribution", "spread", "variability", "outlier"],
+     "boosts": {"Boxplot": 0.4, "Violin": 0.3, "Histogram": 0.2}},
+    # histogram
+    {"kws": ["histogram", "frequency distribution"],
+     "boosts": {"Histogram": 0.65}},
+    # density
+    {"kws": ["density", "kde"],
+     "boosts": {"Density": 0.65}},
+    # trend / longitudinal
+    {"kws": ["trend", "longitudinal", "over time", "over visit", "pk profile", "concentration"],
+     "boosts": {"Line": 0.65, "Spaghetti": 0.2}},
+    # 100% stacked
+    {"kws": ["100%", "100 percent", "percent stack", "relative proportion"],
+     "boosts": {"StackedPercent": 0.7}},
+    # stacked
+    {"kws": ["proportion", "part of whole", "composition", "breakdown", "percentage"],
+     "boosts": {"Stacked": 0.5}},
+    # treemap
+    {"kws": ["treemap", "tree map", "hierarchy"],
+     "boosts": {"Treemap": 0.65, "Sunburst": 0.3}},
+    # individual patient / small n
+    {"kws": ["individual patient", "individual subject", "per subject", "small n", "spaghetti"],
+     "boosts": {"Dotplot": 0.5, "Spaghetti": 0.4}},
+    # forest plot / CI
+    {"kws": ["forest plot", "hazard ratio", "odds ratio", "confidence interval", "hr ", " or "],
+     "boosts": {"DotLine": 0.8}},
+    # gantt / timeline
+    {"kws": ["gantt", "timeline", "treatment duration", "exposure period"],
+     "boosts": {"Gantt": 0.8}},
+    # bubble
+    {"kws": ["bubble"],
+     "boosts": {"ScatterBubble2D": 0.7, "Bubble": 0.7}},
+    # lollipop
+    {"kws": ["lollipop"],
+     "boosts": {"Lollipop": 0.7}},
+    # pareto
+    {"kws": ["pareto", "80 20", "cumulative percent"],
+     "boosts": {"Pareto": 0.75}},
+    # qq
+    {"kws": ["qq plot", "quantile quantile", "normality"],
+     "boosts": {"QQ": 0.7}},
+    # tag cloud / word cloud
+    {"kws": ["word cloud", "tag cloud", "text frequency"],
+     "boosts": {"TagCloud": 0.8}},
+    # bar
+    {"kws": ["count", "incidence", "ae count", "compare", "by soc", "by arm", "magnitude", "bar chart"],
+     "boosts": {"Bar": 0.5}},
+    # dumbbell / before-after
+    {"kws": ["before after", "change from baseline", "paired", "dumbbell"],
+     "boosts": {"Dumbbell": 0.75}},
+    # tornado / sensitivity
+    {"kws": ["sensitivity analysis", "tornado", "butterfly"],
+     "boosts": {"Tornado": 0.75}},
+]
+
+
+# ---------------------------------------------------------------------------
+# Scoring engine
+# ---------------------------------------------------------------------------
+
+def recommend_charts(
+    column_types: dict[str, str],
+    n_samples: int = 100,
+    category_cardinalities: Optional[dict[str, int]] = None,
+    intent: str = "",
+) -> list[dict]:
+    """
+    Score all 53 chart types and return them sorted by descending score.
+
+    Args:
+        column_types:            {col_name: type_string}
+        n_samples:               Row count (used for structural scoring)
+        category_cardinalities:  Optional {col_name: n_unique} for category cols
+        intent:                  Plain-English intent (used for Layer 3 boosts)
+
+    Returns:
+        List of dicts sorted by score desc:
+        [{"graphType": str, "score": float, "factors": [...], "layer2_delta": float}, ...]
+    """
+    n_fac, n_num, n_time, n_bool, n_text = _count_types(column_types)
+
+    # Subtract pure row-label columns (id/subject/patient/...) from the factor
+    # count — they are row labels, not grouping variables. Charts like Boxplot/
+    # Violin/Dotplot require a true grouping factor (arm, treatment, cell type…).
+    all_factor_cols = [k for k, v in column_types.items() if v.lower() in _FACTOR_ALIASES]
+    n_label_only = sum(
+        1 for col in all_factor_cols
+        if _col_matches(col, "subject") and not _col_matches(col, "group")
+    )
+    n_grouping_fac = max(0, n_fac - n_label_only)
+
+    # Build category cardinality stats
+    cat_cards: list[int] = []
+    if category_cardinalities:
+        factor_cols = [k for k, v in column_types.items() if v.lower() in _FACTOR_ALIASES]
+        cat_cards = [category_cardinalities[c] for c in factor_cols if c in category_cardinalities]
+    min_cat_unique = min(cat_cards) if cat_cards else 0
+    max_cat_unique = max(cat_cards) if cat_cards else 0
+    cat0 = cat_cards[0] if cat_cards else 0
+
+    ctx = _Ctx(
+        numeric=n_num,
+        category=n_grouping_fac,
+        datetime=n_time,
+        boolean=n_bool,
+        text=n_text,
+        row_count=n_samples,
+        min_cat_unique=min_cat_unique,
+        max_cat_unique=max_cat_unique,
+        cat0=cat0,
+        has_high_variance=False,  # unknown without data; semantic layer can adjust
+    )
+
+    col_names = list(column_types.keys())
+    semantic_adj = _compute_semantic_adjustments(col_names, column_types)
+
+    # Layer 3: intent boosts
+    intent_lower = intent.lower()
+    intent_adj: dict[str, float] = {}
+    for rule in _INTENT_BOOSTS:
+        if any(kw in intent_lower for kw in rule["kws"]):
+            for gt, delta in rule["boosts"].items():
+                intent_adj[gt] = intent_adj.get(gt, 0.0) + delta
+
+    results = []
+    for scorer in _SCORERS:
+        gt = scorer["graphType"]
+        layer1 = scorer["fn"](ctx)
+        l2 = semantic_adj.get(gt, 0.0)
+        l3 = intent_adj.get(gt, 0.0)
+        raw_score = layer1["score"] + l2 + l3
+        final_score = _clamp(raw_score)
+        results.append({
+            "graphType":     gt,
+            "score":         round(final_score, 4),
+            "factors":       layer1["factors"],
+            "layer2_delta":  round(l2, 4),
+            "layer3_delta":  round(l3, 4),
+        })
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +1626,7 @@ def select_chart(
     intent: str,
     column_types: dict[str, str],
     n_samples: Optional[int] = None,
+    category_cardinalities: Optional[dict[str, int]] = None,
 ) -> dict:
     """
     Recommend CanvasXpress graphType(s) from column types + analytical intent.
@@ -279,51 +1635,39 @@ def select_chart(
         intent:       Plain-English description of what you want to show.
                       e.g. "AE counts by SOC across 3 treatment arms"
         column_types: {column_name: type} where type is one of:
-                      numeric | factor | string | date | integer | binary
-        n_samples:    Optional row count — nudges Dotplot over Boxplot for small n (<30)
-                      and warns about overplotting for large n (>5000).
+                      numeric | factor | string | date | integer | binary |
+                      boolean | text
+        n_samples:    Optional row count — nudges Dotplot over Boxplot for small n
+                      and Hexplot/Binplot for large n.
+        category_cardinalities:
+                      Optional {col_name: n_unique} for categorical columns.
 
     Returns:
         {
           intent             (str)  - echoed back
-          column_summary     (dict) - {n_factor, n_numeric, n_time}
+          column_summary     (dict) - {n_factor, n_numeric, n_time, n_bool, n_text}
           top_recommendation (dict) - best graphType with rationale
-          alternatives       (list) - up to 3 other candidates
+          alternatives       (list) - up to 4 other candidates
           generate_hint      (str)  - suggested description to pass to
                                       generate_canvasxpress_config
         }
     """
-    intent_lower = intent.lower()
-    n_fac, n_num, n_time = _count_types(column_types)
+    rows = n_samples if n_samples is not None else 100
+    n_fac, n_num, n_time, n_bool, n_text = _count_types(column_types)
 
-    candidates: list[str] = []
-    seen: set[str] = set()
+    ranked = recommend_charts(
+        column_types=column_types,
+        n_samples=rows,
+        category_cardinalities=category_cardinalities,
+        intent=intent,
+    )
 
-    for rule in _RULES:
-        if not any(kw in intent_lower for kw in rule["kws"]):
-            continue
-        for gt in rule["types"]:
-            if gt not in seen and _requirements_met(gt, n_fac, n_num, n_time):
-                seen.add(gt)
-                candidates.append(gt)
-
-    # Fallback when no rule matched
-    if not candidates:
-        fallback = "Bar" if n_fac >= 1 and n_num >= 1 else "Scatter2D"
-        candidates = [fallback]
-
-    # Small-n nudge: make Dotplot the top recommendation for tiny cohorts
-    if n_samples is not None and n_samples < 30:
-        if "Dotplot" not in candidates:
-            candidates.insert(0, "Dotplot")
-        elif candidates[0] != "Dotplot":
-            candidates.remove("Dotplot")
-            candidates.insert(0, "Dotplot")
-
-    def _enrich(gt: str) -> dict:
+    def _enrich(entry: dict) -> dict:
+        gt = entry["graphType"]
         info = CHART_CATALOGUE.get(gt, {})
         out: dict = {
             "graphType":    gt,
+            "score":        entry["score"],
             "category":     info.get("category", ""),
             "description":  info.get("description", ""),
             "clinical_use": info.get("clinical_use", ""),
@@ -331,6 +1675,7 @@ def select_chart(
                 "next_step",
                 f"generate_canvasxpress_config with description='{gt} chart'",
             ),
+            "scoring_factors": entry["factors"],
         }
         if n_samples is not None and n_samples < 30 and gt == "Dotplot":
             out["note"] = (
@@ -338,13 +1683,13 @@ def select_chart(
             )
         if n_samples is not None and n_samples > 5000 and gt in {"Scatter2D", "Dotplot"}:
             out["note"] = (
-                f"n_samples={n_samples} is large — consider BinPlot or Hexplot "
+                f"n_samples={n_samples} is large — consider Hexplot or Binplot "
                 "to avoid overplotting."
             )
         return out
 
-    top  = _enrich(candidates[0])
-    alts = [_enrich(gt) for gt in candidates[1:4]]
+    top  = _enrich(ranked[0])
+    alts = [_enrich(r) for r in ranked[1:5]]
 
     # Build a ready-made description hint for generate_canvasxpress_config
     col_names    = list(column_types.keys())
@@ -352,6 +1697,7 @@ def select_chart(
     numeric_cols = [k for k, v in column_types.items() if v.lower() in _NUMERIC_ALIASES]
     time_cols    = [k for k, v in column_types.items() if v.lower() in _TIME_ALIASES]
 
+    best_gt = ranked[0]["graphType"]
     if factor_cols and numeric_cols:
         axis_part = (
             f"over {time_cols[0]}" if time_cols else f"grouped by {factor_cols[0]}"
@@ -360,20 +1706,23 @@ def select_chart(
             f" colored by {factor_cols[1]}" if len(factor_cols) > 1 else ""
         )
         generate_hint = (
-            f"{candidates[0]} chart of {numeric_cols[0]} {axis_part}"
+            f"{best_gt} chart of {numeric_cols[0]} {axis_part}"
             f"{color_part} — columns: {', '.join(col_names)}"
         )
     else:
-        generate_hint = f"{candidates[0]} chart — columns: {', '.join(col_names)}"
+        generate_hint = f"{best_gt} chart — columns: {', '.join(col_names)}"
 
     return {
-        "intent":             intent,
-        "column_summary":     {
+        "intent":         intent,
+        "column_summary": {
             "n_factor":  n_fac,
             "n_numeric": n_num,
             "n_time":    n_time,
+            "n_bool":    n_bool,
+            "n_text":    n_text,
         },
         "top_recommendation": top,
         "alternatives":       alts,
         "generate_hint":      generate_hint,
     }
+

@@ -16,6 +16,7 @@ Runs at http://0.0.0.0:8100/mcp
 
 import json
 import os
+import re
 import sys
 import struct
 import logging
@@ -1335,15 +1336,15 @@ def get_axes_info(graph_type: str) -> dict:
 @mcp.tool(
     description=(
         "Recommend the most appropriate CanvasXpress graphType given column names, "
-        "column types, and a plain-English description of what you want to show. "
+        "column types, and an optional plain-English description of what you want to show. "
         "Use this BEFORE generate_canvasxpress_config when you are unsure which chart "
         "type best fits your data structure. Accepts structured column metadata "
         "(numeric/factor/string/date) and returns a ranked list of graphType candidates "
         "with rationale, clinical use notes, and a ready-made description hint to pass "
         "directly to generate_canvasxpress_config. "
         "No LLM call — deterministic and instant. "
-        "Examples: intent=\'AE counts by SOC across 3 arms\' with "
-        "column_types={\'SOC\':\'factor\',\'Treatment\':\'factor\',\'AE_Count\':\'numeric\'}; "
+        "intent is optional — omitting it scores purely on column structure and column name patterns. "
+        "Examples: column_types={\'SOC\':\'factor\',\'Treatment\':\'factor\',\'AE_Count\':\'numeric\'}; "
         "intent=\'overall survival by arm\' with "
         "column_types={\'Time\':\'numeric\',\'Event\':\'numeric\',\'Arm\':\'factor\'}."
     )
@@ -1932,6 +1933,75 @@ def _parse_col_types(raw: str) -> dict:
     return result
 
 
+def _infer_column_types(data: list[list]) -> tuple[dict[str, str], list[str], int]:
+    """
+    Infer column types from a data array (first row = headers).
+
+    Returns:
+        column_types  — {col_name: type_string} where type is one of
+                        'numeric', 'date', 'boolean', or 'factor'
+        headers       — list of header strings
+        n_samples     — number of data rows (excluding header)
+    """
+    if not data or len(data) < 1:
+        return {}, [], 0
+
+    headers = [str(h) for h in data[0]]
+    rows = data[1:]
+    n_samples = len(rows)
+
+    _DATE_RE = re.compile(
+        r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}"  # YYYY-MM-DD or YYYY/MM/DD
+        r"|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}"  # MM/DD/YYYY
+        r"|^\d{4}$"                            # bare year
+    )
+    _BOOL_VALS = {"true", "false", "yes", "no", "1", "0", "t", "f", "y", "n"}
+
+    column_types: dict[str, str] = {}
+    for col_idx, col_name in enumerate(headers):
+        values = []
+        for row in rows:
+            if col_idx < len(row) and row[col_idx] is not None and str(row[col_idx]).strip() not in ("", "NA", "na", "nan", "NaN", "NULL", "null"):
+                values.append(row[col_idx])
+
+        if not values:
+            column_types[col_name] = "factor"
+            continue
+
+        # Try numeric first
+        numeric_count = 0
+        for v in values:
+            try:
+                float(str(v).replace(",", ""))
+                numeric_count += 1
+            except (ValueError, TypeError):
+                pass
+        if numeric_count == len(values):
+            # 0/1-only integer columns are boolean (e.g. Event/censoring indicators)
+            unique_vals = {str(v).strip() for v in values}
+            if unique_vals <= {"0", "1"}:
+                column_types[col_name] = "boolean"
+            else:
+                column_types[col_name] = "numeric"
+            continue
+
+        # Try date
+        str_values = [str(v).strip() for v in values]
+        if all(_DATE_RE.match(sv) for sv in str_values):
+            column_types[col_name] = "date"
+            continue
+
+        # Try boolean
+        if all(sv.lower() in _BOOL_VALS for sv in str_values):
+            column_types[col_name] = "boolean"
+            continue
+
+        # Default to factor
+        column_types[col_name] = "factor"
+
+    return column_types, headers, n_samples
+
+
 async def _kwargs_from_request(request: Request, require_description: bool = True) -> tuple[dict, int, str]:
     """Extract generate/modify kwargs from a GET query string or POST JSON/form body.
     Also returns any CanvasXpress pass-through params (target, client_id) in the dict
@@ -1953,7 +2023,18 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
     desc = p.get("description") or p.get("prompt") or p.get("q") or ""
     desc = desc.strip()
     if require_description and not desc:
-        return {}, 400, "'description' (or 'prompt') is required"
+        # Auto-derive description from data when no explicit description is given
+        raw_data = p.get("data")
+        if raw_data:
+            try:
+                data_arr = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                col_types, _, n_samp = _infer_column_types(data_arr)
+                sel = cx_selector.select_chart("", col_types, n_samples=n_samp)
+                desc = sel.get("generate_hint") or sel["top_recommendation"]["graphType"] + " chart"
+            except Exception:
+                pass
+        if not desc:
+            return {}, 400, "'description' (or 'prompt') is required"
     if desc:
         kwargs["description"] = desc
 
@@ -2133,16 +2214,19 @@ _UI_HTML = r"""<!DOCTYPE html>
 
 <!-- ── SELECT CHART ─────────────────────────────────────────────────── -->
 <div class="panel card" id="panel-select">
-  <p class="hint">Deterministic chart type recommendation — no LLM call. Returns ranked candidates with rationale.</p>
-  <div class="section-label">Required</div>
-  <label>Intent <span>plain English description of what you want to show</span>
-    <input type="text" id="sel-intent" placeholder="e.g. show expression distribution by cell type">
+  <p class="hint">Deterministic chart type recommendation — no LLM call. Returns ranked candidates with rationale.<br>Provide <b>data</b>, <b>column_types</b>, or both. Intent is optional — omitting it scores on structure and column names only.</p>
+  <div class="section-label">Required — provide at least one of data or column_types</div>
+  <label>Data <span>JSON array of arrays — first row is headers; column types are inferred</span>
+    <textarea id="sel-data" style="min-height:80px" placeholder='[["Id","padj","Sig","xvals","-log10(yvals)"],["GENE1",0.001,"FC_P",1.5,9.2]]'></textarea>
   </label>
-  <label>Column types <span>Col=type,… or JSON</span>
+  <label>Column types <span>Col=type,… or JSON — overrides inferred types</span>
     <input type="text" id="sel-types" placeholder="Expression=numeric,CellType=factor,Gene=string">
   </label>
   <div class="section-label">Optional</div>
-  <label style="display:inline-block;width:auto">Number of rows</label>
+  <label>Intent <span>plain English — activates clinical keyword boosts</span>
+    <input type="text" id="sel-intent" placeholder="e.g. show expression distribution by cell type">
+  </label>
+  <label style="display:inline-block;width:auto">Number of rows <span style="font-weight:400;color:#888">(overrides row count inferred from data)</span></label>
   <input type="text" id="sel-nsamples" placeholder="e.g. 500" style="width:120px;margin-left:8px">
 </div>
 
@@ -2253,6 +2337,7 @@ function buildUrl() {
     url+='select';
     if(v('sel-intent'))   p.set('intent',      v('sel-intent'));
     if(v('sel-types'))    p.set('column_types',v('sel-types'));
+    if(v('sel-data'))     p.set('data',        v('sel-data'));
     if(v('sel-nsamples')) p.set('n_samples',   v('sel-nsamples'));
   } else if (activeTab==='explain') {
     url+='explain';
@@ -2276,7 +2361,7 @@ function buildUrl() {
  'm-config','m-instr','m-headers','m-types','m-data',
  'km-desc','km-headers','km-data','km-config','km-temp',
  'p-graph','p-param','ax-graph',
- 'sel-intent','sel-types','sel-nsamples',
+ 'sel-intent','sel-types','sel-data','sel-nsamples',
  'ex-prop','mp-graph'].forEach(function(id){
   var el=document.getElementById(id);
   if(el) el.addEventListener('input',buildUrl);
@@ -2571,28 +2656,81 @@ async def rest_axes(request: Request) -> Response:
 
 @mcp.custom_route("/select", methods=["GET", "POST"])
 async def rest_select(request: Request) -> Response:
-    """REST endpoint for select_canvasxpress_chart."""
+    """
+    REST endpoint for select_canvasxpress_chart.
+
+    Accepts either:
+      - column_types  (explicit "Col=type,…" or JSON object)
+      - data          (JSON array of arrays — first row is headers; types are inferred)
+      or both (explicit column_types take precedence over inferred types).
+
+    Query / body parameters:
+      intent        (str, required) — plain English description of what you want to show.
+      column_types  (str)           — "Col=type,…" or JSON object. Alias: types.
+      data          (str|array)     — JSON array of arrays; first row = headers.
+                                      Column types are inferred from the values.
+      n_samples     (int)           — override row count (default: inferred from data).
+    """
     if request.method == "GET":
         p = dict(request.query_params)
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+
     intent = (p.get("intent") or "").strip()
-    if not intent:
-        return JSONResponse({"error": "'intent' is required"}, status_code=400)
-    column_types = {}
-    raw_types = p.get("column_types", "").strip()
-    if raw_types:
-        column_types = _parse_col_types(raw_types)
+    # intent is optional — Layer 1 (structural) and Layer 2 (semantic column names)
+    # work without it; intent only activates Layer 3 keyword boosts.
+
+    # --- resolve column_types and n_samples ---
+    column_types: dict[str, str] = {}
+    n_samples: int | None = None
+    inferred_headers: list[str] = []
+    type_source = "explicit"
+
+    # 1. Parse data array if provided → infer types
+    raw_data = p.get("data")
+    if raw_data:
+        try:
+            data_arr = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+            inferred_types, inferred_headers, n_rows = _infer_column_types(data_arr)
+            column_types = inferred_types
+            n_samples = n_rows
+            type_source = "inferred"
+        except Exception as exc:
+            return JSONResponse({"error": f"Could not parse 'data': {exc}"}, status_code=400)
+
+    # 2. Explicit column_types override / supplement inferred types
+    for key in ("column_types", "types"):
+        raw_types = (p.get(key) or "").strip()
+        if raw_types:
+            explicit = _parse_col_types(raw_types)
+            column_types.update(explicit)  # explicit wins
+            type_source = "explicit" if not inferred_headers else "merged"
+            break
+
     if not column_types:
-        return JSONResponse({"error": "'column_types' is required"}, status_code=400)
-    n_samples = None
+        return JSONResponse(
+            {"error": "Provide 'column_types' (e.g. Gene=string,Expr=numeric) or 'data' (JSON array of arrays)."},
+            status_code=400,
+        )
+
+    # 3. n_samples override
     try:
-        if p.get("n_samples"): n_samples = int(p["n_samples"])
+        if p.get("n_samples"):
+            n_samples = int(p["n_samples"])
     except (ValueError, TypeError):
         pass
+
     try:
-        result = select_canvasxpress_chart(intent=intent, column_types=column_types, n_samples=n_samples)
+        result = select_canvasxpress_chart(
+            intent=intent,
+            column_types=column_types,
+            n_samples=n_samples,
+        )
+        # Annotate with provenance for transparency
+        result["type_source"] = type_source
+        if inferred_headers:
+            result["headers_detected"] = inferred_headers
     except Exception as exc:
         log.exception("REST /select error")
         return JSONResponse({"error": str(exc)}, status_code=500)
