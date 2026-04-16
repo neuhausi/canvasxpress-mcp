@@ -1378,11 +1378,19 @@ def select_canvasxpress_chart(
         "select_canvasxpress_chart: intent=%r  columns=%s  n_samples=%s",
         intent, list(column_types.keys()), n_samples,
     )
-    result = cx_selector.select_chart(intent, column_types, n_samples)
+    def _llm_text(system: str, user: str) -> str:
+        text, usage = llm_complete(system, user, temperature=0.0, max_tokens=300)
+        log.debug("tiebreak LLM raw=%r  stop=%s", text[:120] if text else "", usage.get("stop_reason"))
+        return text
+
+    result = cx_selector.select_chart(intent, column_types, n_samples,
+                                       llm_complete=_llm_text)
+    tb = result.get("tiebreak", {})
     log.info(
-        "select_canvasxpress_chart → top=%s  alts=%s",
+        "select_canvasxpress_chart → top=%s  alts=%s  tiebreak_used=%s",
         result["top_recommendation"]["graphType"],
         [a["graphType"] for a in result["alternatives"]],
+        tb.get("used", False),
     )
     return result
 

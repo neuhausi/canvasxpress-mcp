@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -1619,6 +1619,87 @@ def recommend_charts(
 
 
 # ---------------------------------------------------------------------------
+# LLM tiebreaker (optional)
+# ---------------------------------------------------------------------------
+
+# Call the LLM when the margin between #1 and #2 is smaller than this.
+_LLM_TIEBREAK_THRESHOLD = 0.15
+
+
+def _llm_tiebreak(
+    candidates: list[dict],
+    column_types: dict[str, str],
+    n_samples: int,
+    llm_complete: Callable[[str, str], str],
+) -> tuple[str | None, str]:
+    """
+    Ask the LLM to choose among a short-list of ambiguous chart candidates.
+
+    Args:
+        candidates:   Top-N enriched entries each with at least
+                      {graphType, score, description}.
+        column_types: {col_name: type_string} for every column.
+        n_samples:    Row count of the dataset.
+        llm_complete: Callable(system, user) -> str.  The caller typically
+                      passes llm_providers.complete wrapped to drop the
+                      usage dict, or any function with that signature.
+
+    Returns:
+        (graphType, reason)  — graphType is one of the candidate names,
+                               reason is the LLM's one-sentence explanation.
+        (None, error_msg)    — on any failure (bad response, exception, …).
+    """
+    names_lines = "\n".join(
+        f"  - {col} ({typ})" for col, typ in column_types.items()
+    )
+    cand_lines = "\n".join(
+        f"  {i + 1}. {c['graphType']} (score={c['score']:.2f})"
+        + (f": {c.get('description', '')}" if c.get("description") else "")
+        for i, c in enumerate(candidates)
+    )
+    valid_names = [c["graphType"] for c in candidates]
+    valid_list  = ", ".join(valid_names)
+
+    system = (
+        "You are a data visualization expert specializing in CanvasXpress charts. "
+        "When asked to choose a chart type, reply with EXACTLY one chart name from "
+        "the provided list, followed by a pipe | and a brief one-sentence reason. "
+        "Example: Scatter2D | Best for showing correlation between two numeric variables."
+    )
+    user = (
+        f"Dataset has {n_samples} rows and the following columns:\n{names_lines}\n\n"
+        f"Candidate chart types (already ranked by structural scoring):\n{cand_lines}\n\n"
+        f"Which is the most appropriate chart type? "
+        f"Reply with exactly one of: {valid_list}"
+    )
+
+    try:
+        raw = llm_complete(system, user).strip()
+        if not raw:
+            return None, "LLM returned empty response"
+        if "|" in raw:
+            chosen, reason = raw.split("|", 1)
+            chosen = chosen.strip()
+            reason = reason.strip()
+        else:
+            parts = raw.split()
+            if not parts:
+                return None, "LLM returned empty response"
+            chosen = parts[0].rstrip(".,:;")
+            reason = ""
+        # exact match first
+        if chosen in valid_names:
+            return chosen, reason
+        # case-insensitive fallback
+        for name in valid_names:
+            if name.lower() == chosen.lower():
+                return name, reason
+        return None, f"LLM returned unrecognised chart type: {chosen!r}"
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -1627,6 +1708,7 @@ def select_chart(
     column_types: dict[str, str],
     n_samples: Optional[int] = None,
     category_cardinalities: Optional[dict[str, int]] = None,
+    llm_complete: Optional[Callable[[str, str], str]] = None,
 ) -> dict:
     """
     Recommend CanvasXpress graphType(s) from column types + analytical intent.
@@ -1650,6 +1732,8 @@ def select_chart(
           alternatives       (list) - up to 4 other candidates
           generate_hint      (str)  - suggested description to pass to
                                       generate_canvasxpress_config
+          tiebreak           (dict) - present only when LLM tiebreaker ran;
+                                      {used: bool, chosen: str, reason: str}
         }
     """
     rows = n_samples if n_samples is not None else 100
@@ -1661,6 +1745,39 @@ def select_chart(
         category_cardinalities=category_cardinalities,
         intent=intent,
     )
+
+    # -----------------------------------------------------------------------
+    # Optional LLM tiebreaker
+    # -----------------------------------------------------------------------
+    tiebreak_info: dict = {}
+    if (
+        llm_complete is not None
+        and len(ranked) >= 2
+        and (ranked[0]["score"] - ranked[1]["score"]) < _LLM_TIEBREAK_THRESHOLD
+    ):
+        # Pass the top-3 candidates (or fewer if the list is short)
+        tb_candidates = [
+            {
+                "graphType":   r["graphType"],
+                "score":       r["score"],
+                "description": CHART_CATALOGUE.get(r["graphType"], {}).get("description", ""),
+            }
+            for r in ranked[:3]
+        ]
+        chosen, reason = _llm_tiebreak(
+            candidates=tb_candidates,
+            column_types=column_types,
+            n_samples=rows,
+            llm_complete=llm_complete,
+        )
+        tiebreak_info = {"used": chosen is not None, "chosen": chosen, "reason": reason}
+        if chosen is not None and chosen != ranked[0]["graphType"]:
+            # Promote the LLM-chosen chart to the front of the list
+            chosen_idx = next(
+                (i for i, r in enumerate(ranked) if r["graphType"] == chosen), None
+            )
+            if chosen_idx is not None:
+                ranked.insert(0, ranked.pop(chosen_idx))
 
     def _enrich(entry: dict) -> dict:
         gt = entry["graphType"]
@@ -1712,7 +1829,7 @@ def select_chart(
     else:
         generate_hint = f"{best_gt} chart — columns: {', '.join(col_names)}"
 
-    return {
+    result: dict = {
         "intent":         intent,
         "column_summary": {
             "n_factor":  n_fac,
@@ -1725,4 +1842,7 @@ def select_chart(
         "alternatives":       alts,
         "generate_hint":      generate_hint,
     }
+    if tiebreak_info:
+        result["tiebreak"] = tiebreak_info
+    return result
 
