@@ -38,6 +38,7 @@ from fastmcp import FastMCP
 from llm_providers import complete as llm_complete, provider_info, PROVIDER, MODEL
 import cx_knowledge
 import cx_survival
+import cx_selector
 from sentence_transformers import SentenceTransformer
 
 # ---------------------------------------------------------------------------
@@ -1329,6 +1330,61 @@ def get_axes_info(graph_type: str) -> dict:
     }
 
 
+
+
+@mcp.tool(
+    description=(
+        "Recommend the most appropriate CanvasXpress graphType given column names, "
+        "column types, and a plain-English description of what you want to show. "
+        "Use this BEFORE generate_canvasxpress_config when you are unsure which chart "
+        "type best fits your data structure. Accepts structured column metadata "
+        "(numeric/factor/string/date) and returns a ranked list of graphType candidates "
+        "with rationale, clinical use notes, and a ready-made description hint to pass "
+        "directly to generate_canvasxpress_config. "
+        "No LLM call — deterministic and instant. "
+        "Examples: intent=\'AE counts by SOC across 3 arms\' with "
+        "column_types={\'SOC\':\'factor\',\'Treatment\':\'factor\',\'AE_Count\':\'numeric\'}; "
+        "intent=\'overall survival by arm\' with "
+        "column_types={\'Time\':\'numeric\',\'Event\':\'numeric\',\'Arm\':\'factor\'}."
+    )
+)
+def select_canvasxpress_chart(
+    intent: str,
+    column_types: dict[str, str],
+    n_samples: Optional[int] = None,
+) -> dict:
+    """
+    Args:
+        intent:       Plain-English description of what you want to show.
+                      e.g. "AE counts by SOC across 3 treatment arms"
+        column_types: Dict mapping column name to type.
+                      Valid types: "numeric", "factor", "string", "date", "integer", "binary".
+                      e.g. {"SOC": "factor", "Treatment": "factor", "AE_Count": "numeric"}
+        n_samples:    Optional total row count. Used to prefer Dotplot over Boxplot for
+                      small cohorts (n < 30) and warn about overplotting for large datasets
+                      (n > 5000).
+
+    Returns:
+        Dict with keys:
+          intent             (str)  - echoed back
+          column_summary     (dict) - {n_factor, n_numeric, n_time}
+          top_recommendation (dict) - best graphType with description, clinical_use, next_step
+          alternatives       (list) - up to 3 other candidate graphTypes
+          generate_hint      (str)  - suggested description string to pass to
+                                      generate_canvasxpress_config as the \'description\' argument
+    """
+    log.info(
+        "select_canvasxpress_chart: intent=%r  columns=%s  n_samples=%s",
+        intent, list(column_types.keys()), n_samples,
+    )
+    result = cx_selector.select_chart(intent, column_types, n_samples)
+    log.info(
+        "select_canvasxpress_chart → top=%s  alts=%s",
+        result["top_recommendation"]["graphType"],
+        [a["graphType"] for a in result["alternatives"]],
+    )
+    return result
+
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
 def list_chart_types() -> dict:
     """Returns chart types organized by category."""
@@ -1397,6 +1453,17 @@ def explain_config_property(property: str) -> str:
     Args:
         property: The config property name to explain.
     """
+    VALID_COLOR_SCHEMES = (
+        "YlGn, YlGnBu, GnBu, BuGn, PuBuGn, PuBu, BuPu, RdPu, PuRd, OrRd, YlOrRd, YlOrBr, "
+        "Purples, Blues, Greens, Oranges, Reds, Greys, PuOr, BrBG, PRGn, PiYG, RdBu, RdGy, "
+        "RdYlBu, Spectral, RdYlGn, Bootstrap, Economist, Excel, GGPlot, Solarized, PaulTol, "
+        "ColorBlind, Tableau, WallStreetJournal, Stata, BlackAndWhite, CanvasXpress"
+    )
+    VALID_THEMES = (
+        "bw, classic, cx, dark, economist, excel, ggblanket, ggplot, gray, grey, "
+        "highcharts, igray, light, linedraw, minimal, none, ptol, solarized, stata, "
+        "tableau, void0, wsj"
+    )
     explanations = {
         "graphType": "The chart type. One of 70+ supported types (Bar, Heatmap, Scatter2D, etc.)",
         "xAxis": "Array of column names for the x-axis. For single-dimensional graphs this is the only axis.",
@@ -1945,12 +2012,13 @@ _UI_HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CanvasXpress MCP — Web UI</title>
+<link rel="icon" href="/favicon.ico" type="image/png">
 <style>
   *{box-sizing:border-box}
-  body{font-family:system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;background:#f5f5f5;color:#222}
+  body{font-family:system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 20px;background:#f5f5f5;color:#222}
   h1{font-size:1.4rem;margin-bottom:4px}
   h1 span{color:#c0392b}
-  .subtitle{color:#666;font-size:.85rem;margin-bottom:24px}
+  .subtitle{color:#666;font-size:.85rem;margin-bottom:16px}
   label{display:block;font-weight:600;font-size:.85rem;margin-top:14px;margin-bottom:3px}
   label span{font-weight:400;color:#888}
   input[type=text],textarea,select{width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:5px;font-size:.9rem;font-family:inherit;background:#fff}
@@ -1960,88 +2028,173 @@ _UI_HTML = r"""<!DOCTYPE html>
   button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:.9rem;font-weight:600}
   .btn-primary{background:#c0392b;color:#fff}
   .btn-secondary{background:#555;color:#fff}
-  #url-box{flex:1;min-width:200px;font-size:.78rem;color:#555;background:#fff;border:1px solid #ccc;border-radius:5px;padding:7px 10px;word-break:break-all;cursor:text;white-space:pre-wrap}
+  #url-box{flex:1;min-width:200px;font-size:.75rem;color:#555;background:#fff;border:1px solid #ccc;border-radius:5px;padding:7px 10px;word-break:break-all;cursor:text;white-space:pre-wrap}
   #result{margin-top:24px;background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px;display:none}
   #result h3{margin:0 0 10px;font-size:.95rem}
-  pre{margin:0;font-size:.82rem;overflow:auto;max-height:460px;background:#f8f8f8;padding:10px;border-radius:4px}
+  pre{margin:0;font-size:.82rem;overflow:auto;max-height:500px;background:#f8f8f8;padding:10px;border-radius:4px}
   .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:700;margin-left:6px}
   .valid{background:#d4edda;color:#155724}
   .invalid{background:#f8d7da;color:#721c24}
   .warn{background:#fff3cd;color:#856404}
   .meta{font-size:.8rem;color:#666;margin-bottom:8px}
-  .tab-bar{display:flex;gap:4px;margin-bottom:16px}
-  .tab{padding:7px 16px;border-radius:5px 5px 0 0;border:1px solid #ccc;border-bottom:none;cursor:pointer;font-weight:600;font-size:.85rem;background:#eee}
-  .tab.active{background:#fff;border-bottom:1px solid #fff;margin-bottom:-1px}
+  .tab-bar{display:flex;gap:2px;margin-bottom:0;flex-wrap:nowrap;overflow-x:auto;border-bottom:1px solid #ccc;-webkit-overflow-scrolling:touch}
+  .tab{padding:7px 13px;border-radius:5px 5px 0 0;border:1px solid #ccc;border-bottom:none;cursor:pointer;font-weight:600;font-size:.8rem;background:#eee;margin-bottom:-1px;white-space:nowrap}
+  .tab.active{background:#fff;border-bottom:1px solid #fff}
   .panel{display:none}
   .panel.active{display:block}
-  .card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px}
+  .card{background:#fff;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px;padding:16px}
+  .hint{font-size:.78rem;color:#888;margin-top:3px}
+  .section-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#999;margin-top:18px;margin-bottom:4px;border-bottom:1px solid #eee;padding-bottom:3px}
 </style>
 </head>
 <body>
 <h1>CanvasXpress <span>MCP</span> — Web UI</h1>
-<p class="subtitle">Generate or modify CanvasXpress configs. Parameters are encoded in the URL — bookmark or share it.</p>
+<p class="subtitle">Test all MCP server endpoints. Parameters are encoded in the URL — bookmark or share.</p>
 
 <div class="tab-bar">
   <div class="tab active" data-tab="generate">Generate</div>
   <div class="tab" data-tab="modify">Modify</div>
+  <div class="tab" data-tab="km">Kaplan-Meier</div>
+  <div class="tab" data-tab="params">Params</div>
+  <div class="tab" data-tab="axes">Axes</div>
+  <div class="tab" data-tab="select">Select Chart</div>
+  <div class="tab" data-tab="explain">Explain</div>
+  <div class="tab" data-tab="explain-r">Explain R</div>
+  <div class="tab" data-tab="explain-ggplot">Explain ggplot</div>
+  <div class="tab" data-tab="minimal-params">Minimal Params</div>
 </div>
 
-<!-- ── GENERATE panel ─────────────────────────────────────────────── -->
+<!-- ── GENERATE ─────────────────────────────────────────────────────── -->
 <div class="panel card active" id="panel-generate">
-  <label>Description / Prompt <span>(required)</span>
+  <div class="section-label">Required</div>
+  <label>Description / Prompt
     <input type="text" id="g-desc" placeholder="e.g. Clustered heatmap with RdBu colors and dendrograms on both axes">
   </label>
+  <div class="section-label">Optional</div>
   <div class="row">
-    <div>
-      <label>Headers <span>comma-separated</span>
-        <input type="text" id="g-headers" placeholder="Gene, Sample1, Sample2, Treatment">
-      </label>
-    </div>
-    <div>
-      <label>Column types <span>Col=type,… or JSON</span>
-        <input type="text" id="g-types" placeholder='Gene=string,Sample1=numeric,Treatment=factor'>
-      </label>
-    </div>
+    <div><label>Headers <span>comma-separated</span><input type="text" id="g-headers" placeholder="Gene, Sample1, Sample2, Treatment"></label></div>
+    <div><label>Column types <span>Col=type,…</span><input type="text" id="g-types" placeholder="Gene=string,Sample1=numeric,Treatment=factor"></label></div>
   </div>
   <label>Data <span>JSON array of arrays — first row is headers</span>
     <textarea id="g-data" placeholder='[["Gene","S1","Treatment"],["BRCA1",1.2,"Control"]]'></textarea>
   </label>
-  <label>Temperature <span>0 = deterministic</span>
-    <input type="text" id="g-temp" value="0" style="width:80px">
-  </label>
+  <label style="display:inline-block;width:auto">Temperature <span>0=deterministic</span></label>
+  <input type="text" id="g-temp" value="0" style="width:80px;margin-left:8px">
 </div>
 
-<!-- ── MODIFY panel ───────────────────────────────────────────────── -->
+<!-- ── MODIFY ───────────────────────────────────────────────────────── -->
 <div class="panel card" id="panel-modify">
-  <label>Existing config <span>JSON object — required</span>
-    <textarea id="m-config" style="min-height:120px" placeholder='{"graphType":"Bar","xAxis":["Gene"]}'></textarea>
+  <div class="section-label">Required</div>
+  <label>Existing config <span>JSON object</span>
+    <textarea id="m-config" style="min-height:120px" placeholder='{"graphType":"Bar","xAxis":["Expression"]}'></textarea>
   </label>
-  <label>Instruction <span>plain English modification — required</span>
-    <input type="text" id="m-instr" placeholder="add a title My Chart and change colorScheme to Tableau">
-  </label>
+  <label>Instruction<input type="text" id="m-instr" placeholder="add a title My Chart and change colorScheme to Tableau"></label>
+  <div class="section-label">Optional</div>
   <div class="row">
-    <div>
-      <label>Headers <span>optional</span>
-        <input type="text" id="m-headers" placeholder="Gene, Sample1, Treatment">
-      </label>
-    </div>
-    <div>
-      <label>Column types <span>optional</span>
-        <input type="text" id="m-types" placeholder="Gene=string,Sample1=numeric">
-      </label>
-    </div>
+    <div><label>Headers<input type="text" id="m-headers" placeholder="Gene, Sample1, Treatment"></label></div>
+    <div><label>Column types<input type="text" id="m-types" placeholder="Gene=string,Sample1=numeric"></label></div>
   </div>
-  <label>Data <span>optional JSON array</span>
-    <textarea id="m-data" placeholder='[["Gene","S1"],["BRCA1",1.2]]'></textarea>
+  <label>Data<textarea id="m-data" placeholder='[["Gene","S1"],["BRCA1",1.2]]'></textarea></label>
+</div>
+
+<!-- ── KAPLAN-MEIER ─────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-km">
+  <p class="hint">At least one of description, headers, data, or config is required.</p>
+  <div class="section-label">Optional — provide at least one</div>
+  <label>Description<input type="text" id="km-desc" placeholder="e.g. Overall survival curve by treatment arm"></label>
+  <div class="row">
+    <div><label>Headers<input type="text" id="km-headers" placeholder="PatientID, OS_Time, OS_Status, Treatment"></label></div>
+    <div><label>Existing config <span>JSON — to validate/fix</span><input type="text" id="km-config" placeholder='{"graphType":"KaplanMeier","xAxis":["OS_Time"]}'></label></div>
+  </div>
+  <label>Data <span>JSON array — enables column detection</span>
+    <textarea id="km-data" placeholder='[["ID","Time","Event","Arm"],["P1",24,1,"Control"],["P2",18,0,"Drug A"]]'></textarea>
+  </label>
+  <label style="display:inline-block;width:auto">Temperature</label>
+  <input type="text" id="km-temp" value="0" style="width:80px;margin-left:8px">
+</div>
+
+<!-- ── PARAMS ───────────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-params">
+  <p class="hint">Pass graph_type, param_name, both, or neither for a full schema summary.</p>
+  <div class="row">
+    <div><label>Graph type <span>optional</span><input type="text" id="p-graph" placeholder="e.g. Heatmap, Scatter2D, Violin"></label></div>
+    <div><label>Parameter name <span>optional</span><input type="text" id="p-param" placeholder="e.g. colorScheme, areaType, lineType"></label></div>
+  </div>
+  <label style="display:inline-flex;align-items:center;gap:8px;margin-top:14px">
+    <input type="checkbox" id="p-refresh" style="width:auto"> <span>Force refresh from GitHub</span>
   </label>
 </div>
 
+<!-- ── AXES ─────────────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-axes">
+  <p class="hint">Returns axis assignment rules: valid axes, forbidden axes, and axis title parameter.</p>
+  <label>Graph type <span>required</span><input type="text" id="ax-graph" placeholder="e.g. Bar, Scatter2D, Heatmap, KaplanMeier, BarLine"></label>
+</div>
+
+<!-- ── SELECT CHART ─────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-select">
+  <p class="hint">Deterministic chart type recommendation — no LLM call. Returns ranked candidates with rationale.</p>
+  <div class="section-label">Required</div>
+  <label>Intent <span>plain English description of what you want to show</span>
+    <input type="text" id="sel-intent" placeholder="e.g. show expression distribution by cell type">
+  </label>
+  <label>Column types <span>Col=type,… or JSON</span>
+    <input type="text" id="sel-types" placeholder="Expression=numeric,CellType=factor,Gene=string">
+  </label>
+  <div class="section-label">Optional</div>
+  <label style="display:inline-block;width:auto">Number of rows</label>
+  <input type="text" id="sel-nsamples" placeholder="e.g. 500" style="width:120px;margin-left:8px">
+</div>
+
+<!-- ── EXPLAIN ──────────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-explain">
+  <p class="hint">Returns a plain English explanation of any CanvasXpress config property.</p>
+  <label>Property name <span>required</span>
+    <input type="text" id="ex-prop" placeholder="e.g. colorScheme, groupingFactors, decorations, filterData">
+  </label>
+</div>
+
+<!-- ── EXPLAIN R ────────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-explain-r">
+  <p class="hint">Usage guide for CanvasXpress in R. Leave topic blank for the full guide.</p>
+  <label>Topic <span>optional</span>
+    <select id="exr-topic">
+      <option value="">— all topics —</option>
+      <option value="installation">installation</option>
+      <option value="basic">basic</option>
+      <option value="data">data</option>
+      <option value="config">config</option>
+      <option value="shiny">shiny</option>
+      <option value="rmarkdown">rmarkdown</option>
+    </select>
+  </label>
+</div>
+
+<!-- ── EXPLAIN GGPLOT ───────────────────────────────────────────────── -->
+<div class="panel card" id="panel-explain-ggplot">
+  <p class="hint">Usage guide for the CanvasXpress ggplot2 bridge. Leave topic blank for the full guide.</p>
+  <label>Topic <span>optional</span>
+    <select id="exg-topic">
+      <option value="">— all topics —</option>
+      <option value="installation">installation</option>
+      <option value="geoms">geoms</option>
+      <option value="example">example</option>
+    </select>
+  </label>
+</div>
+
+<!-- ── MINIMAL PARAMS ───────────────────────────────────────────────── -->
+<div class="panel card" id="panel-minimal-params">
+  <p class="hint">Returns the minimal set of required parameters for a specific chart type.</p>
+  <label>Graph type <span>required</span><input type="text" id="mp-graph" placeholder="e.g. Scatter2D, Heatmap, KaplanMeier, BarLine"></label>
+</div>
+
+<!-- ── Actions + URL + Result ───────────────────────────────────────── -->
 <div class="actions">
   <button class="btn-primary" onclick="submit()">&#9654; Run</button>
   <button class="btn-secondary" onclick="copyUrl()">&#128279; Copy URL</button>
   <div id="url-box">—</div>
 </div>
-
 <div id="result">
   <h3 id="result-title">Result</h3>
   <div class="meta" id="result-meta"></div>
@@ -2052,9 +2205,9 @@ _UI_HTML = r"""<!DOCTYPE html>
 const BASE = window.location.origin;
 let activeTab = 'generate';
 
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab, .panel').forEach(el => el.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(function(t) {
+  t.addEventListener('click', function() {
+    document.querySelectorAll('.tab, .panel').forEach(function(el){ el.classList.remove('active'); });
     t.classList.add('active');
     document.getElementById('panel-' + t.dataset.tab).classList.add('active');
     activeTab = t.dataset.tab;
@@ -2062,100 +2215,169 @@ document.querySelectorAll('.tab').forEach(t => {
   });
 });
 
-function v(id){ return document.getElementById(id).value.trim(); }
+function v(id){ var el=document.getElementById(id); return el?el.value.trim():''; }
+function chk(id){ var el=document.getElementById(id); return el?el.checked:false; }
 
 function buildUrl() {
-  const p = new URLSearchParams();
-  if (activeTab === 'generate') {
-    const desc = v('g-desc'), hdrs = v('g-headers'), types = v('g-types'),
-          data = v('g-data'), temp = v('g-temp');
-    if (desc)  p.set('description', desc);
-    if (hdrs)  p.set('headers', hdrs);
-    if (types) p.set('column_types', types);
-    if (data)  p.set('data', data);
-    if (temp && temp !== '0') p.set('temperature', temp);
-    const url = BASE + '/generate?' + p.toString();
-    document.getElementById('url-box').textContent = url;
-    return url;
-  } else {
-    const cfg = v('m-config'), instr = v('m-instr'), hdrs = v('m-headers'),
-          types = v('m-types'), data = v('m-data');
-    if (cfg)   p.set('config', cfg);
-    if (instr) p.set('instruction', instr);
-    if (hdrs)  p.set('headers', hdrs);
-    if (types) p.set('column_types', types);
-    if (data)  p.set('data', data);
-    const url = BASE + '/modify?' + p.toString();
-    document.getElementById('url-box').textContent = url;
-    return url;
+  var p = new URLSearchParams(), url = BASE + '/';
+  if (activeTab==='generate') {
+    url+='generate';
+    if(v('g-desc'))  p.set('description', v('g-desc'));
+    if(v('g-headers'))p.set('headers',     v('g-headers'));
+    if(v('g-types'))  p.set('column_types',v('g-types'));
+    if(v('g-data'))   p.set('data',        v('g-data'));
+    if(v('g-temp')&&v('g-temp')!=='0') p.set('temperature',v('g-temp'));
+  } else if (activeTab==='modify') {
+    url+='modify';
+    if(v('m-config'))  p.set('config',      v('m-config'));
+    if(v('m-instr'))   p.set('instruction', v('m-instr'));
+    if(v('m-headers')) p.set('headers',     v('m-headers'));
+    if(v('m-types'))   p.set('column_types',v('m-types'));
+    if(v('m-data'))    p.set('data',        v('m-data'));
+  } else if (activeTab==='km') {
+    url+='km';
+    if(v('km-desc'))   p.set('description',v('km-desc'));
+    if(v('km-headers'))p.set('headers',    v('km-headers'));
+    if(v('km-data'))   p.set('data',       v('km-data'));
+    if(v('km-config')) p.set('config',     v('km-config'));
+    if(v('km-temp')&&v('km-temp')!=='0') p.set('temperature',v('km-temp'));
+  } else if (activeTab==='params') {
+    url+='params';
+    if(v('p-graph')) p.set('graph_type',v('p-graph'));
+    if(v('p-param')) p.set('param_name',v('p-param'));
+    if(chk('p-refresh')) p.set('refresh','true');
+  } else if (activeTab==='axes') {
+    url+='axes';
+    if(v('ax-graph')) p.set('graph_type',v('ax-graph'));
+  } else if (activeTab==='select') {
+    url+='select';
+    if(v('sel-intent'))   p.set('intent',      v('sel-intent'));
+    if(v('sel-types'))    p.set('column_types',v('sel-types'));
+    if(v('sel-nsamples')) p.set('n_samples',   v('sel-nsamples'));
+  } else if (activeTab==='explain') {
+    url+='explain';
+    if(v('ex-prop')) p.set('property',v('ex-prop'));
+  } else if (activeTab==='explain-r') {
+    url+='explain-r';
+    if(v('exr-topic')) p.set('topic',v('exr-topic'));
+  } else if (activeTab==='explain-ggplot') {
+    url+='explain-ggplot';
+    if(v('exg-topic')) p.set('topic',v('exg-topic'));
+  } else if (activeTab==='minimal-params') {
+    url+='minimal-params';
+    if(v('mp-graph')) p.set('graph_type',v('mp-graph'));
   }
+  var qs=p.toString(); url=qs?url+'?'+qs:url;
+  document.getElementById('url-box').textContent=url;
+  return url;
 }
 
 ['g-desc','g-headers','g-types','g-data','g-temp',
- 'm-config','m-instr','m-headers','m-types','m-data'].forEach(id => {
-  document.getElementById(id).addEventListener('input', buildUrl);
+ 'm-config','m-instr','m-headers','m-types','m-data',
+ 'km-desc','km-headers','km-data','km-config','km-temp',
+ 'p-graph','p-param','ax-graph',
+ 'sel-intent','sel-types','sel-nsamples',
+ 'ex-prop','mp-graph'].forEach(function(id){
+  var el=document.getElementById(id);
+  if(el) el.addEventListener('input',buildUrl);
+});
+['p-refresh'].forEach(function(id){
+  var el=document.getElementById(id);
+  if(el) el.addEventListener('change',buildUrl);
+});
+['exr-topic','exg-topic'].forEach(function(id){
+  var el=document.getElementById(id);
+  if(el) el.addEventListener('change',buildUrl);
 });
 
-function copyUrl() {
-  const url = buildUrl();
-  navigator.clipboard.writeText(url).catch(() => {});
+function copyUrl(){
+  var url=buildUrl();
+  navigator.clipboard.writeText(url).catch(function(){});
+  var btn=document.querySelector('.btn-secondary');
+  btn.textContent='Copied!';
+  setTimeout(function(){ btn.innerHTML='&#128279; Copy URL'; },1500);
 }
 
-async function submit() {
-  const url = buildUrl();
-  const resultEl = document.getElementById('result');
-  const preEl    = document.getElementById('result-pre');
-  const metaEl   = document.getElementById('result-meta');
-  const titleEl  = document.getElementById('result-title');
-  resultEl.style.display = 'block';
-  preEl.textContent = 'Loading…';
-  metaEl.textContent = '';
-  titleEl.innerHTML = activeTab === 'generate' ? 'Generated Config' : 'Modified Config';
+var TITLE_MAP={
+  'generate':'Generated Config','modify':'Modified Config','km':'KM Config',
+  'params':'Parameter Schema','axes':'Axis Info','select':'Chart Recommendation',
+  'explain':'Property Explanation','explain-r':'R Guide',
+  'explain-ggplot':'ggplot2 Guide','minimal-params':'Minimal Parameters'
+};
+
+async function submit(){
+  var url=buildUrl();
+  var resultEl=document.getElementById('result');
+  var preEl=document.getElementById('result-pre');
+  var metaEl=document.getElementById('result-meta');
+  var titleEl=document.getElementById('result-title');
+  resultEl.style.display='block';
+  preEl.textContent='Loading\u2026';
+  metaEl.textContent='';
+  titleEl.textContent=TITLE_MAP[activeTab]||'Result';
   try {
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if (data.error) { preEl.textContent = 'Error: ' + data.error; return; }
-
-    const cfg  = data.config  || {};
-    const valid = data.valid;
-    const warns = data.warnings || [];
-    const badge = valid
-      ? '<span class="badge valid">✓ valid</span>'
-      : '<span class="badge invalid">✗ warnings</span>';
-    const gt = cfg.graphType || '?';
-    const hdr = (data.headers_used || []).join(', ') || '—';
-    metaEl.innerHTML = `graphType: <b>${gt}</b>${badge} &nbsp; headers: ${hdr}` +
-      (warns.length ? `<br><span class="badge warn">⚠ ${warns.join(' | ')}</span>` : '');
-    if (activeTab === 'modify' && data.changes) {
-      const c = data.changes;
-      metaEl.innerHTML += `<br>added: ${(c.added||[]).join(', ')||'none'} &nbsp; ` +
-        `removed: ${(c.removed||[]).join(', ')||'none'} &nbsp; ` +
-        `changed: ${(c.changed||[]).join(', ')||'none'}`;
+    var resp=await fetch(url);
+    var data=await resp.json();
+    if(data.error){
+      metaEl.innerHTML='<span class="badge invalid">Error '+resp.status+'</span>';
+      preEl.textContent=data.error; return;
     }
-    preEl.textContent = JSON.stringify(cfg, null, 2);
-  } catch(e) {
-    preEl.textContent = 'Request failed: ' + e;
-  }
+    if(['generate','modify','km'].indexOf(activeTab)!==-1){
+      var cfg=data.config||{}, valid=data.valid, warns=data.warnings||[], errs=data.errors||[];
+      var badge=(valid&&!errs.length)?'<span class="badge valid">\u2713 valid</span>':'<span class="badge invalid">\u2717 issues</span>';
+      var gt=cfg.graphType||'?', hdr=(data.headers_used||[]).join(', ')||'\u2014';
+      metaEl.innerHTML='graphType: <b>'+gt+'</b>'+badge+' &nbsp; headers: '+hdr;
+      if(warns.length) metaEl.innerHTML+='<br><span class="badge warn">\u26a0 '+warns.join(' | ')+'</span>';
+      if(errs.length)  metaEl.innerHTML+='<br><span class="badge invalid">\u2716 '+errs.join(' | ')+'</span>';
+      if(activeTab==='modify'&&data.changes){
+        var c=data.changes;
+        metaEl.innerHTML+='<br>added: '+((c.added||[]).join(', ')||'none')+
+          ' &nbsp; removed: '+((c.removed||[]).join(', ')||'none')+
+          ' &nbsp; changed: '+((c.changed||[]).join(', ')||'none');
+      }
+      if(activeTab==='km'&&data.column_detection){
+        var cd=data.column_detection;
+        metaEl.innerHTML+='<br>time: <b>'+(cd.time_col||'?')+'</b>'+
+          ' &nbsp; event: <b>'+(cd.event_col||'?')+'</b>'+
+          ' &nbsp; groups: <b>'+(cd.group_cols||[]).join(', ')+'</b>'+
+          ' &nbsp; confidence: <b>'+cd.confidence+'</b>';
+      }
+      if(data.removed_params&&data.removed_params.length)
+        metaEl.innerHTML+='<br><span class="badge warn">stripped: '+data.removed_params.join(', ')+'</span>';
+      preEl.textContent=JSON.stringify(activeTab==='km'?data:cfg,null,2);
+    } else if(activeTab==='params'){
+      var count=data.param_count||(data.params?Object.keys(data.params).length:'?');
+      metaEl.innerHTML=count+' parameters &nbsp; source: <b>'+(data.schema_source||'?')+'</b>';
+      preEl.textContent=JSON.stringify(data,null,2);
+    } else if(activeTab==='select'){
+      var top=data.recommendations&&data.recommendations[0];
+      if(top) metaEl.innerHTML='Top recommendation: <b>'+top.graphType+'</b>';
+      preEl.textContent=JSON.stringify(data,null,2);
+    } else {
+      preEl.textContent=JSON.stringify(data,null,2);
+    }
+  } catch(e){ preEl.textContent='Request failed: '+e; }
 }
 
-// Populate from URL params on load (so bookmarked URLs auto-fill the form)
-(function restoreFromUrl() {
-  const p = new URLSearchParams(window.location.search);
-  const tab = p.get('_tab') || 'generate';
-  if (tab === 'modify') {
-    document.querySelector('[data-tab=modify]').click();
-    if (p.get('config'))      document.getElementById('m-config').value = p.get('config');
-    if (p.get('instruction')) document.getElementById('m-instr').value  = p.get('instruction');
-    if (p.get('headers'))     document.getElementById('m-headers').value = p.get('headers');
-    if (p.get('column_types'))document.getElementById('m-types').value  = p.get('column_types');
-    if (p.get('data'))        document.getElementById('m-data').value   = p.get('data');
-  } else {
-    if (p.get('description')) document.getElementById('g-desc').value    = p.get('description');
-    if (p.get('headers'))     document.getElementById('g-headers').value  = p.get('headers');
-    if (p.get('column_types'))document.getElementById('g-types').value   = p.get('column_types');
-    if (p.get('data'))        document.getElementById('g-data').value    = p.get('data');
-    if (p.get('temperature')) document.getElementById('g-temp').value    = p.get('temperature');
-  }
+(function restoreFromUrl(){
+  var p=new URLSearchParams(window.location.search);
+  var tab=p.get('_tab')||'generate';
+  var tabEl=document.querySelector('[data-tab='+tab+']');
+  if(tabEl) tabEl.click();
+  var map={'g-desc':'description','g-headers':'headers','g-types':'column_types',
+    'g-data':'data','g-temp':'temperature','m-config':'config','m-instr':'instruction',
+    'm-headers':'headers','m-types':'column_types','m-data':'data',
+    'km-desc':'description','km-headers':'headers','km-data':'data',
+    'km-config':'config','km-temp':'temperature','p-graph':'graph_type',
+    'p-param':'param_name','ax-graph':'graph_type','sel-intent':'intent',
+    'sel-types':'column_types','sel-nsamples':'n_samples','ex-prop':'property',
+    'mp-graph':'graph_type'};
+  Object.keys(map).forEach(function(id){
+    var val=p.get(map[id]), el=document.getElementById(id);
+    if(val&&el) el.value=val;
+  });
+  if(p.get('refresh')==='true'){var el=document.getElementById('p-refresh');if(el)el.checked=true;}
+  if(p.get('topic')){['exr-topic','exg-topic'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=p.get('topic');});}
   buildUrl();
 })();
 </script>
@@ -2282,10 +2504,188 @@ async def rest_modify(request: Request) -> Response:
     return _cx_response(result, cx)
 
 
+
+@mcp.custom_route("/km", methods=["GET", "POST"])
+async def rest_km(request: Request) -> Response:
+    """REST endpoint for generate_km_config."""
+    kwargs, status, err = await _kwargs_from_request(request, require_description=False)
+    cx = kwargs.pop("_cx", {})
+    if status != 200:
+        return _cx_response({"error": err, "success": False}, cx, status)
+    km_args = {}
+    if "description" in kwargs: km_args["description"] = kwargs["description"]
+    if "headers"     in kwargs: km_args["headers"]      = kwargs["headers"]
+    if "data"        in kwargs: km_args["data"]         = kwargs["data"]
+    if "config"      in kwargs: km_args["config"]       = kwargs["config"]
+    if "temperature" in kwargs: km_args["temperature"]  = kwargs["temperature"]
+    if not km_args:
+        return _cx_response({"error": "At least one of description, headers, data, or config is required.", "success": False}, cx, 400)
+    try:
+        result = generate_km_config(**km_args)
+    except Exception as exc:
+        log.exception("REST /km error")
+        return _cx_response({"config": {}, "valid": False, "success": False,
+            "warnings": ["Could not generate KM configuration: " + str(exc)],
+            "errors": [], "suggestions": [], "column_detection": None}, cx, 200)
+    return _cx_response(result, cx)
+
+
+@mcp.custom_route("/params", methods=["GET", "POST"])
+async def rest_params(request: Request) -> Response:
+    """REST endpoint for query_canvasxpress_params."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    try:
+        result = query_canvasxpress_params(
+            graph_type=p.get("graph_type") or None,
+            param_name=p.get("param_name") or None,
+            refresh=p.get("refresh", "").lower() == "true",
+        )
+    except Exception as exc:
+        log.exception("REST /params error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/axes", methods=["GET", "POST"])
+async def rest_axes(request: Request) -> Response:
+    """REST endpoint for get_axes_info."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    gt = (p.get("graph_type") or "").strip()
+    if not gt:
+        return JSONResponse({"error": "'graph_type' is required"}, status_code=400)
+    try:
+        result = get_axes_info(gt)
+    except Exception as exc:
+        log.exception("REST /axes error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/select", methods=["GET", "POST"])
+async def rest_select(request: Request) -> Response:
+    """REST endpoint for select_canvasxpress_chart."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    intent = (p.get("intent") or "").strip()
+    if not intent:
+        return JSONResponse({"error": "'intent' is required"}, status_code=400)
+    column_types = {}
+    raw_types = p.get("column_types", "").strip()
+    if raw_types:
+        column_types = _parse_col_types(raw_types)
+    if not column_types:
+        return JSONResponse({"error": "'column_types' is required"}, status_code=400)
+    n_samples = None
+    try:
+        if p.get("n_samples"): n_samples = int(p["n_samples"])
+    except (ValueError, TypeError):
+        pass
+    try:
+        result = select_canvasxpress_chart(intent=intent, column_types=column_types, n_samples=n_samples)
+    except Exception as exc:
+        log.exception("REST /select error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/explain", methods=["GET", "POST"])
+async def rest_explain(request: Request) -> Response:
+    """REST endpoint for explain_config_property."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    prop = (p.get("property") or "").strip()
+    if not prop:
+        return JSONResponse({"error": "'property' is required"}, status_code=400)
+    try:
+        result = explain_config_property(prop)
+    except Exception as exc:
+        log.exception("REST /explain error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse({"property": prop, "explanation": result})
+
+
+@mcp.custom_route("/explain-r", methods=["GET", "POST"])
+async def rest_explain_r(request: Request) -> Response:
+    """REST endpoint for explain_canvasxpress_r."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    try:
+        result = explain_canvasxpress_r(topic=p.get("topic") or None)
+    except Exception as exc:
+        log.exception("REST /explain-r error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/explain-ggplot", methods=["GET", "POST"])
+async def rest_explain_ggplot(request: Request) -> Response:
+    """REST endpoint for explain_canvasxpress_ggplot."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    try:
+        result = explain_canvasxpress_ggplot(topic=p.get("topic") or None)
+    except Exception as exc:
+        log.exception("REST /explain-ggplot error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/minimal-params", methods=["GET", "POST"])
+async def rest_minimal_params(request: Request) -> Response:
+    """REST endpoint for get_minimal_parameters."""
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+    gt = (p.get("graph_type") or "").strip()
+    if not gt:
+        return JSONResponse({"error": "'graph_type' is required"}, status_code=400)
+    try:
+        result = get_minimal_parameters(gt)
+    except Exception as exc:
+        log.exception("REST /minimal-params error")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    return JSONResponse(result)
+
 @mcp.custom_route("/ui", methods=["GET"])
 async def rest_ui(request: Request) -> HTMLResponse:
     """Serve the browser-based form UI at /ui."""
     return HTMLResponse(_UI_HTML)
+
+
+@mcp.custom_route("/favicon.ico", methods=["GET"])
+async def rest_favicon(request: Request) -> Response:
+    """Serve the CanvasXpress favicon from the bundled file."""
+    import pathlib
+    favicon = pathlib.Path(__file__).parent / "favicon.png"
+    data = favicon.read_bytes()
+    return Response(
+        content=data,
+        status_code=200,
+        media_type="image/png",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # ---------------------------------------------------------------------------
