@@ -4,10 +4,12 @@ llm_providers.py
 ================
 Unified LLM provider abstraction for the CanvasXpress MCP server.
 
-Supports six providers, selected via the LLM_PROVIDER environment variable:
+Supports seven providers, selected via the LLM_PROVIDER environment variable:
 
   anthropic  — Direct Anthropic API (default)
   bedrock    — Anthropic models via Amazon Bedrock
+  gateway    — Corporate AI gateway that exposes both OpenAI and Anthropic
+               endpoints (auto-routes by model name)
   ollama     — Locally hosted models via Ollama
   openai     — Direct OpenAI API (api.openai.com)
   openai_corporate — OpenAI-compatible API via a corporate/custom gateway
@@ -48,6 +50,17 @@ OPENAI     (LLM_PROVIDER=openai)
   OPENAI_API_KEY      — required (your OpenAI API key)
   LLM_MODEL           — default: gpt-4o
   OPENAI_ORG          — optional organisation ID
+
+GATEWAY    (LLM_PROVIDER=gateway)
+  GATEWAY_URL         — required, base URL of the corporate AI gateway
+                        (e.g. https://my-gateway.company.com)
+                        Claude models auto-route to {GATEWAY_URL}/anthropic,
+                        everything else to {GATEWAY_URL}/openai/v1.
+  GATEWAY_API_KEY     — required (your gateway token)
+                        Falls back to AZURE_OPENAI_KEY if not set.
+  LLM_MODEL           — default: gpt-4o
+                        Use any model name the gateway supports:
+                          gpt-4o-mini, gpt-4o, gpt-5.4, claude-sonnet-4-20250514, etc.
 
 OPENAI_CORPORATE  (LLM_PROVIDER=openai_corporate)
   OPENAI_API_KEY      — required (use your gateway key / token)
@@ -92,7 +105,21 @@ export OPENAI_API_KEY="sk-..."
 export LLM_MODEL=gpt-4o
 python src/server.py
 
-# OpenAI via corporate gateway
+# Corporate AI gateway (auto-routes Claude vs GPT models)
+export LLM_PROVIDER=gateway
+export GATEWAY_URL="https://my-gateway.company.com"
+export GATEWAY_API_KEY="your-gateway-token"
+export LLM_MODEL=gpt-4o-mini
+python src/server.py
+
+# Corporate AI gateway with Claude
+export LLM_PROVIDER=gateway
+export GATEWAY_URL="https://my-gateway.company.com"
+export GATEWAY_API_KEY="your-gateway-token"
+export LLM_MODEL=claude-sonnet-4-20250514
+python src/server.py
+
+# OpenAI via corporate gateway (legacy — prefer 'gateway' for new setups)
 export LLM_PROVIDER=openai_corporate
 export OPENAI_API_KEY="your-gateway-token"
 export OPENAI_BASE_URL="https://api.your-company.com/openai/v1"
@@ -122,6 +149,7 @@ PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic").lower().strip()
 _DEFAULTS: dict[str, str] = {
     "anthropic":        "claude-sonnet-4-20250514",
     "bedrock":          "anthropic.claude-sonnet-4-5-20251001-v1:0",
+    "gateway":          "gpt-4o",
     "ollama":           "llama3.2",
     "openai":           "gpt-4o",
     "openai_corporate": "gpt-4o",
@@ -139,6 +167,8 @@ VALID_PROVIDERS = set(_DEFAULTS.keys())
 
 _anthropic_client: Any = None
 _bedrock_client: Any = None
+_gateway_openai_client: Any = None
+_gateway_anthropic_client: Any = None
 _openai_client: Any = None
 _openai_corporate_client: Any = None
 _gemini_client: Any = None
@@ -233,12 +263,92 @@ def _get_openai_corporate():
             api_key=api_key,
             base_url=base_url,
             organization=org or None,
+            default_headers={"api-key": api_key},
         )
         log.info(
             "OpenAI corporate client initialised (base_url: %s, model: %s)",
             base_url, MODEL,
         )
     return _openai_corporate_client
+
+
+# -- Gateway (auto-routes Claude → Anthropic endpoint, others → OpenAI) ----
+
+_ANTHROPIC_MODEL_PREFIXES = ("claude-",)
+
+
+def _is_anthropic_model(model: str) -> bool:
+    """Return True if the model name should be routed to the Anthropic endpoint."""
+    return model.lower().startswith(_ANTHROPIC_MODEL_PREFIXES)
+
+
+def _get_gateway_url_and_key() -> tuple[str, str]:
+    """Resolve gateway URL and API key from environment."""
+    gateway_url = os.environ.get("GATEWAY_URL", "").rstrip("/")
+    if not gateway_url:
+        raise EnvironmentError(
+            "GATEWAY_URL is not set. "
+            "Set it to your corporate AI gateway base URL "
+            "(e.g. https://my-gateway.company.com)."
+        )
+    api_key = (
+        os.environ.get("GATEWAY_API_KEY")
+        or os.environ.get("AZURE_OPENAI_KEY")
+    )
+    if not api_key:
+        raise EnvironmentError(
+            "GATEWAY_API_KEY (or AZURE_OPENAI_KEY) is not set. "
+            "Export your gateway token before starting the server."
+        )
+    return gateway_url, api_key
+
+
+def _get_gateway_openai():
+    """Lazy-init OpenAI client pointed at {GATEWAY_URL}/openai/v1."""
+    global _gateway_openai_client
+    if _gateway_openai_client is None:
+        try:
+            import openai as _openai_sdk
+        except ImportError:
+            raise ImportError(
+                "openai is required for the gateway provider. Install it:\n"
+                "  pip install openai"
+            )
+        gateway_url, api_key = _get_gateway_url_and_key()
+        _gateway_openai_client = _openai_sdk.OpenAI(
+            api_key=api_key,
+            base_url=f"{gateway_url}/openai/v1",
+            default_headers={"api-key": api_key},
+        )
+        log.info(
+            "Gateway OpenAI client initialised (base_url: %s/openai/v1, model: %s)",
+            gateway_url, MODEL,
+        )
+    return _gateway_openai_client
+
+
+def _get_gateway_anthropic():
+    """Lazy-init Anthropic client pointed at {GATEWAY_URL}/anthropic."""
+    global _gateway_anthropic_client
+    if _gateway_anthropic_client is None:
+        try:
+            import anthropic as _anthropic_sdk
+        except ImportError:
+            raise ImportError(
+                "anthropic is required for the gateway provider with Claude models. "
+                "Install it:\n  pip install anthropic"
+            )
+        gateway_url, api_key = _get_gateway_url_and_key()
+        _gateway_anthropic_client = _anthropic_sdk.Anthropic(
+            api_key=api_key,
+            base_url=f"{gateway_url}/anthropic",
+            default_headers={"api-key": api_key},
+        )
+        log.info(
+            "Gateway Anthropic client initialised (base_url: %s/anthropic, model: %s)",
+            gateway_url, MODEL,
+        )
+    return _gateway_anthropic_client
 
 
 def _get_gemini():
@@ -448,6 +558,55 @@ def _complete_openai_corporate(
     return text, usage
 
 
+def _complete_gateway(
+    system: str,
+    user: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+) -> tuple[str, dict]:
+    """
+    Route to the correct corporate gateway endpoint based on model name.
+
+    Claude models (claude-*) → Anthropic-native endpoint at {GATEWAY_URL}/anthropic
+    Everything else           → OpenAI-compatible endpoint at {GATEWAY_URL}/openai/v1
+    """
+    if _is_anthropic_model(model):
+        client = _get_gateway_anthropic()
+        message = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        text = message.content[0].text
+        usage = {
+            "input_tokens":  message.usage.input_tokens,
+            "output_tokens": message.usage.output_tokens,
+            "stop_reason":   message.stop_reason,
+        }
+        return text, usage
+    else:
+        client = _get_gateway_openai()
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user},
+            ],
+        )
+        text = response.choices[0].message.content or ""
+        usage = {
+            "input_tokens":  response.usage.prompt_tokens,
+            "output_tokens": response.usage.completion_tokens,
+            "stop_reason":   response.choices[0].finish_reason,
+        }
+        return text, usage
+
+
 def _complete_gemini(
     system: str,
     user: str,
@@ -488,6 +647,7 @@ def _complete_gemini(
 _DISPATCH = {
     "anthropic":        _complete_anthropic,
     "bedrock":          _complete_bedrock,
+    "gateway":          _complete_gateway,
     "ollama":           _complete_ollama,
     "openai":           _complete_openai,
     "openai_corporate": _complete_openai_corporate,
@@ -555,6 +715,16 @@ def provider_info() -> dict:
             "bedrock":   {"region": os.environ.get("AWS_REGION", "us-east-1")},
             "ollama":    {"base_url": os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")},
             "openai":    {"api_key_set": bool(os.environ.get("OPENAI_API_KEY"))},
+            "gateway": {
+                "gateway_url": os.environ.get("GATEWAY_URL", ""),
+                "api_key_set": bool(
+                    os.environ.get("GATEWAY_API_KEY")
+                    or os.environ.get("AZURE_OPENAI_KEY")
+                ),
+                "routing": (
+                    "anthropic" if _is_anthropic_model(MODEL) else "openai"
+                ),
+            },
             "openai_corporate": {
                 "base_url":    os.environ.get("OPENAI_BASE_URL", ""),
                 "api_key_set": bool(os.environ.get("OPENAI_API_KEY")),
