@@ -73,6 +73,23 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
+# Admin key — required for destructive endpoints (e.g. /feedback/purge).
+# Set ADMIN_KEY in .env to a secret string.  If not set, a random key is
+# generated at startup and printed once to the log at WARNING level.
+_env_admin_key = os.environ.get("ADMIN_KEY", "").strip()
+if _env_admin_key:
+    ADMIN_KEY: str = _env_admin_key
+else:
+    import uuid as _uuid_init
+    ADMIN_KEY = str(_uuid_init.uuid4())
+    # Deferred log — logger not yet configured at import time; use print so
+    # the key is always visible in the startup output.
+    print(
+        f"[cx-mcp] WARNING: ADMIN_KEY not set in .env — "
+        f"using auto-generated key for this session: {ADMIN_KEY}",
+        flush=True,
+    )
+
 # ---------------------------------------------------------------------------
 # Few-shot examples (fallback for when vector index is not built)
 # ---------------------------------------------------------------------------
@@ -852,6 +869,306 @@ mcp = FastMCP(
     ),
 )
 
+# ---------------------------------------------------------------------------
+# Call logging + feedback (thumbs up/down)
+# ---------------------------------------------------------------------------
+
+CALL_LOG_DB = DATA_DIR / "call_log.db"
+
+import sqlite3 as _sqlite3
+import threading as _threading
+import uuid as _uuid
+
+
+class _CallLog:
+    """
+    Thread-safe SQLite logger for every tool call.
+
+    Schema
+    ──────
+    tool_calls
+      id          TEXT PRIMARY KEY   — UUID4
+      tool        TEXT               — tool name (from _PATH_TO_TOOL)
+      path        TEXT               — URL path
+      request     TEXT               — JSON-serialised request body (query or POST)
+      response    TEXT               — JSON-serialised response body (config + meta)
+      status      INTEGER            — HTTP status code
+      ts          TEXT               — ISO-8601 UTC timestamp
+      rating      INTEGER NULL       — 1 = thumbs up, -1 = thumbs down
+      comment     TEXT NULL          — optional free-text feedback
+    """
+
+    _lock = _threading.Lock()
+
+    def __init__(self, db_path: Path):
+        self._path = str(db_path)
+        self._init_db()
+
+    def _connect(self):
+        con = _sqlite3.connect(self._path, check_same_thread=False)
+        con.execute("PRAGMA journal_mode=WAL")
+        return con
+
+    def _init_db(self):
+        with self._lock:
+            con = self._connect()
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS tool_calls (
+                    id       TEXT PRIMARY KEY,
+                    tool     TEXT,
+                    path     TEXT,
+                    request  TEXT,
+                    response TEXT,
+                    status   INTEGER,
+                    ts       TEXT,
+                    rating   INTEGER,
+                    comment  TEXT
+                )
+            """)
+            con.commit()
+            con.close()
+
+    def log(
+        self,
+        call_id: str,
+        tool: str,
+        path: str,
+        request: dict | str,
+        response: dict | str,
+        status: int,
+    ) -> None:
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        req_str  = json.dumps(request)  if isinstance(request,  dict) else request
+        resp_str = json.dumps(response) if isinstance(response, dict) else response
+        with self._lock:
+            con = self._connect()
+            con.execute(
+                "INSERT OR IGNORE INTO tool_calls "
+                "(id, tool, path, request, response, status, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (call_id, tool, path, req_str, resp_str, status, ts),
+            )
+            con.commit()
+            con.close()
+
+    def rate(self, call_id: str, rating: int, comment: str | None = None) -> bool:
+        """Set rating (-1/1) and optional comment. Returns False if id not found."""
+        with self._lock:
+            con = self._connect()
+            cur = con.execute(
+                "UPDATE tool_calls SET rating=?, comment=? WHERE id=?",
+                (rating, comment, call_id),
+            )
+            con.commit()
+            found = cur.rowcount > 0
+            con.close()
+        return found
+
+    def purge(
+        self,
+        tool: str | None = None,
+        rated_only: bool = False,
+    ) -> int:
+        """
+        Delete rows from tool_calls.
+        - tool=None, rated_only=False  → delete ALL rows
+        - tool='...'                   → delete only rows for that tool
+        - rated_only=True              → delete only rows that have a rating
+        Returns the number of rows deleted.
+        """
+        clauses = []
+        params: list = []
+        if tool:
+            clauses.append("tool = ?")
+            params.append(tool)
+        if rated_only:
+            clauses.append("rating IS NOT NULL")
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        with self._lock:
+            con = self._connect()
+            cur = con.execute(f"DELETE FROM tool_calls {where}", params)
+            con.commit()
+            deleted = cur.rowcount
+            con.close()
+        return deleted
+
+    def export(
+        self,
+        tool: str | None = None,
+        rated_only: bool = False,
+        limit: int = 500,
+    ) -> list[dict]:
+        clauses = []
+        params: list = []
+        if tool:
+            clauses.append("tool = ?")
+            params.append(tool)
+        if rated_only:
+            clauses.append("rating IS NOT NULL")
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
+        with self._lock:
+            con = self._connect()
+            rows = con.execute(
+                f"SELECT id, tool, path, request, response, status, ts, rating, comment "
+                f"FROM tool_calls {where} ORDER BY ts DESC LIMIT ?",
+                params,
+            ).fetchall()
+            con.close()
+        keys = ["id", "tool", "path", "request", "response", "status", "ts", "rating", "comment"]
+        result = []
+        for row in rows:
+            d = dict(zip(keys, row))
+            # Deserialise stored JSON strings back to objects
+            for field in ("request", "response"):
+                try:
+                    d[field] = json.loads(d[field])
+                except Exception:
+                    pass
+            result.append(d)
+        return result
+
+
+# Singleton — initialised once at module load
+_call_log = _CallLog(CALL_LOG_DB)
+
+
+def _require_admin_key(request: "Request") -> "JSONResponse | None":
+    """
+    Return a 403 JSONResponse if the request does not supply the correct
+    admin key in the ``X-Admin-Key`` header; return None if the key is valid.
+    Uses hmac.compare_digest to prevent timing-based attacks.
+    """
+    import hmac
+    provided = request.headers.get("X-Admin-Key", "")
+    if not provided or not hmac.compare_digest(provided, ADMIN_KEY):
+        return JSONResponse(
+            {"error": "Forbidden: valid X-Admin-Key header required"},
+            status_code=403,
+        )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Middleware: inject "tool" field into every JSON response
+# ---------------------------------------------------------------------------
+
+# Maps URL path → tool name injected into the response body.
+_PATH_TO_TOOL: dict[str, str] = {
+    "/generate":       "generate_canvasxpress_config",
+    "/modify":         "modify_canvasxpress_config",
+    "/km":             "generate_km_config",
+    "/params":         "get_chart_parameters",
+    "/axes":           "suggest_axes",
+    "/select":         "select_canvasxpress_chart",
+    "/explain":        "explain_canvasxpress_property",
+    "/explain-r":      "explain_canvasxpress_r",
+    "/explain-ggplot": "explain_ggplot_to_canvasxpress",
+    "/minimal-params": "get_minimal_params",
+}
+
+
+class _InjectToolMiddleware:
+    """
+    Injects ``"tool"``, ``"valid"``, ``"datetime"``, and ``"request_id"`` into
+    every JSON API response, and logs every call to the call-log SQLite DB.
+    """
+
+    def __init__(self, app):
+        self._app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        tool_name = _PATH_TO_TOOL.get(path)
+        if tool_name is None:
+            await self._app(scope, receive, send)
+            return
+
+        # --- Buffer the request body so we can log it ----------------------
+        req_body_chunks: list[bytes] = []
+
+        async def _buffered_receive():
+            msg = await receive()
+            if msg["type"] == "http.request":
+                req_body_chunks.append(msg.get("body", b""))
+            return msg
+
+        # --- Intercept the response ----------------------------------------
+        status_code = 200
+        original_headers: list = []
+        body_chunks: list[bytes] = []
+
+        async def _intercept_send(message):
+            nonlocal status_code, original_headers
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                original_headers = list(message.get("headers", []))
+            elif message["type"] == "http.response.body":
+                body_chunks.append(message.get("body", b""))
+                if not message.get("more_body", False):
+                    raw = b"".join(body_chunks)
+                    call_id = str(_uuid.uuid4())
+                    try:
+                        data = json.loads(raw)
+                        if isinstance(data, dict) and "error" not in data:
+                            data["tool"]       = tool_name
+                            data["request_id"] = call_id
+                            if "valid" not in data:
+                                data["valid"] = True
+                            if "datetime" not in data:
+                                from datetime import datetime, timezone
+                                data["datetime"] = datetime.now(timezone.utc).strftime(
+                                    "%a, %d %b %Y %H:%M:%S GMT"
+                                )
+                        raw = json.dumps(data).encode()
+
+                        # --- Log to SQLite (best-effort, never block response) ---
+                        try:
+                            req_raw = b"".join(req_body_chunks)
+                            try:
+                                req_obj = json.loads(req_raw) if req_raw else {}
+                            except Exception:
+                                req_obj = req_raw.decode(errors="replace")
+                            # Store only the non-binary parts of the response
+                            resp_obj = data if isinstance(data, dict) else {}
+                            _call_log.log(
+                                call_id=call_id,
+                                tool=tool_name,
+                                path=path,
+                                request=req_obj,
+                                response=resp_obj,
+                                status=status_code,
+                            )
+                        except Exception as _log_exc:
+                            log.debug("call-log write failed: %s", _log_exc)
+
+                    except Exception:
+                        pass  # not JSON — pass through unchanged
+
+                    new_headers = [
+                        (k, v) for k, v in original_headers
+                        if k.lower() not in (b"content-length",)
+                    ]
+                    new_headers.append((b"content-length", str(len(raw)).encode()))
+                    await send({
+                        "type":    "http.response.start",
+                        "status":  status_code,
+                        "headers": new_headers,
+                    })
+                    await send({
+                        "type":      "http.response.body",
+                        "body":      raw,
+                        "more_body": False,
+                    })
+
+        await self._app(scope, _buffered_receive, _intercept_send)
+
+
 # Build the CORS ASGI middleware list — passed to mcp.run() below.
 # CORS_ORIGINS is read from .env (CORS_ORIGINS env var).
 _cors_middleware: list = [
@@ -859,8 +1176,9 @@ _cors_middleware: list = [
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "X-API-Key"],
-    )
+        allow_headers=["Content-Type", "X-API-Key", "X-Admin-Key"],
+    ),
+    Middleware(_InjectToolMiddleware),
 ]
 
 
@@ -1127,6 +1445,7 @@ def modify_canvasxpress_config(
 
     return {
         "config":         modified,
+        "prompt":         instruction,
         "valid":          validation["valid"],
         "warnings":       validation["warnings"],
         "invalid_refs":   validation["invalid_refs"],
@@ -1392,6 +1711,34 @@ def select_canvasxpress_chart(
         [a["graphType"] for a in result["alternatives"]],
         tb.get("used", False),
     )
+
+    # Attach minimal config to top recommendation and each alternative
+    # and validate that all required axes are populated
+    warnings: list[str] = []
+
+    def _validate_minimal_config(gt: str, cfg: dict) -> list[str]:
+        """Return a list of warnings for any required axis that is empty/missing."""
+        req = get_minimal_parameters(gt).get("required_parameters", [])
+        issues = []
+        for param in req:
+            if param == "graphType":
+                continue
+            val = cfg.get(param)
+            if not val or val == []:
+                issues.append(f"{gt}: required parameter '{param}' is not populated")
+        return issues
+
+    top_cfg = _build_minimal_config(result["top_recommendation"]["graphType"], column_types)
+    result["top_recommendation"]["minimal_config"] = top_cfg
+    warnings.extend(_validate_minimal_config(result["top_recommendation"]["graphType"], top_cfg))
+
+    for alt in result["alternatives"]:
+        alt_cfg = _build_minimal_config(alt["graphType"], column_types)
+        alt["minimal_config"] = alt_cfg
+
+    result["valid"]    = len(warnings) == 0
+    result["warnings"] = warnings
+
     return result
 
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
@@ -1840,6 +2187,133 @@ def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
         "sections": sections,
         "available_topics": list(sections.keys()),
     }
+
+
+# ---------------------------------------------------------------------------
+# Minimal-config builder (used by select_canvasxpress_chart)
+# ---------------------------------------------------------------------------
+
+# Chart types whose numeric columns go on both xAxis and yAxis
+_MULTI_DIM_GTS = {
+    "Scatter2D", "Scatter3D", "ScatterBubble2D", "Contour", "Streamgraph",
+    "TimeSeries", "Spaghetti", "KaplanMeier", "Volcano",
+}
+# Chart types that use a second numeric axis (xAxis2)
+_COMBINED_GTS = {
+    "AreaLine", "BarLine", "DotLine", "StackedLine", "StackedPercentLine", "Pareto",
+}
+# Chart types that use groupingFactors instead of (or in addition to) a factor in xAxis
+_GROUPING_GTS = {"Boxplot", "Violin", "Dotplot", "Treemap", "Ridgeline"}
+
+
+def _build_minimal_config(
+    graph_type: str,
+    column_types: dict[str, str],
+) -> dict:
+    """
+    Build the minimal CanvasXpress config for *graph_type* given *column_types*.
+
+    Assigns columns to graphType-appropriate axes based on their types.
+    Returns a ready-to-use config dict (no LLM call).
+    """
+    import cx_selector as _cxs
+
+    # Exclude subject/ID columns (e.g. "Id", "PatientId") from numeric candidates
+    # so they don't end up assigned to chart axes.
+    def _is_id_col(name: str) -> bool:
+        return _cxs._col_matches(name, "subject") and not _cxs._col_matches(name, "group")
+
+    num_cols  = [c for c, t in column_types.items()
+                 if t.lower() in _cxs._NUMERIC_ALIASES and not _is_id_col(c)]
+    fac_cols  = [c for c, t in column_types.items() if t.lower() in _cxs._FACTOR_ALIASES]
+    time_cols = [c for c, t in column_types.items() if t.lower() in _cxs._TIME_ALIASES]
+    bool_cols = [c for c, t in column_types.items() if t.lower() in _cxs._BOOL_ALIASES]
+
+    cfg: dict = {"graphType": graph_type}
+
+    if graph_type in _MULTI_DIM_GTS:
+        # xAxis = first numeric (or time), yAxis = second numeric
+        x_candidates = time_cols + num_cols
+        if x_candidates:
+            cfg["xAxis"] = [x_candidates[0]]
+        remaining_num = [c for c in num_cols if c not in cfg.get("xAxis", [])]
+        if remaining_num:
+            cfg["yAxis"] = [remaining_num[0]]
+        if graph_type == "Scatter3D" and len(remaining_num) >= 2:
+            cfg["zAxis"] = [remaining_num[1]]
+        if graph_type == "ScatterBubble2D" and len(remaining_num) >= 2:
+            cfg["zAxis"] = [remaining_num[1]]
+        if graph_type == "KaplanMeier":
+            if bool_cols:
+                cfg["yAxis"] = bool_cols[:1]
+            elif len(num_cols) >= 2:
+                cfg["yAxis"] = [num_cols[1]]
+            if fac_cols:
+                cfg["colorBy"] = fac_cols[0]
+
+    elif graph_type in _COMBINED_GTS:
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+        if len(num_cols) >= 2:
+            cfg["xAxis2"] = [num_cols[1]]
+        if fac_cols:
+            cfg["smpTitle"] = fac_cols[0]
+
+    elif graph_type in _GROUPING_GTS:
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+        if fac_cols:
+            cfg["groupingFactors"] = [fac_cols[0]]
+
+    elif graph_type == "Heatmap":
+        cfg["xAxis"] = num_cols or [c for c in column_types]
+
+    elif graph_type in {"Sunburst", "Tree"}:
+        cfg["hierarchy"] = fac_cols[:2] if fac_cols else list(column_types.keys())[:2]
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+
+    elif graph_type in {"Sankey", "Alluvial"}:
+        cfg["sankeyAxes"] = fac_cols[:2] if len(fac_cols) >= 2 else list(column_types.keys())[:2]
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+
+    elif graph_type == "Ridgeline":
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+        if fac_cols:
+            cfg["ridgeBy"] = fac_cols[0]
+
+    elif graph_type in {"TagCloud", "WordCloud"}:
+        text_cols = [c for c, t in column_types.items() if t.lower() in _cxs._TEXT_ALIASES] or fac_cols
+        if text_cols:
+            cfg["xAxis"] = [text_cols[0]]
+        if fac_cols:
+            cfg["colorBy"] = fac_cols[0]
+
+    elif graph_type == "Spaghetti":
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+        if len(num_cols) >= 2:
+            cfg["yAxis"] = [num_cols[1]]
+        if fac_cols:
+            cfg["colorBy"] = fac_cols[0]
+
+    else:
+        # Default single-dim: numeric → xAxis, first factor → groupingFactors if present
+        if num_cols:
+            cfg["xAxis"] = num_cols[:1]
+        if fac_cols and graph_type not in {"Pie", "Donut", "Bar", "Stacked",
+                                            "StackedPercent", "Waterfall", "Lollipop"}:
+            cfg["groupingFactors"] = [fac_cols[0]]
+
+    # Color/group by second factor when available and not already set
+    if len(fac_cols) >= 2 and "colorBy" not in cfg and graph_type not in _GROUPING_GTS:
+        cfg["colorBy"] = fac_cols[1]
+    elif fac_cols and "colorBy" not in cfg and graph_type in _MULTI_DIM_GTS:
+        cfg["colorBy"] = fac_cols[0]
+
+    return cfg
 
 
 @mcp.tool(description="Get the minimal required parameters for a specific CanvasXpress graph type.")
@@ -2813,6 +3287,98 @@ async def rest_minimal_params(request: Request) -> Response:
         log.exception("REST /minimal-params error")
         return JSONResponse({"error": str(exc)}, status_code=500)
     return JSONResponse(result)
+
+@mcp.custom_route("/feedback", methods=["POST"])
+async def rest_feedback(request: Request) -> Response:
+    """
+    Submit thumbs-up / thumbs-down feedback for a previous tool call.
+
+    POST /feedback
+    Body (JSON):
+      request_id  (str, required)  — UUID returned in the tool response
+      rating      (int, required)  — 1 = thumbs up, -1 = thumbs down
+      comment     (str, optional)  — free-text explanation
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSON body required"}, status_code=400)
+
+    call_id = (body.get("request_id") or "").strip()
+    if not call_id:
+        return JSONResponse({"error": "'request_id' is required"}, status_code=400)
+
+    rating = body.get("rating")
+    if rating not in (1, -1):
+        return JSONResponse({"error": "'rating' must be 1 (up) or -1 (down)"}, status_code=400)
+
+    comment = body.get("comment") or None
+    found = _call_log.rate(call_id, rating, comment)
+    if not found:
+        return JSONResponse({"error": f"No call found with request_id '{call_id}'"}, status_code=404)
+
+    log.info("Feedback received: request_id=%s rating=%s", call_id, rating)
+    return JSONResponse({"success": True, "request_id": call_id, "rating": rating})
+
+
+@mcp.custom_route("/feedback/purge", methods=["POST"])
+async def rest_feedback_purge(request: Request) -> Response:
+    """
+    Purge rows from the call log.  Requires ``X-Admin-Key`` header.
+
+    POST /feedback/purge
+    Headers:
+      X-Admin-Key  (str, required)  — must match ADMIN_KEY in .env
+    Body (JSON, all optional):
+      tool        (str)   — delete only rows for this tool name
+      rated_only  (bool)  — if true, delete only rows that have a rating
+    Omitting both deletes ALL rows.
+    """
+    deny = _require_admin_key(request)
+    if deny:
+        return deny
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tool_filter = (body.get("tool") or "").strip() or None
+    rated_only  = bool(body.get("rated_only", False))
+
+    deleted = _call_log.purge(tool=tool_filter, rated_only=rated_only)
+    log.info("Purged %d call-log rows (tool=%s rated_only=%s)", deleted, tool_filter, rated_only)
+    return JSONResponse({"success": True, "deleted": deleted})
+
+
+@mcp.custom_route("/feedback/export", methods=["GET", "POST"])
+async def rest_feedback_export(request: Request) -> Response:
+    """
+    Export logged tool calls with optional filters.
+
+    GET /feedback/export?tool=generate_canvasxpress_config&rated_only=true&limit=100
+    Parameters:
+      tool        (str)   — filter by tool name (optional)
+      rated_only  (bool)  — if "true", return only calls that have a rating
+      limit       (int)   — max rows to return (default 500)
+    """
+    p = dict(request.query_params)
+    if request.method == "POST":
+        try:
+            p.update(await request.json())
+        except Exception:
+            pass
+
+    tool_filter  = (p.get("tool") or "").strip() or None
+    rated_only   = str(p.get("rated_only", "")).lower() == "true"
+    try:
+        limit = int(p.get("limit", 500))
+    except (ValueError, TypeError):
+        limit = 500
+
+    rows = _call_log.export(tool=tool_filter, rated_only=rated_only, limit=limit)
+    return JSONResponse({"count": len(rows), "rows": rows})
+
 
 @mcp.custom_route("/ui", methods=["GET"])
 async def rest_ui(request: Request) -> HTMLResponse:

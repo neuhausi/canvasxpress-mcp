@@ -1811,7 +1811,13 @@ def select_chart(
     # Build a ready-made description hint for generate_canvasxpress_config
     col_names    = list(column_types.keys())
     factor_cols  = [k for k, v in column_types.items() if v.lower() in _FACTOR_ALIASES]
-    numeric_cols = [k for k, v in column_types.items() if v.lower() in _NUMERIC_ALIASES]
+    # Exclude subject/ID columns (e.g. "Id", "PatientId") from numeric candidates
+    # so they don't end up as chart axes.
+    numeric_cols = [
+        k for k, v in column_types.items()
+        if v.lower() in _NUMERIC_ALIASES
+        and not (_col_matches(k, "subject") and not _col_matches(k, "group"))
+    ]
     time_cols    = [k for k, v in column_types.items() if v.lower() in _TIME_ALIASES]
 
     best_gt = ranked[0]["graphType"]

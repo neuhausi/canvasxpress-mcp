@@ -128,6 +128,9 @@ for direct integration with CanvasXpress's `askLLM()` function.
 | `GET /explain-r` | CanvasXpress in R | none (optional: `topic`) |
 | `GET /explain-ggplot` | CanvasXpress ggplot2 bridge | none (optional: `topic`) |
 | `GET /minimal-params` | Minimal required parameters | `graph_type` |
+| `POST /feedback` | Rate a tool call thumbs up/down | `request_id`, `rating` |
+| `GET /feedback/export` | Export call log | — (optional: `tool`, `rated_only`, `limit`) |
+| `POST /feedback/purge` | Delete call log rows (**admin key required**) | — (optional: `tool`, `rated_only`) |
 | `GET /ui` | Browser form UI | — |
 
 ### Common parameters (all LLM endpoints)
@@ -246,6 +249,9 @@ VirtualHost include directory. The `ProxyPass / !` line **must be last**.
 <Location /minimal-params>
     PassengerEnabled Off
 </Location>
+<Location /feedback>
+    PassengerEnabled Off
+</Location>
 <Location /ui>
     PassengerEnabled Off
 </Location>
@@ -271,6 +277,8 @@ ProxyPass        /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
 ProxyPassReverse /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
 ProxyPass        /minimal-params  http://127.0.0.1:8100/minimal-params
 ProxyPassReverse /minimal-params  http://127.0.0.1:8100/minimal-params
+ProxyPass        /feedback        http://127.0.0.1:8100/feedback
+ProxyPassReverse /feedback        http://127.0.0.1:8100/feedback
 ProxyPass        /ui              http://127.0.0.1:8100/ui
 ProxyPassReverse /ui              http://127.0.0.1:8100/ui
 
@@ -316,7 +324,8 @@ Generate a new CanvasXpress config from a plain English description.
   "types_used":     { "Expression": "numeric", "Treatment": "factor" },
   "removed_params": [],
   "success":        true,
-  "datetime":       "Fri, 10 Apr 2026 19:00:00 GMT"
+  "datetime":       "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":     "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 }
 ```
 
@@ -327,6 +336,7 @@ Generate a new CanvasXpress config from a plain English description.
 | `warnings` | Column reference or parameter value warnings |
 | `removed_params` | Parameter names the LLM invented that were stripped |
 | `success` | Same as `valid` — included for CanvasXpress `callbackLLM` compatibility |
+| `request_id` | UUID for this call — use with `POST /feedback` to submit a rating |
 
 ---
 
@@ -343,17 +353,32 @@ Modify an existing config using a plain English instruction.
 | `column_types` | object | ❌ | Map of column → type |
 | `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
 
-Response includes all `generate_canvasxpress_config` fields plus:
+**Response:**
 
 ```json
 {
-  "changes": {
-    "added":   ["title"],
-    "removed": [],
-    "changed": ["colorScheme"]
-  }
+  "config":         { "graphType": "Heatmap", "colorScheme": "Spectral", "title": "My Heatmap", "xAxis": ["Gene"] },
+  "prompt":         "change colorScheme to Spectral and add a title",
+  "valid":          true,
+  "warnings":       [],
+  "invalid_refs":   {},
+  "headers_used":   ["Gene"],
+  "types_used":     { "Gene": "string" },
+  "removed_params": [],
+  "changes":        { "added": ["title"], "removed": [], "changed": ["colorScheme"] },
+  "success":        true,
+  "datetime":       "Fri, 10 Apr 2026 19:00:00 GMT",
+  "tool":           "modify_canvasxpress_config",
+  "request_id":     "7c9e6679-7425-40c3-bba5-0ee65d4ef6a4"
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `config` | The updated CanvasXpress JSON config |
+| `prompt` | The instruction echoed back |
+| `changes` | Keys added, removed, and changed relative to the input config |
+| `request_id` | UUID for this call — use with `POST /feedback` to submit a rating |
 
 **Example instructions:**
 ```
@@ -407,7 +432,12 @@ At least one argument must be provided.
     "group_cols": ["Treatment"],
     "confidence": "high",
     "notes": []
-  }
+  },
+  "valid":      true,
+  "success":    true,
+  "datetime":   "Fri, 10 Apr 2026 19:00:00 GMT",
+  "tool":       "generate_km_config",
+  "request_id": "2b9e6679-9c0b-4ef8-bb6b-6bb9bd380a55"
 }
 ```
 
@@ -432,6 +462,43 @@ Pass either, both, or neither (returns full schema summary).
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to always use bundled schema, no GitHub fetch |
 
+**Response — single parameter (`param_name=colorScheme`):**
+
+```json
+{
+  "found":        true,
+  "param":        "colorScheme",
+  "description":  "Color palette applied to the chart.",
+  "type":         "string",
+  "valid_values": ["Blues", "Reds", "RdBu", "Tableau", "CanvasXpress", "..."],
+  "graph_types":  ["Bar", "Heatmap", "Scatter2D", "Violin", "..."],
+  "schema_source": "github",
+  "tool":         "get_chart_parameters",
+  "valid":        true,
+  "datetime":     "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":   "a0eebc99-9c0b-4ef8-bb6b-6bb9bd380a11"
+}
+```
+
+**Response — graph type (`graph_type=Heatmap`):**
+
+```json
+{
+  "graph_type":   "Heatmap",
+  "param_count":  42,
+  "params": {
+    "colorScheme":          { "description": "Color palette.", "type": "string", "valid_values": ["RdBu", "Blues", "..."] },
+    "samplesClustered":     { "description": "Cluster columns with dendrogram.", "type": "boolean", "valid_values": [] },
+    "variablesClustered":   { "description": "Cluster rows with dendrogram.", "type": "boolean", "valid_values": [] }
+  },
+  "schema_source": "github",
+  "tool":         "get_chart_parameters",
+  "valid":        true,
+  "datetime":     "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":   "b1ddbc00-1d1c-5fg9-cc7c-7cc0ce491b22"
+}
+```
+
 ---
 
 ### `get_axes_info`
@@ -442,6 +509,31 @@ which are forbidden, and which axis title parameter to use.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `graph_type` | string | ✅ | CanvasXpress chart type e.g. `Bar`, `Scatter2D`, `BarLine` |
+
+**Response:**
+
+```json
+{
+  "graph_type":       "Scatter2D",
+  "category":         "multi_dim",
+  "valid_axes":       ["xAxis", "yAxis"],
+  "invalid_axes":     [],
+  "axis_title_param": "xAxisTitle / yAxisTitle",
+  "notes":            "Scatter2D requires both xAxis (numeric) and yAxis (numeric). Use xAxisTitle and yAxisTitle for axis labels. Never use smpTitle.",
+  "schema_snippet":   "xAxis — columns for x-axis; yAxis — columns for y-axis ...",
+  "tool":             "suggest_axes",
+  "valid":            true,
+  "datetime":         "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":       "c2eecd11-2e2d-6gh0-dd8d-8dd1df502c33"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `category` | `single_dim`, `multi_dim`, or `combined` |
+| `valid_axes` | Axis keys that apply to this chart type |
+| `invalid_axes` | Axis keys that must NOT be used |
+| `axis_title_param` | Correct axis title parameter (`smpTitle` vs `xAxisTitle/yAxisTitle`) |
 
 ---
 
@@ -457,6 +549,49 @@ with rationale and a ready-made description hint to pass to `generate_canvasxpre
 | `column_types` | object | ✅ | Map of column name → type (`string`/`numeric`/`factor`/`date`) |
 | `n_samples` | integer | ❌ | Optional number of rows — used to refine recommendations |
 
+**Response:**
+
+```json
+{
+  "intent": "show expression distribution by cell type",
+  "column_summary": { "n_factor": 1, "n_numeric": 1, "n_time": 0, "n_bool": 0, "n_text": 0 },
+  "top_recommendation": {
+    "graphType":       "Violin",
+    "score":           0.9,
+    "description":     "Kernel density distribution of a numeric variable split by a categorical grouping factor.",
+    "clinical_use":    "Gene expression by cell type, biomarker distribution by cohort.",
+    "next_step":       "generate_canvasxpress_config with description='Violin chart of Expression grouped by CellType'",
+    "scoring_factors": ["1 numeric + 1 factor — ideal for distribution by group"],
+    "minimal_config":  { "graphType": "Violin", "xAxis": ["Expression"], "groupingFactors": ["CellType"] }
+  },
+  "alternatives": [
+    {
+      "graphType":      "Boxplot",
+      "score":          0.78,
+      "description":    "Box-and-whisker summary statistics by group.",
+      "clinical_use":   "Quick distribution summary when n is sufficient.",
+      "scoring_factors": ["1 numeric + 1 factor — suitable for grouped distribution"],
+      "minimal_config": { "graphType": "Boxplot", "xAxis": ["Expression"], "groupingFactors": ["CellType"] }
+    }
+  ],
+  "generate_hint": "Violin chart of Expression grouped by CellType — columns: Expression, CellType",
+  "valid":          true,
+  "warnings":       [],
+  "type_source":    "explicit",
+  "tool":           "select_canvasxpress_chart",
+  "datetime":       "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":     "d3ffde22-3f3e-7hi1-ee9e-9ee2eg613d44"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `top_recommendation` | Best chart type with score, rationale, and `minimal_config` |
+| `alternatives` | Up to 4 other ranked candidates, each also with `minimal_config` |
+| `generate_hint` | Ready-made description to pass to `generate_canvasxpress_config` |
+| `minimal_config` | Minimal axis config ready to use — attach to the `generate` call |
+| `type_source` | How column types were resolved: `explicit`, `inferred`, or `merged` |
+
 ---
 
 ### `explain_config_property`
@@ -466,6 +601,19 @@ Return a plain English explanation of any CanvasXpress configuration property.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `property` | string | ✅ | Config property name e.g. `colorScheme`, `groupingFactors`, `decorations` |
+
+**Response:**
+
+```json
+{
+  "property":    "groupingFactors",
+  "explanation": "**`groupingFactors`** — Array of column names used to group/color data. e.g. ['Treatment', 'CellType']",
+  "tool":        "explain_canvasxpress_property",
+  "valid":       true,
+  "datetime":    "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":  "e4ggef33-4g4f-8ij2-ff0f-0ff3fh724e55"
+}
+```
 
 ---
 
@@ -478,6 +626,41 @@ Shiny integration, R Markdown, and the ggplot2 bridge.
 |----------|------|----------|-------------|
 | `topic` | string | ❌ | Filter by topic: `installation`, `basic`, `shiny`, `rmarkdown`, `data`, `config` |
 
+**Response (no topic — full guide):**
+
+```json
+{
+  "overview":          "The canvasXpress R package wraps the CanvasXpress JavaScript library as an htmlwidget ...",
+  "sections": {
+    "installation": { "title": "Installation", "content": "Install from CRAN: install.packages('canvasXpress') ..." },
+    "basic":        { "title": "Basic Usage",   "content": "The main function is canvasXpress() ..." },
+    "data":         { "title": "Data Format",   "content": "CanvasXpress in R expects data in one of two orientations ..." },
+    "config":       { "title": "Configuration Parameters", "content": "All CanvasXpress JSON config parameters map directly ..." },
+    "shiny":        { "title": "Using CanvasXpress in Shiny", "content": "CanvasXpress integrates with Shiny via canvasXpressOutput() ..." },
+    "rmarkdown":    { "title": "Using CanvasXpress in R Markdown / Quarto", "content": "..." }
+  },
+  "available_topics": ["installation", "basic", "data", "config", "shiny", "rmarkdown"],
+  "tool":             "explain_canvasxpress_r",
+  "valid":            true,
+  "datetime":         "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":       "f5hhfg44-5h5g-9jk3-gg1g-1gg4gi835f66"
+}
+```
+
+**Response (with `topic=shiny`):**
+
+```json
+{
+  "topic":   "shiny",
+  "section": { "title": "Using CanvasXpress in Shiny", "content": "CanvasXpress integrates with Shiny via canvasXpressOutput() ..." },
+  "available_topics": ["installation", "basic", "data", "config", "shiny", "rmarkdown"],
+  "tool":             "explain_canvasxpress_r",
+  "valid":            true,
+  "datetime":         "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":       "g6iigh55-6i6h-0kl4-hh2h-2hh5hj946g77"
+}
+```
+
 ---
 
 ### `explain_canvasxpress_ggplot`
@@ -489,6 +672,24 @@ interactive CanvasXpress widget with a single function call.
 |----------|------|----------|-------------|
 | `topic` | string | ❌ | Filter by topic: `installation`, `geoms`, `example` |
 
+**Response (no topic — full guide):**
+
+```json
+{
+  "sections": {
+    "overview":      { "title": "Overview",      "content": "canvasXpress() accepts a ggplot2 object directly ..." },
+    "installation":  { "title": "Installation",  "content": "install.packages('canvasXpress') ..." },
+    "geoms":         { "title": "Supported Geoms", "content": "geom_point → Scatter2D, geom_bar → Bar ..." },
+    "example":       { "title": "Full Example",   "content": "library(ggplot2); library(canvasXpress) ..." }
+  },
+  "available_topics": ["overview", "installation", "geoms", "example"],
+  "tool":             "explain_ggplot_to_canvasxpress",
+  "valid":            true,
+  "datetime":         "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":       "h7jjih66-7j7i-1lm5-ii3i-3ii6ik057h88"
+}
+```
+
 ---
 
 ### `get_minimal_parameters`
@@ -498,6 +699,142 @@ Return the minimal set of required parameters for a specific chart type.
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `graph_type` | string | ✅ | CanvasXpress chart type e.g. `Scatter2D`, `Heatmap` |
+
+**Response:**
+
+```json
+{
+  "graphType":           "KaplanMeier",
+  "required_parameters": ["graphType", "xAxis", "yAxis"],
+  "tool":                "get_minimal_params",
+  "valid":               true,
+  "datetime":            "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":          "i8kkji77-8k8j-2mn6-jj4j-4jj7jl168i99"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `graphType` | The requested chart type |
+| `required_parameters` | Minimum set of parameters that must be populated for a valid config |
+
+---
+
+## Call logging & feedback
+
+Every tool call is automatically logged to `data/call_log.db` (a separate SQLite
+database from the vector index). Each response includes a `request_id` UUID that
+can be used to submit thumbs-up/down feedback.
+
+### Submit feedback
+
+```bash
+curl -X POST http://localhost:8100/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"request_id": "<uuid from response>", "rating": 1, "comment": "Perfect"}'
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `request_id` | string | ✅ | UUID from the tool response |
+| `rating` | integer | ✅ | `1` = thumbs up, `-1` = thumbs down |
+| `comment` | string | ❌ | Optional free-text note |
+
+### Export call log
+
+```bash
+# All calls (latest 500)
+curl "http://localhost:8100/feedback/export"
+
+# Only rated calls for one tool
+curl "http://localhost:8100/feedback/export?tool=select_canvasxpress_chart&rated_only=true"
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `tool` | Filter by tool name (optional) |
+| `rated_only` | `true` — return only rows that have a rating |
+| `limit` | Max rows to return (default `500`) |
+
+### Purge call log (admin only)
+
+Requires the `X-Admin-Key` header. See [ADMIN_KEY](#environment-variables) below.
+
+```bash
+# Delete all rows
+curl -X POST http://localhost:8100/feedback/purge \
+  -H "X-Admin-Key: your-secret-key"
+
+# Delete only rated rows for one tool
+curl -X POST http://localhost:8100/feedback/purge \
+  -H "X-Admin-Key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"tool": "generate_canvasxpress_config", "rated_only": true}'
+```
+
+| Body field | Description |
+|------------|-------------|
+| `tool` | Delete only rows for this tool name (optional) |
+| `rated_only` | `true` — delete only rows that have a rating (optional) |
+
+Omitting both deletes **all** rows. Returns `{"success": true, "deleted": N}`.
+
+> **Security** — without a correct `X-Admin-Key` header the endpoint returns
+> `403 Forbidden`. The comparison uses `hmac.compare_digest` to prevent
+> timing-based attacks. Set `ADMIN_KEY` in `.env` for a persistent key; if not
+> set, a random UUID is generated per restart and printed to the server log.
+
+### Manage the call log locally (CLI)
+
+`manage_call_log.py` is a standalone CLI script for managing `data/call_log.db`
+directly on the server — no HTTP key required.
+
+> **Note** — `data/call_log.db` is in `.gitignore` and is never overwritten by
+> `git pull`. The server uses `CREATE TABLE IF NOT EXISTS`, so the file is only
+> ever opened and appended to, never recreated on restart.
+
+```bash
+# Summary: row counts by tool, rated/unrated, 👍/👎
+python manage_call_log.py stats
+
+# Export everything to a timestamped JSON file
+python manage_call_log.py export --out backup_$(date +%Y%m%d).json
+
+# Export only rated calls as CSV
+python manage_call_log.py export --rated-only --format csv --out rated.csv
+
+# Export only calls for one tool
+python manage_call_log.py export --tool generate_canvasxpress_config
+
+# Purge only rated calls (keeps unrated history)
+python manage_call_log.py purge --rated-only
+
+# Purge everything without a prompt (e.g. in a cron job after export)
+python manage_call_log.py purge --yes
+
+# Use a different database path
+python manage_call_log.py --db /path/to/other/call_log.db stats
+```
+
+**`stats`** — prints a per-tool breakdown table with total, rated, 👍, 👎 counts and first-call timestamp.
+
+**`export`** options:
+
+| Option | Description |
+|--------|-------------|
+| `--tool TOOL` | Filter by tool name (partial match) |
+| `--rated-only` | Only rows that have a rating |
+| `--limit N` | Max rows to export (default: all) |
+| `--format json\|csv` | Output format (default: `json`) |
+| `--out FILE` | Write to file instead of stdout |
+
+**`purge`** options:
+
+| Option | Description |
+|--------|-------------|
+| `--tool TOOL` | Delete only rows for this tool (partial match) |
+| `--rated-only` | Delete only rows that have a rating |
+| `--yes` | Skip the confirmation prompt |
 
 ---
 
@@ -559,6 +896,7 @@ python src/server.py
 | `MCP_HOST` | `0.0.0.0` | Server bind host |
 | `MCP_PORT` | `8100` | Server port |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
+| `ADMIN_KEY` | auto-generated | Secret key required for `POST /feedback/purge`. Auto-generated and logged if not set |
 | `CX_DEBUG` | `0` | Set to `1` for full debug trace |
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
