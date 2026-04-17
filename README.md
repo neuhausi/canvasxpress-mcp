@@ -64,7 +64,7 @@ canvasxpress-mcp/
 ### 1. Python environment
 
 ```bash
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -908,7 +908,7 @@ All variables can also be set in a `.env` file in the project root.
 
 ## Troubleshooting
 
-**Updating the server from the repo**
+**Updating the production server from the repo**
 
 Run these steps every time you pull a new version:
 
