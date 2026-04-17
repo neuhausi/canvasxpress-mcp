@@ -939,3 +939,85 @@ prompts return a 200 with `valid: false` and a helpful message instead of a 500.
 **`removed_params` is non-empty**
 The LLM generated parameter names not in the CanvasXpress schema. They were
 automatically stripped. The config is still valid — refine the description if needed.
+
+**New tool added — Apache returns 404 for the new endpoint**
+Every time a new tool (and its REST endpoint) is added to `server.py`, the Apache
+proxy config must be updated **as root** by overwriting the file with the complete
+current content:
+
+```bash
+sudo bash -c 'cat > /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-proxy.conf << '"'"'EOF'"'"'
+# Disable Passenger for all MCP proxy paths
+<Location /generate>
+    PassengerEnabled Off
+</Location>
+<Location /modify>
+    PassengerEnabled Off
+</Location>
+<Location /km>
+    PassengerEnabled Off
+</Location>
+<Location /params>
+    PassengerEnabled Off
+</Location>
+<Location /axes>
+    PassengerEnabled Off
+</Location>
+<Location /select>
+    PassengerEnabled Off
+</Location>
+<Location /explain>
+    PassengerEnabled Off
+</Location>
+<Location /explain-r>
+    PassengerEnabled Off
+</Location>
+<Location /explain-ggplot>
+    PassengerEnabled Off
+</Location>
+<Location /minimal-params>
+    PassengerEnabled Off
+</Location>
+<Location /feedback>
+    PassengerEnabled Off
+</Location>
+<Location /ui>
+    PassengerEnabled Off
+</Location>
+
+# Proxy MCP paths to the Python server on port 8100
+ProxyPass        /generate        http://127.0.0.1:8100/generate
+ProxyPassReverse /generate        http://127.0.0.1:8100/generate
+ProxyPass        /modify          http://127.0.0.1:8100/modify
+ProxyPassReverse /modify          http://127.0.0.1:8100/modify
+ProxyPass        /km              http://127.0.0.1:8100/km
+ProxyPassReverse /km              http://127.0.0.1:8100/km
+ProxyPass        /params          http://127.0.0.1:8100/params
+ProxyPassReverse /params          http://127.0.0.1:8100/params
+ProxyPass        /axes            http://127.0.0.1:8100/axes
+ProxyPassReverse /axes            http://127.0.0.1:8100/axes
+ProxyPass        /select          http://127.0.0.1:8100/select
+ProxyPassReverse /select          http://127.0.0.1:8100/select
+ProxyPass        /explain         http://127.0.0.1:8100/explain
+ProxyPassReverse /explain         http://127.0.0.1:8100/explain
+ProxyPass        /explain-r       http://127.0.0.1:8100/explain-r
+ProxyPassReverse /explain-r       http://127.0.0.1:8100/explain-r
+ProxyPass        /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
+ProxyPassReverse /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
+ProxyPass        /minimal-params  http://127.0.0.1:8100/minimal-params
+ProxyPassReverse /minimal-params  http://127.0.0.1:8100/minimal-params
+ProxyPass        /feedback        http://127.0.0.1:8100/feedback
+ProxyPassReverse /feedback        http://127.0.0.1:8100/feedback
+ProxyPass        /ui              http://127.0.0.1:8100/ui
+ProxyPassReverse /ui              http://127.0.0.1:8100/ui
+
+# Block the root from being proxied — serve the website normally
+# MUST be the last ProxyPass rule
+ProxyPass        /  !
+EOF'
+apachectl configtest && service httpd restart
+```
+
+> Add the new `<Location>` block and `ProxyPass`/`ProxyPassReverse` pair for the new
+> endpoint **before** the `ProxyPass / !` line, then run `apachectl configtest &&
+> service httpd restart` to apply.
