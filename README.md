@@ -908,6 +908,32 @@ All variables can also be set in a `.env` file in the project root.
 
 ## Troubleshooting
 
+**Updating the server from the repo**
+
+Run these steps every time you pull a new version:
+
+```bash
+cd canvasxpress-mcp/
+rm src/server.py          # remove so git pull can overwrite it cleanly
+git pull
+./server.sh stop
+git apply --whitespace=nowarn canvasxpress-ctypes-fix.patch
+```
+
+> If `src/server.py` is missing after the patch step (patch did not restore it),
+> recover it with:
+> ```bash
+> git restore src/server.py
+> ```
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+./server.sh start
+```
+
+---
+
 **`No module named 'dotenv'`**
 ```bash
 pip install python-dotenv
