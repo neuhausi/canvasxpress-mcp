@@ -946,7 +946,7 @@ proxy config must be updated **as root** by overwriting the file with the comple
 current content:
 
 ```bash
-sudo bash -c 'cat > /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-proxy.conf << '"'"'EOF'"'"'
+cat > /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-proxy.conf << 'EOF'
 # Disable Passenger for all MCP proxy paths
 <Location /generate>
     PassengerEnabled Off
@@ -1014,7 +1014,8 @@ ProxyPassReverse /ui              http://127.0.0.1:8100/ui
 # Block the root from being proxied — serve the website normally
 # MUST be the last ProxyPass rule
 ProxyPass        /  !
-EOF'
+EOF
+
 apachectl configtest && service httpd restart
 ```
 
