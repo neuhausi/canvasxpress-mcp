@@ -952,8 +952,8 @@ class _CallLog:
             con.commit()
             con.close()
 
-    def rate(self, call_id: str, rating: int, comment: str | None = None) -> bool:
-        """Set rating (-1/1) and optional comment. Returns False if id not found."""
+    def rate(self, call_id: str, rating: int, comment: str | None = None) -> dict | None:
+        """Set rating (-1/1) and optional comment. Returns the row dict or None if not found."""
         with self._lock:
             con = self._connect()
             cur = con.execute(
@@ -961,9 +961,25 @@ class _CallLog:
                 (rating, comment, call_id),
             )
             con.commit()
-            found = cur.rowcount > 0
+            if cur.rowcount == 0:
+                con.close()
+                return None
+            row = con.execute(
+                "SELECT tool, request, ts FROM tool_calls WHERE id=?", (call_id,)
+            ).fetchone()
             con.close()
-        return found
+        if not row:
+            return None
+        try:
+            req = json.loads(row[1]) if row[1] else {}
+        except Exception:
+            req = {}
+        return {
+            "tool":      row[0],
+            "target":    req.get("target") or req.get("renderTo") or "",
+            "client_id": req.get("client_id") or req.get("client") or "",
+            "ts":        row[2],
+        }
 
     def purge(
         self,
@@ -1113,6 +1129,18 @@ class _InjectToolMiddleware:
                 if not message.get("more_body", False):
                     raw = b"".join(body_chunks)
                     call_id = str(_uuid.uuid4())
+                    # Detect JSONP: unwrap callback(json); before parsing
+                    import re as _re
+                    _jsonp_prefix: str | None = None
+                    try:
+                        _m = _re.match(
+                            rb'^([a-zA-Z0-9_.]+)\(([\s\S]*)\);\s*$', raw.strip()
+                        )
+                        if _m:
+                            _jsonp_prefix = _m.group(1).decode("utf-8")
+                            raw = _m.group(2)
+                    except Exception:
+                        pass
                     try:
                         data = json.loads(raw)
                         if isinstance(data, dict) and "error" not in data:
@@ -1126,6 +1154,8 @@ class _InjectToolMiddleware:
                                     "%a, %d %b %Y %H:%M:%S GMT"
                                 )
                         raw = json.dumps(data).encode()
+                        if _jsonp_prefix:
+                            raw = f"{_jsonp_prefix}({raw.decode()});".encode("utf-8")
 
                         # --- Log to SQLite (best-effort, never block response) ---
                         try:
@@ -1134,6 +1164,12 @@ class _InjectToolMiddleware:
                                 req_obj = json.loads(req_raw) if req_raw else {}
                             except Exception:
                                 req_obj = req_raw.decode(errors="replace")
+                            # For GET/JSONP requests the body is empty — also capture query params
+                            if not req_obj:
+                                from urllib.parse import parse_qs
+                                qs = scope.get("query_string", b"").decode(errors="replace")
+                                req_obj = {k: v[0] if len(v) == 1 else v
+                                           for k, v in parse_qs(qs).items()}
                             # Store only the non-binary parts of the response
                             resp_obj = data if isinstance(data, dict) else {}
                             _call_log.log(
@@ -1148,7 +1184,10 @@ class _InjectToolMiddleware:
                             log.debug("call-log write failed: %s", _log_exc)
 
                     except Exception:
-                        pass  # not JSON — pass through unchanged
+                        if _jsonp_prefix:
+                            # Re-wrap stripped JSONP if inner JSON parse failed
+                            raw = f"{_jsonp_prefix}({raw.decode()});".encode("utf-8")
+                        # else pass through unchanged
 
                     new_headers = [
                         (k, v) for k, v in original_headers
@@ -1672,6 +1711,8 @@ def select_canvasxpress_chart(
     intent: str,
     column_types: dict[str, str],
     n_samples: Optional[int] = None,
+    category_cardinalities: Optional[dict[str, int]] = None,
+    max_level_fractions: Optional[dict[str, float]] = None,
 ) -> dict:
     """
     Args:
@@ -1703,6 +1744,7 @@ def select_canvasxpress_chart(
         return text
 
     result = cx_selector.select_chart(intent, column_types, n_samples,
+                                       category_cardinalities=category_cardinalities,
                                        llm_complete=_llm_text)
     tb = result.get("tiebreak", {})
     log.info(
@@ -1728,12 +1770,17 @@ def select_canvasxpress_chart(
                 issues.append(f"{gt}: required parameter '{param}' is not populated")
         return issues
 
-    top_cfg = _build_minimal_config(result["top_recommendation"]["graphType"], column_types)
+    _bmc_kwargs = dict(
+        max_level_fractions=max_level_fractions,
+        category_cardinalities=category_cardinalities,
+        n_samples=n_samples,
+    )
+    top_cfg = _build_minimal_config(result["top_recommendation"]["graphType"], column_types, **_bmc_kwargs)
     result["top_recommendation"]["minimal_config"] = top_cfg
     warnings.extend(_validate_minimal_config(result["top_recommendation"]["graphType"], top_cfg))
 
     for alt in result["alternatives"]:
-        alt_cfg = _build_minimal_config(alt["graphType"], column_types)
+        alt_cfg = _build_minimal_config(alt["graphType"], column_types, **_bmc_kwargs)
         alt["minimal_config"] = alt_cfg
 
     result["valid"]    = len(warnings) == 0
@@ -1876,7 +1923,7 @@ def explain_config_property(property: str) -> str:
         return f"**`{property}`** — {explanations[property]}"
     return (
         f"No built-in explanation for `{property}`. "
-        f"See the full API: https://canvasxpress.org/api/general.html"
+        f"See the full API: https://canvasxpress.org/parameters.html"
     )
 
 
@@ -2203,12 +2250,69 @@ _COMBINED_GTS = {
     "AreaLine", "BarLine", "DotLine", "StackedLine", "StackedPercentLine", "Pareto",
 }
 # Chart types that use groupingFactors instead of (or in addition to) a factor in xAxis
-_GROUPING_GTS = {"Boxplot", "Violin", "Dotplot", "Treemap", "Ridgeline"}
+_GROUPING_GTS = {"Boxplot", "Violin", "Dotplot", "Treemap"}
+
+# Array-valued axes that must always be present (as [] if unset) per graph type.
+_GT_REQUIRED_AXES: dict[str, tuple[str, ...]] = {
+    # ── Multi-dimensional: x, y, z ──────────────────────────────────────────
+    **{gt: ("xAxis", "yAxis", "zAxis") for gt in _MULTI_DIM_GTS},
+    # ── Dual-axis / combined: x + x2 ────────────────────────────────────────
+    **{gt: ("xAxis", "xAxis2") for gt in _COMBINED_GTS},
+    # ── Grouping charts: x + groupingFactors ────────────────────────────────
+    **{gt: ("xAxis", "groupingFactors") for gt in _GROUPING_GTS},
+    # ── colorBy-grouped single-axis ─────────────────────────────────────────
+    "Ridgeline":            ("xAxis",),
+    "Histogram":            ("xAxis",),
+    # ── Hierarchical ────────────────────────────────────────────────────────
+    "Sunburst":             ("hierarchy", "xAxis"),
+    "Tree":                 ("hierarchy", "xAxis"),
+    "TreeBracket":          ("hierarchy", "xAxis"),
+    # ── Flow / alluvial ─────────────────────────────────────────────────────
+    "Sankey":               ("sankeyAxes", "xAxis"),
+    "Alluvial":             ("sankeyAxes", "xAxis"),
+    # ── Two-axis charts (x + y, no z) ───────────────────────────────────────
+    "Hexplot":              ("xAxis", "yAxis"),
+    "Binplot":              ("xAxis", "yAxis"),
+    "Bubble":               ("xAxis", "yAxis", "zAxis"),
+    "Bump":                 ("xAxis", "yAxis"),
+    "Dumbbell":             ("xAxis", "yAxis"),
+    "QQ":                   ("xAxis", "yAxis"),
+    "Ribbon":               ("xAxis", "yAxis"),
+    "Tornado":              ("xAxis", "yAxis"),
+    # ── x + groupingFactors ─────────────────────────────────────────────────
+    "Gantt":                ("xAxis", "groupingFactors"),
+    # ── Single-axis (xAxis only) ─────────────────────────────────────────────
+    "Heatmap":              ("xAxis",),
+    "Density":              ("xAxis",),
+    "TagCloud":             ("xAxis",),
+    "WordCloud":            ("xAxis",),
+    "Bar":                  ("xAxis",),
+    "Stacked":              ("xAxis",),
+    "StackedPercent":       ("xAxis",),
+    "Waterfall":            ("xAxis",),
+    "Lollipop":             ("xAxis",),
+    "Line":                 ("xAxis",),
+    "Area":                 ("xAxis",),
+    "Correlation":          ("xAxis",),
+    "SPLOM":                ("xAxis", "yAxis"),
+    "Radar":                ("xAxis",),
+    "ParallelCoordinates":  ("xAxis",),
+    "Network":              ("xAxis",),
+    "Venn":                 ("xAxis",),
+    "Chord":                ("xAxis",),
+    "CDF":                  ("xAxis",),
+    "Cleveland":            ("xAxis",),
+    "Upset":                ("xAxis",),
+    "Bullet":               ("xAxis",),
+}
 
 
 def _build_minimal_config(
     graph_type: str,
     column_types: dict[str, str],
+    max_level_fractions: Optional[dict[str, float]] = None,
+    category_cardinalities: Optional[dict[str, int]] = None,
+    n_samples: Optional[int] = None,
 ) -> dict:
     """
     Build the minimal CanvasXpress config for *graph_type* given *column_types*.
@@ -2223,9 +2327,21 @@ def _build_minimal_config(
     def _is_id_col(name: str) -> bool:
         return _cxs._col_matches(name, "subject") and not _cxs._col_matches(name, "group")
 
+    def _is_bad_grouping_col(col: str) -> bool:
+        """True if col should never be used as a grouping/factor axis."""
+        # Rule 1: one level covers > 90% of rows → near-constant, useless for grouping
+        if max_level_fractions and max_level_fractions.get(col, 0.0) > 0.9:
+            return True
+        # Rule 2: cardinality > 50% of n_samples → effectively a row label
+        if category_cardinalities and n_samples and n_samples > 0:
+            if category_cardinalities.get(col, 0) > n_samples * 0.5:
+                return True
+        return False
+
     num_cols  = [c for c, t in column_types.items()
                  if t.lower() in _cxs._NUMERIC_ALIASES and not _is_id_col(c)]
-    fac_cols  = [c for c, t in column_types.items() if t.lower() in _cxs._FACTOR_ALIASES]
+    fac_cols  = [c for c, t in column_types.items()
+                 if t.lower() in _cxs._FACTOR_ALIASES and not _is_id_col(c) and not _is_bad_grouping_col(c)]
     time_cols = [c for c, t in column_types.items() if t.lower() in _cxs._TIME_ALIASES]
     bool_cols = [c for c, t in column_types.items() if t.lower() in _cxs._BOOL_ALIASES]
 
@@ -2299,6 +2415,27 @@ def _build_minimal_config(
         if fac_cols:
             cfg["colorBy"] = fac_cols[0]
 
+    elif graph_type == "SPLOM":
+        # All numeric columns go to both xAxis and yAxis (pairwise matrix).
+        # Factor columns colour the points — never use groupingFactors.
+        splom_nums = num_cols  # ID cols already excluded above
+        cfg["xAxis"] = splom_nums[:]
+        cfg["yAxis"] = splom_nums[:]
+        if fac_cols:
+            cfg["colorBy"] = fac_cols[0]
+
+    elif graph_type == "Density":
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+        if fac_cols:
+            cfg["colorBy"] = fac_cols[0]
+
+    elif graph_type == "Histogram":
+        if num_cols:
+            cfg["xAxis"] = [num_cols[0]]
+        if fac_cols:
+            cfg["colorBy"] = fac_cols[0]
+
     else:
         # Default single-dim: numeric → xAxis, first factor → groupingFactors if present
         if num_cols:
@@ -2312,6 +2449,13 @@ def _build_minimal_config(
         cfg["colorBy"] = fac_cols[1]
     elif fac_cols and "colorBy" not in cfg and graph_type in _MULTI_DIM_GTS:
         cfg["colorBy"] = fac_cols[0]
+
+    # Ensure all array-valued axes expected for this graph type are present;
+    # any that weren't assigned by the branch logic above get an empty array.
+    _required = _GT_REQUIRED_AXES.get(graph_type, ("xAxis", "yAxis", "zAxis"))
+    for _axis in _required:
+        if _axis not in cfg:
+            cfg[_axis] = []
 
     return cfg
 
@@ -2389,6 +2533,327 @@ def get_minimal_parameters(graph_type: str) -> dict:
     }
 
 # ---------------------------------------------------------------------------
+# HTML renderer — converts tool results to a display-ready HTML string
+# ---------------------------------------------------------------------------
+
+# Maps each graphType to its canvasxpress.org/examples/<slug>-1.html slug.
+# Virtual types that have no dedicated example page fall back to the underlying type.
+_GT_EXAMPLE_SLUG: dict[str, str] = {
+    # native types — slug == gt.lower()
+    "Area": "area", "AreaLine": "arealine", "Bar": "bar", "BarLine": "barline",
+    "Boxplot": "boxplot", "Circular": "circular", "Correlation": "correlation",
+    "DotLine": "dotline", "Dotplot": "dotplot", "Gantt": "gantt",
+    "Heatmap": "heatmap", "Histogram": "histogram", "Line": "line",
+    "Network": "network", "ParallelCoordinates": "parallelcoordinates",
+    "Sankey": "sankey", "Scatter2D": "scatter2d", "Scatter3D": "scatter3d",
+    "ScatterBubble2D": "scatterbubble2d", "SPLOM": "splom", "Stacked": "stacked",
+    "StackedLine": "stackedline", "StackedPercent": "stackedpercent",
+    "StackedPercentLine": "stackedpercentline", "Streamgraph": "streamgraph",
+    "TagCloud": "tagcloud", "Tree": "tree", "Upset": "upset",
+    # virtual types with dedicated example pages
+    "Bubble": "bubble", "Bullet": "bullet", "Chord": "chord",
+    "Contour": "contour", "Density": "density", "Dumbbell": "dumbbell",
+    "Lollipop": "lollipop", "Radar": "radar", "Sunburst": "sunburst",
+    "Violin": "violin", "Waterfall": "waterfall",
+    # virtual types with hyphenated slug
+    "KaplanMeier": "kaplan-meier",
+    # virtual types with no dedicated page — fall back to underlying native type
+    "Alluvial": "sankey", "Bin": "scatter2d", "Binplot": "scatter2d",
+    "Bump": "scatter2d", "CDF": "scatter2d", "Cleveland": "dotplot",
+    "Distribution": "histogram", "Donut": "circular",
+    "Hex": "scatter2d", "Hexplot": "scatter2d", "Pareto": "barline",
+    "QQ": "scatter2d", "Quantile": "scatter2d", "Ribbon": "sankey",
+    "Ridgeline": "scatter2d", "Spaghetti": "scatter2d",
+    "TimeSeries": "scatter2d", "Time-Series": "scatter2d", "Time Series": "scatter2d",
+    "Tornado": "stacked", "TreeBracket": "tree", "Volcano": "scatter2d",
+    "WordCloud": "tagcloud",
+}
+
+
+def _result_to_html(result: dict, tool: str) -> str:
+    """
+    Convert a tool result dict into an HTML fragment suitable for chat display.
+
+    Uses <span> for prose, <pre><code> for code/config blocks, <ul>/<li> for lists.
+    Returns a <div class="cX-Chat-LLM-Response"> string.
+    """
+    import html as _html_mod
+    import json as _json
+
+    def esc(s) -> str:
+        return _html_mod.escape(str(s))
+
+    def _is_code(text: str) -> bool:
+        """Heuristic: ≥40 % of lines look like code → treat as a code block."""
+        lines = [l for l in text.splitlines() if l.strip()]
+        if not lines:
+            return False
+        hits = sum(
+            1 for l in lines
+            if re.match(r"^\s{2,}", l)
+            or l.strip().startswith(("#", "library(", "install.", "devtools::",
+                                     "canvasXpress(", "do.call(", "shiny", "output$",
+                                     "renderCanvas", "canvasXpressOutput", "```"))
+            or l.strip().startswith(("{", "[", "}", "]"))
+        )
+        return hits / len(lines) >= 0.4
+
+    def render_content(text: str) -> str:
+        """Split on fenced code blocks first, then blank lines; prose → <p>, code → <pre><code>."""
+        parts_out = []
+        # Split on fenced code blocks (``` ... ```) preserving the delimiter
+        segments = re.split(r"(```[^\n]*\n.*?```)", text.strip(), flags=re.DOTALL)
+        for seg in segments:
+            if seg.startswith("```"):
+                # Strip the opening fence line (```{r}, ```python, ``` etc.) and closing ```
+                inner = re.sub(r"^```[^\n]*\n", "", seg)
+                inner = re.sub(r"\n?```$", "", inner)
+                parts_out.append(f"<pre><code>{esc(inner)}</code></pre>")
+            else:
+                # Further split prose segment on blank lines
+                for para in re.split(r"\n{2,}", seg.strip()):
+                    if not para.strip():
+                        continue
+                    if _is_code(para):
+                        parts_out.append(f"<pre><code>{esc(para.rstrip())}</code></pre>")
+                    else:
+                        lines_html = "<br>".join(f"<span>{esc(l)}</span>" for l in para.splitlines() if l.strip())
+                        if lines_html:
+                            parts_out.append(f"<p>{lines_html}</p>")
+        return "\n".join(parts_out)
+
+    parts = ['<div class="cX-Chat-LLM-Response">']
+
+    def _link(url: str, label: str) -> str:
+        return f'<a href="{url}" target="_blank" rel="noopener">{esc(label)}</a>'
+
+    def _footer(*links) -> str:
+        return '<p class="cX-Chat-LLM-Links">' + " &nbsp;|&nbsp; ".join(links) + "</p>"
+
+    def _example_link(gt: str) -> str:
+        slug = _GT_EXAMPLE_SLUG.get(gt, gt.lower())
+        return _link(f"https://canvasxpress.org/examples/{slug}-1.html", f"{gt} examples")
+
+    # ── params ──────────────────────────────────────────────────────────────
+    if tool == "params":
+        if "param" in result and "description" in result:
+            # Single param lookup
+            p = result.get("param", "")
+            parts.append(f"<h3><code>{esc(p)}</code></h3>")
+            if result.get("description"):
+                parts.append(f"<p>{esc(result['description'])}</p>")
+            if result.get("type"):
+                parts.append(f"<p><strong>Type:</strong> <span>{esc(result['type'])}</span></p>")
+            vv = result.get("valid_values")
+            if vv:
+                if isinstance(vv, list):
+                    items = "".join(f"<li><code>{esc(v)}</code></li>" for v in vv)
+                    parts.append(f"<p><strong>Valid values:</strong></p><ul>{items}</ul>")
+                else:
+                    parts.append(f"<p><strong>Valid values:</strong> <span>{esc(vv)}</span></p>")
+            gts = result.get("graph_types")
+            if gts and isinstance(gts, list):
+                parts.append(f"<p><strong>Applies to:</strong> <span>{esc(', '.join(gts))}</span></p>")
+            parts.append(_footer(
+                _link(f"https://canvasxpress.org/assets/api/{p}.html", f"{p} API docs"),
+                _link("https://canvasxpress.org/parameters.html", "Full API reference"),
+            ))
+        elif "graph_type" in result and "params" in result:
+            # Params for a specific graph type
+            gt = result.get("graph_type", "")
+            cnt = result.get("param_count", "")
+            parts.append(f"<h3>Parameters for <code>{esc(gt)}</code> <em>({esc(cnt)})</em></h3>")
+            params_dict = result.get("params", {})
+            if isinstance(params_dict, dict):
+                for name, info in params_dict.items():
+                    desc = info.get("description", "") if isinstance(info, dict) else str(info)
+                    parts.append(f'<div><code>{esc(name)}</code> — <span>{esc(desc)}</span></div>')
+            parts.append(_footer(
+                _example_link(gt),
+                _link("https://canvasxpress.org/parameters.html", "Full API reference"),
+            ))
+        else:
+            # All params listing
+            cnt = result.get("param_count", "")
+            parts.append(f"<h3>All Parameters <em>({esc(cnt)})</em></h3>")
+            params_dict = result.get("params", {})
+            if isinstance(params_dict, dict):
+                for name, info in params_dict.items():
+                    desc = info.get("description", "") if isinstance(info, dict) else str(info)
+                    parts.append(f'<div><code>{esc(name)}</code> — <span>{esc(desc)}</span></div>')
+            if result.get("tip"):
+                parts.append(f"<p><em>{esc(result['tip'])}</em></p>")
+            parts.append(_footer(
+                _link("https://canvasxpress.org/parameters.html", "Full API reference"),
+            ))
+
+    # ── axes ─────────────────────────────────────────────────────────────────
+    elif tool == "axes":
+        gt = result.get("graph_type", "")
+        cat = result.get("category", "")
+        parts.append(f"<h3>Axes: <code>{esc(gt)}</code> <em>({esc(cat)})</em></h3>")
+        valid = result.get("valid_axes", [])
+        if valid:
+            items = "".join(f"<li><code>{esc(a)}</code></li>" for a in valid)
+            parts.append(f"<p><strong>Valid axes:</strong></p><ul>{items}</ul>")
+        invalid = result.get("invalid_axes", [])
+        if invalid:
+            items = "".join(f"<li><code>{esc(a)}</code></li>" for a in invalid)
+            parts.append(f"<p><strong>Not allowed:</strong></p><ul>{items}</ul>")
+        atp = result.get("axis_title_param")
+        if atp:
+            parts.append(f"<p><strong>Axis title param:</strong> <code>{esc(atp)}</code></p>")
+        parts.append(_footer(
+            _example_link(gt),
+            _link("https://canvasxpress.org/parameters.html", "API reference"),
+        ))
+
+    # ── explain ───────────────────────────────────────────────────────────────
+    elif tool == "explain":
+        prop = result.get("property", "")
+        explanation = result.get("explanation", "")
+        # Strip markdown bold wrapper if present: **`prop`** —
+        explanation = re.sub(r"\*\*`[^`]+`\*\*\s*[—-]\s*", "", explanation)
+        parts.append(f"<h3><code>{esc(prop)}</code></h3>")
+        parts.append(f"<p>{esc(explanation)}</p>")
+        parts.append(_footer(
+            _link(f"https://canvasxpress.org/assets/api/{prop}.html", f"{prop} API docs"),
+            _link("https://canvasxpress.org/parameters.html", "Full API reference"),
+        ))
+
+    # ── explain-r / explain-ggplot ────────────────────────────────────────────
+    elif tool in ("explain-r", "explain-ggplot"):
+        if "error" in result:
+            parts.append(f'<p class="cX-Chat-LLM-Error">{esc(result["error"])}</p>')
+            avail = result.get("available_topics", [])
+            if avail:
+                items = "".join(f"<li><code>{esc(t)}</code></li>" for t in avail)
+                parts.append(f"<p><strong>Available topics:</strong></p><ul>{items}</ul>")
+        elif "section" in result:
+            # Single-topic response
+            sec = result["section"]
+            parts.append(f"<h3>{esc(sec.get('title', result.get('topic', '')))}</h3>")
+            parts.append(render_content(sec.get("content", "")))
+        else:
+            # All-topics response
+            overview = result.get("overview")
+            if overview:
+                parts.append(f"<p>{esc(overview)}</p>")
+            sections = result.get("sections", {})
+            for _key, sec in sections.items():
+                if not isinstance(sec, dict):
+                    continue
+                parts.append(f"<h3>{esc(sec.get('title', _key))}</h3>")
+                parts.append(render_content(sec.get("content", "")))
+        if tool == "explain-r":
+            parts.append(_footer(
+                _link("https://cran.r-project.org/package=canvasXpress", "CRAN package"),
+                _link("https://github.com/neuhausi/canvasXpress", "GitHub"),
+                _link("https://canvasxpress.org/r-interface.html", "R vignette"),
+            ))
+        else:
+            parts.append(_footer(
+                _link("https://canvasxpress.org/ggplot-interface.html", "ggplot vignette"),
+            ))
+
+    # ── minimal-params ────────────────────────────────────────────────────────
+    elif tool == "minimal-params":
+        if "error" in result:
+            parts.append(f'<p class="cX-Chat-LLM-Error">{esc(result["error"])}</p>')
+            if result.get("tip"):
+                parts.append(f"<p>{esc(result['tip'])}</p>")
+        else:
+            gt = result.get("graphType", "")
+            params_list = result.get("required_parameters", [])
+            parts.append(f"<h3>Minimal parameters for <code>{esc(gt)}</code></h3>")
+            items = "".join(f"<li><code>{esc(p)}</code></li>" for p in params_list)
+            parts.append(f"<ul>{items}</ul>")
+            # Build a minimal JSON config example
+            config_ex: dict = {"graphType": gt}
+            for p in params_list:
+                if p == "graphType":
+                    continue
+                if p in ("xAxis", "yAxis", "zAxis", "xAxis2", "groupingFactors",
+                         "sankeyAxes", "hierarchy"):
+                    config_ex[p] = ["<column>"]
+                else:
+                    config_ex[p] = "<value>"
+            parts.append(f"<pre><code>{esc(_json.dumps(config_ex, indent=2))}</code></pre>")
+            parts.append(_footer(
+                _example_link(gt),
+                _link("https://canvasxpress.org/parameters.html", "API reference"),
+            ))
+
+    # ── select_canvasxpress_chart ─────────────────────────────────────────────
+    elif tool == "select_canvasxpress_chart":
+        target = result.get("target", "")
+
+        def _apply_btn(cfg: dict, label: str) -> str:
+            cfg_json = esc(_json.dumps(cfg))  # &quot; escapes " for HTML attr
+            return (
+                f'<button class="cX-Chat-LLM-Apply" '
+                f'onclick="CanvasXpress.applySelectConfig(\'{esc(target)}\', JSON.parse(this.dataset.cfg))" '
+                f'data-cfg="{cfg_json}">{esc(label)}</button>'
+            )
+
+        def _rec_card(rec: dict, is_top: bool) -> list:
+            gt       = rec.get("graphType", "")
+            score    = rec.get("score", "")
+            desc     = rec.get("description", "")
+            clinical = rec.get("clinical_use", "")
+            next_s   = rec.get("next_step", "")
+            factors  = rec.get("scoring_factors", [])
+            min_cfg  = rec.get("minimal_config", {})
+            cls = "cX-Chat-Select-Top" if is_top else "cX-Chat-Select-Alt"
+            h = [f'<div class="{cls}">',
+                 f'<div class="cX-Chat-Select-Header">'
+                 f'<span class="cX-Chat-Select-GT">{esc(gt)}</span>'
+                 f'<span class="cX-Chat-Select-Score">score: {esc(str(score))}</span>'
+                 f'</div>']
+            if desc:
+                h.append(f'<p class="cX-Chat-Select-Desc">{esc(desc)}</p>')
+            if clinical:
+                h.append(f'<p class="cX-Chat-Select-Clinical"><strong>Clinical use:</strong> {esc(clinical)}</p>')
+            if factors:
+                items = "".join(f"<li>{esc(f)}</li>" for f in factors)
+                h.append(f'<ul class="cX-Chat-Select-Factors">{items}</ul>')
+            if next_s:
+                h.append(f'<p class="cX-Chat-Select-Next"><em>{esc(next_s)}</em></p>')
+            if min_cfg:
+                h.append(_apply_btn(min_cfg, f"Apply {gt}"))
+            h.append('</div>')
+            return h
+
+        top = result.get("top_recommendation", {})
+        if top:
+            parts.append('<h3>Recommended</h3>')
+            parts.extend(_rec_card(top, True))
+
+        tiebreak = result.get("tiebreak", {})
+        if tiebreak and tiebreak.get("used"):
+            parts.append(f'<p class="cX-Chat-Select-Next"><em>{esc(tiebreak.get("reason", ""))}</em></p>')
+
+        alts = result.get("alternatives", [])
+        if alts:
+            parts.append('<h3>Alternatives</h3>')
+            parts.append('<div class="cX-Chat-Select-Grid">')
+            for alt in alts:
+                parts.extend(_rec_card(alt, False))
+            parts.append('</div>')
+
+        for w in result.get("warnings", []):
+            parts.append(f'<p class="cX-Chat-LLM-Error">{esc(w)}</p>')
+
+        parts.append(_footer(
+            _link("https://canvasxpress.org/examples.html", "Examples"),
+            _link("https://canvasxpress.org/parameters.html", "API reference"),
+        ))
+
+    parts.append("</div>")
+    return {"content": "\n".join(parts)}
+
+
+# ---------------------------------------------------------------------------
 # REST helpers — parse query params or JSON body into tool kwargs
 # ---------------------------------------------------------------------------
 
@@ -2435,8 +2900,10 @@ def _infer_column_types(data: list[list]) -> tuple[dict[str, str], list[str], in
     _DATE_RE = re.compile(
         r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}"  # YYYY-MM-DD or YYYY/MM/DD
         r"|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}"  # MM/DD/YYYY
+        r"|^\d{4}[-/]\d{1,2}$"               # YYYY-MM bare year-month
         r"|^\d{4}$"                            # bare year
     )
+    _YEAR_COL_RE = re.compile(r"year|yr|date|time|month|week|day|visit", re.IGNORECASE)
     _BOOL_VALS = {"true", "false", "yes", "no", "1", "0", "t", "f", "y", "n"}
 
     column_types: dict[str, str] = {}
@@ -2463,8 +2930,21 @@ def _infer_column_types(data: list[list]) -> tuple[dict[str, str], list[str], in
             unique_vals = {str(v).strip() for v in values}
             if unique_vals <= {"0", "1"}:
                 column_types[col_name] = "boolean"
-            else:
-                column_types[col_name] = "numeric"
+                continue
+            # Integer values in [1900-2099] in a time-named column → treat as date
+            # (handles Year=2019, Year=2020 etc. which parse as numeric but are dates)
+            try:
+                int_vals = [int(float(str(v))) for v in values]
+                if (
+                    all(float(str(v)) == int(float(str(v))) for v in values)
+                    and all(1900 <= iv <= 2099 for iv in int_vals)
+                    and _YEAR_COL_RE.search(col_name)
+                ):
+                    column_types[col_name] = "date"
+                    continue
+            except (ValueError, TypeError):
+                pass
+            column_types[col_name] = "numeric"
             continue
 
         # Try date
@@ -3105,6 +3585,10 @@ async def rest_params(request: Request) -> Response:
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
     try:
         result = query_canvasxpress_params(
             graph_type=p.get("graph_type") or None,
@@ -3113,8 +3597,9 @@ async def rest_params(request: Request) -> Response:
         )
     except Exception as exc:
         log.exception("REST /params error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    result["html"] = _result_to_html(result, "params")
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/axes", methods=["GET", "POST"])
@@ -3125,15 +3610,20 @@ async def rest_axes(request: Request) -> Response:
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
     gt = (p.get("graph_type") or "").strip()
     if not gt:
-        return JSONResponse({"error": "'graph_type' is required"}, status_code=400)
+        return _cx_response({"error": "'graph_type' is required", "success": False}, cx, 400)
     try:
         result = get_axes_info(gt)
     except Exception as exc:
         log.exception("REST /axes error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    result["html"] = _result_to_html(result, "axes")
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/select", methods=["GET", "POST"])
@@ -3163,6 +3653,11 @@ async def rest_select(request: Request) -> Response:
     # intent is optional — Layer 1 (structural) and Layer 2 (semantic column names)
     # work without it; intent only activates Layer 3 keyword boosts.
 
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
+
     # --- resolve column_types and n_samples ---
     column_types: dict[str, str] = {}
     n_samples: int | None = None
@@ -3171,6 +3666,8 @@ async def rest_select(request: Request) -> Response:
 
     # 1. Parse data array if provided → infer types
     raw_data = p.get("data")
+    category_cardinalities: dict[str, int] | None = None
+    max_level_fractions: dict[str, float] | None = None
     if raw_data:
         try:
             data_arr = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
@@ -3178,8 +3675,25 @@ async def rest_select(request: Request) -> Response:
             column_types = inferred_types
             n_samples = n_rows
             type_source = "inferred"
+            # Compute cardinalities and dominant-level fractions for factor columns
+            if data_arr and len(data_arr) > 1:
+                headers_row = [str(h) for h in data_arr[0]]
+                import cx_selector as _cxs_sel
+                category_cardinalities = {}
+                max_level_fractions: dict[str, float] = {}
+                for col_idx, col_name in enumerate(headers_row):
+                    if inferred_types.get(col_name, "") in _cxs_sel._FACTOR_ALIASES:
+                        val_counts: dict[str, int] = {}
+                        for row in data_arr[1:]:
+                            if col_idx < len(row) and row[col_idx] is not None:
+                                v = str(row[col_idx]).strip()
+                                if v not in ("", "NA", "na", "nan", "NaN", "NULL", "null"):
+                                    val_counts[v] = val_counts.get(v, 0) + 1
+                        category_cardinalities[col_name] = len(val_counts)
+                        if val_counts and n_rows > 0:
+                            max_level_fractions[col_name] = max(val_counts.values()) / n_rows
         except Exception as exc:
-            return JSONResponse({"error": f"Could not parse 'data': {exc}"}, status_code=400)
+            return _cx_response({"error": f"Could not parse 'data': {exc}", "success": False}, cx, 400)
 
     # 2. Explicit column_types override / supplement inferred types
     for key in ("column_types", "types"):
@@ -3191,9 +3705,9 @@ async def rest_select(request: Request) -> Response:
             break
 
     if not column_types:
-        return JSONResponse(
-            {"error": "Provide 'column_types' (e.g. Gene=string,Expr=numeric) or 'data' (JSON array of arrays)."},
-            status_code=400,
+        return _cx_response(
+            {"error": "Provide 'column_types' (e.g. Gene=string,Expr=numeric) or 'data' (JSON array of arrays).", "success": False},
+            cx, 400,
         )
 
     # 3. n_samples override
@@ -3208,15 +3722,19 @@ async def rest_select(request: Request) -> Response:
             intent=intent,
             column_types=column_types,
             n_samples=n_samples,
+            category_cardinalities=category_cardinalities,
+            max_level_fractions=max_level_fractions,
         )
         # Annotate with provenance for transparency
         result["type_source"] = type_source
         if inferred_headers:
             result["headers_detected"] = inferred_headers
+        result["target"] = cx.get("target", "")
+        result["html"] = _result_to_html(result, "select_canvasxpress_chart")
     except Exception as exc:
         log.exception("REST /select error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/explain", methods=["GET", "POST"])
@@ -3227,15 +3745,21 @@ async def rest_explain(request: Request) -> Response:
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
     prop = (p.get("property") or "").strip()
     if not prop:
-        return JSONResponse({"error": "'property' is required"}, status_code=400)
+        return _cx_response({"error": "'property' is required", "success": False}, cx, 400)
     try:
         result = explain_config_property(prop)
     except Exception as exc:
         log.exception("REST /explain error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse({"property": prop, "explanation": result})
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    resp = {"property": prop, "explanation": result}
+    resp["html"] = _result_to_html(resp, "explain")
+    return _cx_response(resp, cx)
 
 
 @mcp.custom_route("/explain-r", methods=["GET", "POST"])
@@ -3246,12 +3770,17 @@ async def rest_explain_r(request: Request) -> Response:
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
     try:
         result = explain_canvasxpress_r(topic=p.get("topic") or None)
     except Exception as exc:
         log.exception("REST /explain-r error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    result["html"] = _result_to_html(result, "explain-r")
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/explain-ggplot", methods=["GET", "POST"])
@@ -3262,12 +3791,17 @@ async def rest_explain_ggplot(request: Request) -> Response:
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
     try:
         result = explain_canvasxpress_ggplot(topic=p.get("topic") or None)
     except Exception as exc:
         log.exception("REST /explain-ggplot error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    result["html"] = _result_to_html(result, "explain-ggplot")
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/minimal-params", methods=["GET", "POST"])
@@ -3278,47 +3812,74 @@ async def rest_minimal_params(request: Request) -> Response:
     else:
         ct = request.headers.get("content-type", "")
         p = await request.json() if "application/json" in ct else dict(await request.form())
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
     gt = (p.get("graph_type") or "").strip()
     if not gt:
-        return JSONResponse({"error": "'graph_type' is required"}, status_code=400)
+        return _cx_response({"error": "'graph_type' is required", "success": False}, cx, 400)
     try:
         result = get_minimal_parameters(gt)
     except Exception as exc:
         log.exception("REST /minimal-params error")
-        return JSONResponse({"error": str(exc)}, status_code=500)
-    return JSONResponse(result)
+        return _cx_response({"error": str(exc), "success": False}, cx, 500)
+    result["html"] = _result_to_html(result, "minimal-params")
+    return _cx_response(result, cx)
 
-@mcp.custom_route("/feedback", methods=["POST"])
+@mcp.custom_route("/feedback", methods=["GET", "POST"])
 async def rest_feedback(request: Request) -> Response:
     """
     Submit thumbs-up / thumbs-down feedback for a previous tool call.
 
-    POST /feedback
-    Body (JSON):
+    GET  /feedback?callback=fn&request_id=UUID&rating=1   (JSONP)
+    POST /feedback  body: { request_id, rating, comment? } (JSON)
+
       request_id  (str, required)  — UUID returned in the tool response
       rating      (int, required)  — 1 = thumbs up, -1 = thumbs down
       comment     (str, optional)  — free-text explanation
     """
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"error": "JSON body required"}, status_code=400)
-
-    call_id = (body.get("request_id") or "").strip()
+    if request.method == "GET":
+        params     = dict(request.query_params)
+        call_id    = (params.get("request_id") or "").strip()
+        callback   = (params.get("callback") or "").strip()
+        try:
+            rating = int(params.get("rating", 0))
+        except (ValueError, TypeError):
+            rating = 0
+        comment = params.get("comment") or None
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "JSON body required"}, status_code=400)
+        call_id  = (body.get("request_id") or "").strip()
+        callback = ""
+        rating   = body.get("rating")
+        comment  = body.get("comment") or None
     if not call_id:
         return JSONResponse({"error": "'request_id' is required"}, status_code=400)
-
-    rating = body.get("rating")
     if rating not in (1, -1):
         return JSONResponse({"error": "'rating' must be 1 (up) or -1 (down)"}, status_code=400)
 
-    comment = body.get("comment") or None
-    found = _call_log.rate(call_id, rating, comment)
-    if not found:
+    row = _call_log.rate(call_id, rating, comment)
+    if row is None:
         return JSONResponse({"error": f"No call found with request_id '{call_id}'"}, status_code=404)
 
-    log.info("Feedback received: request_id=%s rating=%s", call_id, rating)
-    return JSONResponse({"success": True, "request_id": call_id, "rating": rating})
+    log.info("Feedback received: request_id=%s rating=%s target=%s", call_id, rating, row.get("target", ""))
+    data = {
+        "success":    True,
+        "request_id": call_id,
+        "rating":     rating,
+        "target":     row.get("target", ""),
+        "client_id":  row.get("client_id", ""),
+        "datetime":   row.get("ts", ""),
+    }
+    if callback:
+        import json as _json
+        body = f"{callback}({_json.dumps(data)});"
+        return Response(content=body, media_type="application/javascript")
+    return JSONResponse(data)
 
 
 @mcp.custom_route("/feedback/purge", methods=["POST"])

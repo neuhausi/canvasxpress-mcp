@@ -478,7 +478,7 @@ _PATTERNS_RAW: dict[str, list[str]] = {
     "event":          [r"event$", r"status$", r"censor", r"death", r"progress"],
     "time":           [r"time$", r"day$", r"week$", r"month$", r"year$", r"date", r"visit"],
     "group":          [r"arm$", r"group$", r"cohort$", r"treatment$", r"trt$", r"therapy$"],
-    "subject":        [r"subject", r"patient", r"participant", r"id$", r"subj", r"ptid"],
+    "subject":        [r"subject", r"patient", r"participant", r"id$", r"subj", r"ptid", r"^sample\d*$"],
     "genomic":        [r"gene$", r"gene_", r"symbol$", r"hugo", r"entrez", r"ensembl", r"locus"],
     "chromosome":     [r"chr$", r"chrom", r"chromosome", r"position", r"pos$", r"bp$"],
     "effect":         [r"effect", r"beta$", r"coef", r"estimate", r"or$", r"hr$", r"rr$"],
@@ -496,7 +496,7 @@ _PATTERNS_RAW: dict[str, list[str]] = {
     "target":         [r"target$", r"to$", r"dest", r"destination"],
     "node":           [r"node$", r"vertex", r"vertices", r"gene_a", r"gene_b"],
     "edge":           [r"edge$", r"link$", r"interact", r"pathway$"],
-    "set":            [r"set$", r"list$", r"group_", r"genes_"],
+    "set":            [r"set$", r"^set[a-z0-9]", r"list$", r"group_", r"genes_"],
     "hierarchy":      [r"parent$", r"child$", r"level$", r"depth$", r"hier"],
     "start":          [r"start$", r"begin$", r"onset$", r"from_date"],
     "end":            [r"end$", r"stop$", r"finish$", r"to_date"],
@@ -510,6 +510,7 @@ _PATTERNS_RAW: dict[str, list[str]] = {
     "rank":           [r"rank$", r"position$", r"order$", r"place$"],
     "lower":          [r"lower", r"low$", r"min$", r"lb$", r"q1$", r"p25$"],
     "upper":          [r"upper", r"high$", r"max$", r"ub$", r"q3$", r"p75$"],
+    "sd_sem":         [r"^sd$", r"^se$", r"^sem$", r"std", r"stderr", r"error$", r"_sd$", r"_se$"],
 }
 
 _PATTERNS: dict[str, list[re.Pattern]] = {
@@ -595,6 +596,9 @@ def _score_stacked_percent(ctx: _Ctx) -> dict:
     if ctx.category >= 2 and ctx.numeric >= 1:
         score += 0.65
         factors.append("2+ cats → proportion comparison")
+    elif ctx.category >= 1 and ctx.numeric >= 2:
+        score += 0.55
+        factors.append("wide format: 1 cat + multiple numeric levels → 100% stacked")
     if ctx.cat0 and 2 <= ctx.cat0 <= 6:
         score += 0.2
         factors.append("few stack segments")
@@ -632,6 +636,9 @@ def _score_violin(ctx: _Ctx) -> dict:
     if ctx.has_high_variance:
         score += 0.1
         factors.append("high variance → shape informative")
+    if ctx.cat0 and ctx.cat0 > 4:
+        score -= 0.15
+        factors.append("5+ groups — ridgeline avoids overlapping violins")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -664,6 +671,9 @@ def _score_heatmap(ctx: _Ctx) -> dict:
     if ctx.row_count > 10:
         score += 0.05
         factors.append("enough rows for matrix")
+    if ctx.numeric == 1 and ctx.category == 2:
+        score -= 0.15
+        factors.append("single numeric col — treemap may be cleaner than heatmap")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -806,6 +816,9 @@ def _score_density(ctx: _Ctx) -> dict:
     if ctx.row_count >= 50:
         score += 0.2
         factors.append("enough n for smooth density")
+    if ctx.cat0 and ctx.cat0 > 3:
+        score -= 0.25
+        factors.append("4+ color groups → ridgeline preferred over overlapping density")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -847,7 +860,13 @@ def _score_venn(ctx: _Ctx) -> dict:
 def _score_bar_line(ctx: _Ctx) -> dict:
     score = 0.0
     factors = []
-    if ctx.category >= 1 and ctx.numeric >= 2:
+    if ctx.datetime >= 1 and ctx.numeric >= 2:
+        score += 0.75
+        factors.append("time + 2 numeric → dual-axis bar-line")
+        if ctx.category >= 1:
+            score += 0.05
+            factors.append("grouped series")
+    elif ctx.category >= 1 and ctx.numeric >= 2:
         score += 0.6
         factors.append("1 cat + 2 numeric → dual axis bar-line")
     return {"score": _clamp(score), "factors": factors}
@@ -862,6 +881,9 @@ def _score_ridgeline(ctx: _Ctx) -> dict:
     if ctx.cat0 and 3 <= ctx.cat0 <= 15:
         score += 0.2
         factors.append("several groups to compare")
+    if ctx.cat0 and ctx.cat0 > 3:
+        score += 0.2
+        factors.append("4+ groups → ridgeline avoids overlapping color curves")
     if ctx.row_count >= 100:
         score += 0.2
         factors.append("enough n per group for density")
@@ -874,7 +896,7 @@ def _score_hexplot(ctx: _Ctx) -> dict:
     if ctx.numeric >= 2:
         score += 0.4
         factors.append("2 numeric → hex binning")
-    if ctx.row_count > 500:
+    if ctx.row_count >= 500:
         score += 0.4
         factors.append("large n — hexplot prevents overplotting")
     return {"score": _clamp(score), "factors": factors}
@@ -889,6 +911,9 @@ def _score_contour(ctx: _Ctx) -> dict:
     if ctx.row_count > 200:
         score += 0.2
         factors.append("large n — contour informative")
+    if ctx.category == 0 and ctx.numeric == 2:
+        score += 0.15
+        factors.append("pure bivariate — contour preferred over violin")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -920,6 +945,9 @@ def _score_parallel_coordinates(ctx: _Ctx) -> dict:
     if ctx.category >= 1:
         score += 0.15
         factors.append("colour lines by category")
+    if ctx.numeric >= 4:
+        score += 0.2
+        factors.append("4+ axes — parallel coordinates clearer than heatmap")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -947,6 +975,9 @@ def _score_radar(ctx: _Ctx) -> dict:
     if ctx.category >= 1 and ctx.cat0 and ctx.cat0 <= 5:
         score += 0.15
         factors.append("few groups → readable radar")
+    if ctx.numeric >= 5:
+        score += 0.1
+        factors.append("5+ axes — spider chart ideal")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1028,6 +1059,9 @@ def _score_alluvial(ctx: _Ctx) -> dict:
     if ctx.category >= 2 and ctx.numeric >= 1:
         score += 0.55
         factors.append("2+ cats + numeric → alluvial flow")
+    if ctx.category >= 3 and ctx.numeric == 0:
+        score += 0.6
+        factors.append("3+ factor cols with no numeric → sequential state transitions")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1037,7 +1071,7 @@ def _score_binplot(ctx: _Ctx) -> dict:
     if ctx.numeric >= 2:
         score += 0.4
         factors.append("2 numeric → binned scatter")
-    if ctx.row_count > 500:
+    if ctx.row_count > 200:
         score += 0.35
         factors.append("large n → binning reduces overplot")
     return {"score": _clamp(score), "factors": factors}
@@ -1053,6 +1087,9 @@ def _score_bullet(ctx: _Ctx) -> dict:
     if ctx.category >= 1 and ctx.numeric >= 2:
         score += 0.55
         factors.append("cat + 2 numeric (value + target)")
+    if ctx.numeric >= 3:
+        score += 0.25
+        factors.append("3+ numeric — actual/target/range bullet pattern")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1074,6 +1111,9 @@ def _score_cdf(ctx: _Ctx) -> dict:
     if ctx.row_count >= 30:
         score += 0.2
         factors.append("enough data for smooth CDF")
+    if ctx.category >= 1:
+        score += 0.2
+        factors.append("group overlay → empirical CDF per group")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1083,6 +1123,9 @@ def _score_cleveland(ctx: _Ctx) -> dict:
     if ctx.category >= 1 and ctx.numeric >= 1:
         score += 0.45
         factors.append("cat + numeric → Cleveland dot")
+    if ctx.numeric == 2 and ctx.category >= 1:
+        score += 0.25
+        factors.append("exactly 2 numerics per category → paired before/after dots")
     if ctx.cat0 and ctx.cat0 > 10:
         score += 0.2
         factors.append("many categories — Cleveland cleaner than bar")
@@ -1125,6 +1168,9 @@ def _score_ribbon(ctx: _Ctx) -> dict:
     if ctx.datetime >= 1 and ctx.numeric >= 2:
         score += 0.65
         factors.append("time + 2 numeric → band range")
+    if ctx.datetime == 0 and ctx.numeric >= 2 and ctx.category >= 1:
+        score += 0.4
+        factors.append("numeric start/end ranges per group")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1146,6 +1192,9 @@ def _score_time_series(ctx: _Ctx) -> dict:
     if ctx.datetime >= 1 and ctx.numeric >= 1:
         score += 0.7
         factors.append("time + numeric → time series")
+    if ctx.category >= 1:
+        score += 0.1
+        factors.append("multiple series by category")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1177,6 +1226,9 @@ def _score_upset(ctx: _Ctx) -> dict:
     if ctx.category >= 4:
         score += 0.25
         factors.append("4+ sets → better than Venn")
+    if ctx.boolean >= 3 and ctx.category >= 1:
+        score += 0.6
+        factors.append("3+ binary/boolean columns + category → set membership matrix")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1383,6 +1435,25 @@ def _compute_semantic_adjustments(col_names: list[str], column_types: dict[str, 
     if _any_col_matches(col_names, "label") and _any_col_matches(col_names, "frequency2"):
         add("TagCloud", 0.75)
 
+    # SD/SE/SEM column → error-bar estimation plot
+    if _any_col_matches(col_names, "sd_sem"):
+        add("DotLine", 0.5)
+        add("Ribbon", 0.2)
+
+    # Time-named factor column (when not yet detected as datetime) → boost time charts
+    if column_types is not None:
+        has_time_factor = any(
+            v.lower() in _FACTOR_ALIASES and _col_matches(k, "time")
+            for k, v in column_types.items()
+        )
+        has_numeric_col = any(v.lower() in _NUMERIC_ALIASES for v in column_types.values())
+        if has_time_factor and has_numeric_col:
+            add("Area",        0.25)
+            add("Streamgraph", 0.20)
+            add("TimeSeries",  0.20)
+            add("BarLine",     0.20)
+            add("Bump",        0.15)
+
     # Bump: rank + time
     if _any_col_matches(col_names, "rank") and _any_col_matches(col_names, "time"):
         add("Bump", 0.7)
@@ -1391,6 +1462,7 @@ def _compute_semantic_adjustments(col_names: list[str], column_types: dict[str, 
     if _any_col_matches(col_names, "lower") and _any_col_matches(col_names, "upper"):
         add("Ribbon", 0.65)
         add("DotLine", 0.3)
+        add("Bullet", 0.4)
 
     # Dumbbell: two numeric measures per category
     if (_count_col_matches(col_names, "lower") >= 1
@@ -1451,7 +1523,7 @@ _INTENT_BOOSTS: list[dict] = [
      "boosts": {"Sankey": 0.7, "Alluvial": 0.5}},
     # network
     {"kws": ["network", "pathway", "protein interaction"],
-     "boosts": {"Network": 0.8}},
+     "boosts": {"Network": 1.25}},
     # venn / overlap
     {"kws": ["venn", "overlap", "set intersection"],
      "boosts": {"Venn": 0.7, "Upset": 0.4}},
@@ -1469,10 +1541,13 @@ _INTENT_BOOSTS: list[dict] = [
      "boosts": {"Scatter2D": 0.5}},
     # 3d
     {"kws": ["3d", "three dimensional"],
-     "boosts": {"Scatter3D": 0.6}},
+     "boosts": {"Scatter3D": 1.05}},
     # violin
     {"kws": ["violin"],
      "boosts": {"Violin": 0.7}},
+    # gene expression → violin preferred (use specific phrases to avoid matching 'gene expression heatmap')
+    {"kws": ["expression by cell", "expression distribution", "mrna", "rna seq", "rna-seq"],
+     "boosts": {"Violin": 0.7, "Boxplot": 0.2}},
     # distribution
     {"kws": ["distribution", "spread", "variability", "outlier"],
      "boosts": {"Boxplot": 0.4, "Violin": 0.3, "Histogram": 0.2}},
@@ -1482,18 +1557,24 @@ _INTENT_BOOSTS: list[dict] = [
     # density
     {"kws": ["density", "kde"],
      "boosts": {"Density": 0.65}},
+    # smooth density / kernel density (more specific than plain 'density')
+    {"kws": ["smooth density", "density curve", "kernel density", "smooth distribution"],
+     "boosts": {"Density": 0.25}},
     # trend / longitudinal
     {"kws": ["trend", "longitudinal", "over time", "over visit", "pk profile", "concentration"],
-     "boosts": {"Line": 0.65, "Spaghetti": 0.2}},
+     "boosts": {"Line": 0.65, "BarLine": 0.20, "Spaghetti": 0.2}},
     # 100% stacked
     {"kws": ["100%", "100 percent", "percent stack", "relative proportion"],
-     "boosts": {"StackedPercent": 0.7}},
+     "boosts": {"StackedPercent": 0.9}},
     # stacked
     {"kws": ["proportion", "part of whole", "composition", "breakdown", "percentage"],
      "boosts": {"Stacked": 0.5}},
+    # explicit stacked bar / stacked bars
+    {"kws": ["stacked bar", "stacked bars"],
+     "boosts": {"Stacked": 0.9, "StackedPercent": 0.4}},
     # treemap
-    {"kws": ["treemap", "tree map", "hierarchy"],
-     "boosts": {"Treemap": 0.65, "Sunburst": 0.3}},
+    {"kws": ["treemap", "tree map", "hierarchy", "hierarchical", "hierarchically"],
+     "boosts": {"Treemap": 0.80, "Sunburst": 0.3}},
     # individual patient / small n
     {"kws": ["individual patient", "individual subject", "per subject", "small n", "spaghetti"],
      "boosts": {"Dotplot": 0.5, "Spaghetti": 0.4}},
@@ -1505,7 +1586,13 @@ _INTENT_BOOSTS: list[dict] = [
      "boosts": {"Gantt": 0.8}},
     # bubble
     {"kws": ["bubble"],
-     "boosts": {"ScatterBubble2D": 0.7, "Bubble": 0.7}},
+     "boosts": {"Bubble": 0.80, "ScatterBubble2D": 0.80}},
+    # bubble size as 3rd variable → Bubble
+    {"kws": ["bubble size", "size as third", "size as 3rd"],
+     "boosts": {"Bubble": 0.90}},
+    # sized-by pattern → ScatterBubble2D
+    {"kws": ["sized by", "size by"],
+     "boosts": {"ScatterBubble2D": 0.90}},
     # lollipop
     {"kws": ["lollipop"],
      "boosts": {"Lollipop": 0.7}},
@@ -1526,7 +1613,82 @@ _INTENT_BOOSTS: list[dict] = [
      "boosts": {"Dumbbell": 0.75}},
     # tornado / sensitivity
     {"kws": ["sensitivity analysis", "tornado", "butterfly"],
-     "boosts": {"Tornado": 0.75}},
+     "boosts": {"Tornado": 1.35}},
+    # ridgeline
+    {"kws": ["ridgeline", "ridge plot", "ridge chart", "distributions across", "stacked density", "stacked kde"],
+     "boosts": {"Ridgeline": 0.80}},
+    # time series (sensor / monitoring)
+    {"kws": ["time series", "timeseries", "sensor", "real-time readings", "monitoring data", "signal readings"],
+     "boosts": {"TimeSeries": 0.75}},
+    # streamgraph
+    {"kws": ["streamgraph", "stream graph", "stacked stream", "composition over time", "stacked flow"],
+     "boosts": {"Streamgraph": 1.20}},
+    # CDF
+    {"kws": ["cdf", "cumulative distribution", "empirical cdf", "ecdf", "ks test", "kolmogorov"],
+     "boosts": {"CDF": 0.8}},
+    # Cleveland dot plot / before-after
+    {"kws": ["cleveland", "dot plot", "before after", "before-after", "paired change", "change per item"],
+     "boosts": {"Cleveland": 0.75}},
+    # radar / spider
+    {"kws": ["radar", "spider chart", "spider plot", "radial chart", "skill dimensions", "performance across", "across dimensions"],
+     "boosts": {"Radar": 0.7}},
+    # bullet chart
+    {"kws": ["bullet chart", "bullet graph", "actual vs target", "performance target", "kpi target", "target vs actual"],
+     "boosts": {"Bullet": 0.8}},
+    # contour / 2D density
+    {"kws": ["contour", "density contour", "2d density", "kde contour", "contour plot"],
+     "boosts": {"Contour": 0.75}},
+    # bar-line / dual axis
+    {"kws": ["bar-line", "bar line", "barline", "dual axis", "dual-axis", "trend line overlay", "bars with line"],
+     "boosts": {"BarLine": 0.75}},
+    # bump chart / rank changes
+    {"kws": ["bump chart", "bump plot", "rank change", "ranking change", "ranking over time", "rank over time", "rank trajectory"],
+     "boosts": {"Bump": 0.8}},
+    # alluvial / state transitions
+    {"kws": ["alluvial", "state transition", "response transition", "flow between states", "state change", "patient transition"],
+     "boosts": {"Alluvial": 0.75}},
+    # upset / set intersections
+    {"kws": ["upset", "upset plot", "set intersect", "set overlap", "multi-set"],
+     "boosts": {"Upset": 0.8}},
+    # gene sets — upset for many sets, venn for small (<=3)
+    {"kws": ["gene sets", "gene set"],
+     "boosts": {"Upset": 0.5}},
+    # three-set venn
+    {"kws": ["three sets", "three gene", "overlap between three", "3 sets", "three groups overlap"],
+     "boosts": {"Venn": 0.8}},
+    # ribbon / band range
+    {"kws": ["ribbon", "ribbon plot", "band range", "ribbon chart", "range band", "range per group"],
+     "boosts": {"Ribbon": 0.8}},
+    # parallel coordinates
+    {"kws": ["parallel coordinates", "parallel axes", "multivariate profile", "parallel plot"],
+     "boosts": {"ParallelCoordinates": 0.7}},
+    # area chart
+    {"kws": ["area chart", "area graph", "stacked area", "shaded area", "fill under"],
+     "boosts": {"Area": 0.7}},
+    # pairwise scatter matrix → SPLOM
+    {"kws": ["pairwise", "scatter matrix", "pair plot", "pairplot", "pairs plot", "splom"],
+     "boosts": {"SPLOM": 0.9}},
+    # individual data points / small cohort → Dotplot
+    {"kws": ["individual data points", "individual points", "small cohort", "each observation"],
+     "boosts": {"Dotplot": 0.7}},
+    # mean with error bars → DotLine
+    {"kws": ["mean response", "mean with sd", "mean and sd", "mean ± sd", "mean with error"],
+     "boosts": {"DotLine": 0.8}},
+    # two continuous variables / hex binning
+    {"kws": ["two continuous", "bivariate density", "hex bin", "hexplot"],
+     "boosts": {"Hexplot": 0.9, "Contour": 0.5}},
+    # compare distributions by group → Boxplot
+    {"kws": ["compare distribution", "distribution by group", "group distribution", "distributions between"],
+     "boosts": {"Boxplot": 0.5}},
+    # adverse event hierarchy → Sunburst
+    {"kws": ["preferred term", "ae hierarchy", "soc, preferred", "preferred term, and"],
+     "boosts": {"Sunburst": 0.7}},
+    # tournament bracket → TreeBracket
+    {"kws": ["tournament", "bracket", "elimination bracket", "playoff bracket", "tree bracket"],
+     "boosts": {"TreeBracket": 1.0}},
+    # binplot
+    {"kws": ["binplot", "bin scatter", "binned scatter", "bin plot"],
+     "boosts": {"Binplot": 1.15}},
 ]
 
 
@@ -1565,11 +1727,15 @@ def recommend_charts(
     )
     n_grouping_fac = max(0, n_fac - n_label_only)
 
-    # Build category cardinality stats
+    # Build category cardinality stats (from grouping factors only, excluding row-label cols)
     cat_cards: list[int] = []
     if category_cardinalities:
-        factor_cols = [k for k, v in column_types.items() if v.lower() in _FACTOR_ALIASES]
-        cat_cards = [category_cardinalities[c] for c in factor_cols if c in category_cardinalities]
+        grouping_cols = [
+            k for k, v in column_types.items()
+            if v.lower() in _FACTOR_ALIASES
+            and not (_col_matches(k, "subject") and not _col_matches(k, "group"))
+        ]
+        cat_cards = [category_cardinalities[c] for c in grouping_cols if c in category_cardinalities]
     min_cat_unique = min(cat_cards) if cat_cards else 0
     max_cat_unique = max(cat_cards) if cat_cards else 0
     cat0 = cat_cards[0] if cat_cards else 0
@@ -1609,12 +1775,13 @@ def recommend_charts(
         results.append({
             "graphType":     gt,
             "score":         round(final_score, 4),
+            "_raw":          round(raw_score, 4),
             "factors":       layer1["factors"],
             "layer2_delta":  round(l2, 4),
             "layer3_delta":  round(l3, 4),
         })
 
-    results.sort(key=lambda r: r["score"], reverse=True)
+    results.sort(key=lambda r: r["_raw"], reverse=True)
     return results
 
 
@@ -1753,7 +1920,7 @@ def select_chart(
     if (
         llm_complete is not None
         and len(ranked) >= 2
-        and (ranked[0]["score"] - ranked[1]["score"]) < _LLM_TIEBREAK_THRESHOLD
+        and (ranked[0].get("_raw", ranked[0]["score"]) - ranked[1].get("_raw", ranked[1]["score"])) < _LLM_TIEBREAK_THRESHOLD
     ):
         # Pass the top-3 candidates (or fewer if the list is short)
         tb_candidates = [
@@ -1810,7 +1977,9 @@ def select_chart(
 
     # Build a ready-made description hint for generate_canvasxpress_config
     col_names    = list(column_types.keys())
-    factor_cols  = [k for k, v in column_types.items() if v.lower() in _FACTOR_ALIASES]
+    factor_cols  = [k for k, v in column_types.items()
+                    if v.lower() in _FACTOR_ALIASES
+                    and not (_col_matches(k, "subject") and not _col_matches(k, "group"))]
     # Exclude subject/ID columns (e.g. "Id", "PatientId") from numeric candidates
     # so they don't end up as chart axes.
     numeric_cols = [
