@@ -235,80 +235,87 @@ VirtualHost include directory. The `ProxyPass / !` line **must be last**.
 
 ```apache
 # /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-proxy.conf
-
-# Disable Passenger for all MCP proxy paths
+<Location /mcp>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/mcp
+    ProxyPassReverse http://127.0.0.1:8100/mcp
+</Location>
 <Location /generate>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/generate
+    ProxyPassReverse http://127.0.0.1:8100/generate
 </Location>
 <Location /modify>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/modify
+    ProxyPassReverse http://127.0.0.1:8100/modify
 </Location>
 <Location /km>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/km
+    ProxyPassReverse http://127.0.0.1:8100/km
 </Location>
 <Location /params>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/params
+    ProxyPassReverse http://127.0.0.1:8100/params
 </Location>
 <Location /axes>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/axes
+    ProxyPassReverse http://127.0.0.1:8100/axes
 </Location>
 <Location /select>
     PassengerEnabled Off
-</Location>
-<Location /explain>
-    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/select
+    ProxyPassReverse http://127.0.0.1:8100/select
 </Location>
 <Location /explain-r>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/explain-r
+    ProxyPassReverse http://127.0.0.1:8100/explain-r
 </Location>
 <Location /explain-ggplot>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/explain-ggplot
+    ProxyPassReverse http://127.0.0.1:8100/explain-ggplot
+</Location>
+<Location /explain>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/explain
+    ProxyPassReverse http://127.0.0.1:8100/explain
 </Location>
 <Location /minimal-params>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/minimal-params
+    ProxyPassReverse http://127.0.0.1:8100/minimal-params
 </Location>
 <Location /map>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/map
+    ProxyPassReverse http://127.0.0.1:8100/map
 </Location>
 <Location /feedback>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/feedback
+    ProxyPassReverse http://127.0.0.1:8100/feedback
 </Location>
 <Location /ui>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/ui
+    ProxyPassReverse http://127.0.0.1:8100/ui
 </Location>
-
-# Proxy MCP paths to the Python server on port 8100
-ProxyPass        /generate        http://127.0.0.1:8100/generate
-ProxyPassReverse /generate        http://127.0.0.1:8100/generate
-ProxyPass        /modify          http://127.0.0.1:8100/modify
-ProxyPassReverse /modify          http://127.0.0.1:8100/modify
-ProxyPass        /km              http://127.0.0.1:8100/km
-ProxyPassReverse /km              http://127.0.0.1:8100/km
-ProxyPass        /params          http://127.0.0.1:8100/params
-ProxyPassReverse /params          http://127.0.0.1:8100/params
-ProxyPass        /axes            http://127.0.0.1:8100/axes
-ProxyPassReverse /axes            http://127.0.0.1:8100/axes
-ProxyPass        /select          http://127.0.0.1:8100/select
-ProxyPassReverse /select          http://127.0.0.1:8100/select
-ProxyPass        /explain         http://127.0.0.1:8100/explain
-ProxyPassReverse /explain         http://127.0.0.1:8100/explain
-ProxyPass        /explain-r       http://127.0.0.1:8100/explain-r
-ProxyPassReverse /explain-r       http://127.0.0.1:8100/explain-r
-ProxyPass        /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
-ProxyPassReverse /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
-ProxyPass        /minimal-params  http://127.0.0.1:8100/minimal-params
-ProxyPassReverse /minimal-params  http://127.0.0.1:8100/minimal-params
-ProxyPass        /map             http://127.0.0.1:8100/map
-ProxyPassReverse /map             http://127.0.0.1:8100/map
-ProxyPass        /feedback        http://127.0.0.1:8100/feedback
-ProxyPassReverse /feedback        http://127.0.0.1:8100/feedback
-ProxyPass        /ui              http://127.0.0.1:8100/ui
-ProxyPassReverse /ui              http://127.0.0.1:8100/ui
-
-# Block the root from being proxied — serve the website normally
-# MUST be the last ProxyPass rule
-ProxyPass        /  !
+<Location /favicon.ico>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/favicon.ico
+    ProxyPassReverse http://127.0.0.1:8100/favicon.ico
+</Location>
 ```
+
+> **Note:** `explain-r` and `explain-ggplot` must appear **before** `explain` — Apache
+> matches first-wins, so more specific paths go first. `PassengerEnabled Off` and
+> `ProxyPass` must be inside the same `<Location>` block; top-level `ProxyPass`
+> directives are intercepted by Passenger before they can fire.
 
 After editing:
 
@@ -1033,23 +1040,22 @@ Run these steps every time you pull a new version:
 
 ```bash
 cd canvasxpress-mcp/
-rm src/server.py          # remove so git pull can overwrite it cleanly
-git pull
 ./server.sh stop
-git apply --whitespace=nowarn canvasxpress-ctypes-fix.patch
-```
-
-> If `src/server.py` is missing after the patch step (patch did not restore it),
-> recover it with:
-> ```bash
-> git restore src/server.py
-> ```
-
-```bash
-python3 -m venv .venv
+git fetch origin
+git reset --hard origin/main
 source .venv/bin/activate
+pip install -r requirements.txt
 ./server.sh start
 ```
+
+> `git reset --hard` discards any local changes and makes the working tree match
+> the remote exactly. If you have local config files (`.env`, `data/call_log.db`)
+> they are untracked and will not be touched.
+>
+> To also remove untracked files (use with care):
+> ```bash
+> git clean -fd
+> ```
 
 ---
 
@@ -1087,79 +1093,22 @@ automatically stripped. The config is still valid — refine the description if 
 
 **New tool added — Apache returns 404 for the new endpoint**
 Every time a new tool (and its REST endpoint) is added to `server.py`, the Apache
-proxy config must be updated **as root** by overwriting the file with the complete
-current content:
+proxy config must be updated **as root**. Add a new `<Location>` block for the
+new endpoint, keeping `PassengerEnabled Off` and `ProxyPass` together inside it:
 
-```bash
-cat > /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-proxy.conf << 'EOF'
-# Disable Passenger for all MCP proxy paths
-<Location /generate>
+```apache
+<Location /new-endpoint>
     PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/new-endpoint
+    ProxyPassReverse http://127.0.0.1:8100/new-endpoint
 </Location>
-<Location /modify>
-    PassengerEnabled Off
-</Location>
-<Location /km>
-    PassengerEnabled Off
-</Location>
-<Location /params>
-    PassengerEnabled Off
-</Location>
-<Location /axes>
-    PassengerEnabled Off
-</Location>
-<Location /select>
-    PassengerEnabled Off
-</Location>
-<Location /explain>
-    PassengerEnabled Off
-</Location>
-<Location /explain-r>
-    PassengerEnabled Off
-</Location>
-<Location /explain-ggplot>
-    PassengerEnabled Off
-</Location>
-<Location /minimal-params>
-    PassengerEnabled Off
-</Location>
-<Location /map>
-    PassengerEnabled Off
-</Location>
-<Location /feedback>
-    PassengerEnabled Off
-</Location>
-<Location /ui>
-    PassengerEnabled Off
-</Location>
-
-# Proxy MCP paths to the Python server on port 8100
-ProxyPass        /generate        http://127.0.0.1:8100/generate
-ProxyPassReverse /generate        http://127.0.0.1:8100/generate
-ProxyPass        /modify          http://127.0.0.1:8100/modify
-ProxyPassReverse /modify          http://127.0.0.1:8100/modify
-ProxyPass        /km              http://127.0.0.1:8100/km
-ProxyPassReverse /km              http://127.0.0.1:8100/km
-ProxyPass        /params          http://127.0.0.1:8100/params
-ProxyPassReverse /params          http://127.0.0.1:8100/params
-ProxyPass        /axes            http://127.0.0.1:8100/axes
-ProxyPassReverse /axes            http://127.0.0.1:8100/axes
-ProxyPass        /select          http://127.0.0.1:8100/select
-ProxyPassReverse /select          http://127.0.0.1:8100/select
-ProxyPass        /explain         http://127.0.0.1:8100/explain
-ProxyPassReverse /explain         http://127.0.0.1:8100/explain
-ProxyPass        /explain-r       http://127.0.0.1:8100/explain-r
-ProxyPassReverse /explain-r       http://127.0.0.1:8100/explain-r
-ProxyPass        /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
-ProxyPassReverse /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
-ProxyPass        /minimal-params  http://127.0.0.1:8100/minimal-params
-ProxyPassReverse /minimal-params  http://127.0.0.1:8100/minimal-params
-ProxyPass        /map             http://127.0.0.1:8100/map
-ProxyPassReverse /map             http://127.0.0.1:8100/map
-ProxyPass        /feedback        http://127.0.0.1:8100/feedback
-ProxyPassReverse /feedback        http://127.0.0.1:8100/feedback
 ```
 
-> Add the new `<Location>` block and `ProxyPass`/`ProxyPassReverse` pair for the new
-> endpoint **before** the `ProxyPass / !` line, then run `apachectl configtest &&
-> service httpd restart` to apply.
+Then reload Apache:
+
+```bash
+apachectl configtest && service httpd restart
+```
+
+> See the [Apache proxy configuration](#apache-proxy-configuration) section above
+> for the complete current config to overwrite the file from scratch if needed.
