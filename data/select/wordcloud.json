@@ -1,0 +1,21 @@
+{
+  "intent": "Show frequency of clinical research terms as word cloud",
+  "data": [
+    ["Term", "Frequency", "Category"],
+    ["cancer", 85, "Molecular"],
+    ["therapy", 72, "Clinical"],
+    ["survival", 68, "Molecular"],
+    ["treatment", 65, "Molecular"],
+    ["biomarker", 60, "Clinical"],
+    ["mutation", 55, "Molecular"],
+    ["response", 52, "Molecular"],
+    ["prognosis", 48, "Molecular"],
+    ["immunotherapy", 45, "Molecular"],
+    ["gene", 40, "Molecular"],
+    ["protein", 38, "Molecular"],
+    ["cell", 35, "Clinical"],
+    ["pathway", 32, "Clinical"],
+    ["clinical", 30, "Clinical"],
+    ["trial", 28, "Clinical"]
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "intent": "Show project schedule with task start and end dates by phase",
+  "data": [
+    ["Task", "Start", "End", "Phase", "Category2", "ExtraValue"],
+    ["Design", "2024-01-01", "2024-02-28", "Phase1", "Alpha", 84.06],
+    ["Development", "2024-02-01", "2024-05-31", "Phase1", "Delta", 27.28],
+    ["Testing", "2024-05-01", "2024-06-30", "Phase2", "Beta", 60.54],
+    ["Staging", "2024-06-15", "2024-07-15", "Phase2", "Delta", 58.24],
+    ["Launch", "2024-07-01", "2024-07-31", "Phase3", "Delta", 66.93]
+  ]
+}

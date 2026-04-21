@@ -1,0 +1,16 @@
+{
+  "intent": "Pareto chart of defect types by frequency",
+  "data": [
+    ["DefectType", "Count", "Category2", "ExtraValue"],
+    ["Wrong dose", 145, "Gamma", 52.54],
+    ["Mislabel", 98, "Beta", 46.02],
+    ["Contamination", 72, "Gamma", 70.34],
+    ["Packaging", 55, "Beta", 10.4],
+    ["Missing info", 40, "Alpha", 76.6],
+    ["Other A", 28, "Alpha", 91.21],
+    ["Other B", 20, "Gamma", 60.78],
+    ["Other C", 15, "Gamma", 37.96],
+    ["Other D", 12, "Gamma", 29.52],
+    ["Other E", 8, "Beta", 33.19]
+  ]
+}

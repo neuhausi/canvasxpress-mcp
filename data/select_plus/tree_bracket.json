@@ -1,0 +1,20 @@
+{
+  "intent": "Tournament bracket results by round",
+  "data": [
+    ["Team", "Round", "Result", "Category2", "ExtraValue"],
+    ["Alpha", "Quarterfinal", "Win", "Beta", 82.77],
+    ["Beta", "Quarterfinal", "Win", "Delta", 81.01],
+    ["Gamma", "Quarterfinal", "Loss", "Beta", 9.46],
+    ["Delta", "Quarterfinal", "Win", "Gamma", 16.43],
+    ["Epsilon", "Quarterfinal", "Loss", "Beta", 64.16],
+    ["Zeta", "Quarterfinal", "Win", "Gamma", 15.29],
+    ["Eta", "Quarterfinal", "Loss", "Gamma", 61.21],
+    ["Theta", "Quarterfinal", "Win", "Beta", 97.27],
+    ["Alpha", "Semifinal", "Win", "Alpha", 28.37],
+    ["Gamma", "Semifinal", "Loss", "Delta", 82.35],
+    ["Epsilon", "Semifinal", "Loss", "Beta", 33.74],
+    ["Theta", "Semifinal", "Loss", "Beta", 88.73],
+    ["Alpha", "Final", "Loss", "Gamma", 8.43],
+    ["Epsilon", "Final", "Loss", "Beta", 20.42]
+  ]
+}

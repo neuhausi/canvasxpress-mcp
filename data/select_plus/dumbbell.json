@@ -1,0 +1,11 @@
+{
+  "intent": "Before vs after comparison across regions as dumbbell chart",
+  "data": [
+    ["Region", "Before", "After", "Category2", "ExtraValue"],
+    ["North", 55, 68.1, "Delta", 45.8],
+    ["South", 49, 51.5, "Delta", 79.8],
+    ["East", 35, 31.7, "Beta", 67.9],
+    ["West", 45, 42.0, "Beta", 55.33],
+    ["Central", 30, 29.2, "Delta", 17.36]
+  ]
+}

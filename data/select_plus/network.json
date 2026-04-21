@@ -1,0 +1,18 @@
+{
+  "intent": "Show network connections between nodes with edge weights",
+  "data": [
+    ["Source", "Target", "Weight", "Category2", "ExtraValue"],
+    ["A", "B", 0.31, "Gamma", 46.77],
+    ["A", "C", 0.62, "Beta", 29.83],
+    ["A", "D", 0.8, "Alpha", 22.44],
+    ["A", "E", 0.31, "Alpha", 59.76],
+    ["A", "F", 0.99, "Delta", 23.54],
+    ["B", "C", 0.47, "Delta", 60.92],
+    ["B", "E", 0.63, "Delta", 35.78],
+    ["B", "F", 0.26, "Delta", 43.44],
+    ["C", "D", 0.6, "Gamma", 61.26],
+    ["D", "E", 0.44, "Delta", 86.92],
+    ["D", "F", 0.73, "Beta", 42.68],
+    ["E", "F", 0.37, "Gamma", 27.74]
+  ]
+}

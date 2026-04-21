@@ -1,0 +1,16 @@
+{
+  "intent": "Cleveland dot plot comparing metric values in 2020 vs 2024 by country",
+  "data": [
+    ["Country", "Value2020", "Value2024", "Category2", "ExtraValue"],
+    ["US", 76, 79.1, "Gamma", 97.49],
+    ["UK", 60, 68.6, "Delta", 95.78],
+    ["DE", 53, 59.2, "Beta", 61.59],
+    ["FR", 77, 70.1, "Alpha", 41.68],
+    ["JP", 44, 39.3, "Delta", 32.37],
+    ["AU", 49, 54.6, "Beta", 1.17],
+    ["CA", 50, 54.7, "Gamma", 23.28],
+    ["KR", 75, 68.1, "Gamma", 32.14],
+    ["BR", 55, 64.6, "Alpha", 30.19],
+    ["IN", 42, 37.7, "Delta", 59.67]
+  ]
+}

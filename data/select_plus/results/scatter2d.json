@@ -1,0 +1,75 @@
+{
+  "intent": "Show PCA of samples colored by condition",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Scatter2D",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Points on x/y axes revealing correlation between two numeric variables.",
+    "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+    "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+    "scoring_factors": [
+      "2+ numeric \u2192 x/y scatter",
+      "colour by category",
+      "sufficient points"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Scatter3D",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ]
+    },
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    }
+  ],
+  "generate_hint": "Scatter2D chart of PCA1 grouped by Condition colored by Category2 \u2014 columns: Sample, PCA1, PCA2, Condition, Category2, ExtraValue"
+}

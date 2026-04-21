@@ -1,0 +1,72 @@
+{
+  "intent": "Bullet chart comparing actual performance against targets",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 5,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Bullet",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Bullet chart \u2014 performance vs target reference line.",
+    "clinical_use": "Endpoint vs pre-specified threshold",
+    "next_step": "generate_canvasxpress_config with description='bullet chart of <metric> vs target by <factor>'",
+    "scoring_factors": [
+      "cat + 2 numeric (value + target)",
+      "3+ numeric \u2014 actual/target/range bullet pattern"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Dumbbell",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Dumbbell / connected dot plot \u2014 before/after comparison per category.",
+      "clinical_use": "Baseline vs post-treatment comparison by patient group",
+      "next_step": "generate_canvasxpress_config with description='dumbbell plot of <baseline> to <followup> by <factor>'",
+      "scoring_factors": [
+        "cat + 2 numeric \u2192 before/after"
+      ]
+    },
+    {
+      "graphType": "Ribbon",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Ribbon chart \u2014 area between two lines showing range over time.",
+      "clinical_use": "Mean \u00b1 SD lab value band over visits",
+      "next_step": "generate_canvasxpress_config with description='ribbon chart of <lower> to <upper> over <time>'",
+      "scoring_factors": [
+        "numeric start/end ranges per group"
+      ]
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "4+ numeric vars \u2014 wide-format matrix view preferred over parallel coordinates",
+        "many numeric vars \u2192 matrix view"
+      ]
+    },
+    {
+      "graphType": "DotLine",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Forest-plot style: horizontal CI lines with central estimate dot.",
+      "clinical_use": "Hazard ratios, odds ratios, risk differences",
+      "next_step": "generate_canvasxpress_config with description='forest plot of <estimate> with CI by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2014 possible forest plot",
+        "estimate + CI bounds pattern"
+      ]
+    }
+  ],
+  "generate_hint": "Bullet chart of Actual grouped by Metric colored by Category2 \u2014 columns: Metric, Actual, Target, Min, Max, Category2, ExtraValue"
+}

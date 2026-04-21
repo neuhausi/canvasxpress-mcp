@@ -1,0 +1,74 @@
+{
+  "intent": "Show patient response state transitions from baseline to week 24",
+  "column_summary": {
+    "n_factor": 5,
+    "n_numeric": 1,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Alluvial",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Alluvial / Sankey-style flow diagram.",
+    "clinical_use": "Patient pathway flow across study visits",
+    "next_step": "generate_canvasxpress_config with description='alluvial diagram from <factor1> to <factor2>'",
+    "scoring_factors": [
+      "2+ cats + numeric \u2192 alluvial flow"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Density",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Smooth kernel density estimate \u2014 overlay multiple groups.",
+      "clinical_use": "Overlaid PK distributions across arms",
+      "next_step": "generate_canvasxpress_config with description='density plot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 density estimate",
+        "overlay groups by category",
+        "enough n for smooth density"
+      ]
+    },
+    {
+      "graphType": "CDF",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Cumulative distribution function plot.",
+      "clinical_use": "CDF of time-to-event, PK exposure CDF",
+      "next_step": "generate_canvasxpress_config with description='CDF of <numeric>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 CDF",
+        "enough data for smooth CDF",
+        "group overlay \u2192 empirical CDF per group"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats"
+      ]
+    },
+    {
+      "graphType": "Violin",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Kernel density mirrored around a centre line \u2014 richer shape than boxplot.",
+      "clinical_use": "Biomarker distributions, gene expression by cell type",
+      "next_step": "generate_canvasxpress_config with description='violin plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution shape",
+        "enough data for density estimate"
+      ]
+    }
+  ],
+  "generate_hint": "Alluvial chart of ExtraValue grouped by Baseline colored by Week12 \u2014 columns: PatientID, Baseline, Week12, Week24, Category2, ExtraValue"
+}

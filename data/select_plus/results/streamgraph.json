@@ -1,0 +1,68 @@
+{
+  "intent": "Show composition of device usage over time as streamgraph",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 2,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Streamgraph",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Stacked area with smooth flow \u2014 shows relative composition over time.",
+    "clinical_use": "Concomitant medication use over study duration",
+    "next_step": "generate_canvasxpress_config with description='streamgraph of <numeric> by <factor> over <time>'",
+    "scoring_factors": []
+  },
+  "alternatives": [
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ]
+    },
+    {
+      "graphType": "Stacked",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Stacked bars showing part-of-whole within each group.",
+      "clinical_use": "AE severity breakdown per arm, disposition categories",
+      "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
+      "scoring_factors": [
+        "2+ categories ideal for stacking"
+      ]
+    },
+    {
+      "graphType": "BarLine",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Combined bar + line on dual axes \u2014 compare count (bars) with rate (line).",
+      "clinical_use": "AE count bars with cumulative incidence line",
+      "next_step": "generate_canvasxpress_config with description='bar-line chart of <num1> bars and <num2> line by <factor>'",
+      "scoring_factors": [
+        "1 cat + 2 numeric \u2192 dual axis bar-line"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    }
+  ],
+  "generate_hint": "Streamgraph chart of Value grouped by Year colored by Category \u2014 columns: Year, Category, Value, Category2, ExtraValue"
+}

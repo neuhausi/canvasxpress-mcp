@@ -1,0 +1,73 @@
+{
+  "intent": "Tornado sensitivity analysis of key business variables",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Tornado",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Tornado (butterfly) chart \u2014 diverging bars from centre for sensitivity analysis.",
+    "clinical_use": "Sensitivity analysis of model parameters, risk factor comparison",
+    "next_step": "generate_canvasxpress_config with description='tornado chart of <low> vs <high> by <factor>'",
+    "scoring_factors": [
+      "cat + 2 numeric \u2192 diverging bar"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ]
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=6 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Scatter3D",
+      "score": 0.85,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ]
+    }
+  ],
+  "generate_hint": "Tornado chart of LowImpact grouped by Variable colored by Category2 \u2014 columns: Variable, LowImpact, HighImpact, Category2, ExtraValue"
+}

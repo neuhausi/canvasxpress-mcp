@@ -1,0 +1,24 @@
+{
+  "intent": "Show adverse event hierarchy by SOC, preferred term, and severity",
+  "data": [
+    ["Level1", "Level2", "Level3", "Value", "Category2", "ExtraValue"],
+    ["Blood", "Blood_PT1", "Mild", 13, "Beta", 93.87],
+    ["Blood", "Blood_PT1", "Moderate", 11, "Gamma", 27.35],
+    ["Blood", "Blood_PT1", "Severe", 24, "Alpha", 10.02],
+    ["Blood", "Blood_PT2", "Mild", 29, "Alpha", 5.23],
+    ["Blood", "Blood_PT2", "Moderate", 19, "Gamma", 26.91],
+    ["Blood", "Blood_PT2", "Severe", 12, "Delta", 97.45],
+    ["Cardiac", "Cardiac_PT1", "Mild", 25, "Gamma", 4.99],
+    ["Cardiac", "Cardiac_PT1", "Moderate", 27, "Alpha", 10.53],
+    ["Cardiac", "Cardiac_PT1", "Severe", 27, "Delta", 72.16],
+    ["Cardiac", "Cardiac_PT2", "Mild", 25, "Beta", 61.96],
+    ["Cardiac", "Cardiac_PT2", "Moderate", 16, "Beta", 14.26],
+    ["Cardiac", "Cardiac_PT2", "Severe", 29, "Gamma", 23.72],
+    ["Nervous", "Nervous_PT1", "Mild", 23, "Beta", 62.27],
+    ["Nervous", "Nervous_PT1", "Moderate", 22, "Beta", 69.98],
+    ["Nervous", "Nervous_PT1", "Severe", 28, "Alpha", 80.39],
+    ["Nervous", "Nervous_PT2", "Mild", 24, "Gamma", 14.99],
+    ["Nervous", "Nervous_PT2", "Moderate", 11, "Delta", 84.89],
+    ["Nervous", "Nervous_PT2", "Severe", 29, "Alpha", 63.13]
+  ]
+}

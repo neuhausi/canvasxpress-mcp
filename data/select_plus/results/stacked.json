@@ -1,0 +1,69 @@
+{
+  "intent": "Show quarterly breakdown by region as stacked bar",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 5,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Stacked",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Stacked bars showing part-of-whole within each group.",
+    "clinical_use": "AE severity breakdown per arm, disposition categories",
+    "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
+    "scoring_factors": [
+      "2+ categories ideal for stacking"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Bullet",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Bullet chart \u2014 performance vs target reference line.",
+      "clinical_use": "Endpoint vs pre-specified threshold",
+      "next_step": "generate_canvasxpress_config with description='bullet chart of <metric> vs target by <factor>'",
+      "scoring_factors": [
+        "cat + 2 numeric (value + target)",
+        "3+ numeric \u2014 actual/target/range bullet pattern"
+      ]
+    },
+    {
+      "graphType": "Dumbbell",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Dumbbell / connected dot plot \u2014 before/after comparison per category.",
+      "clinical_use": "Baseline vs post-treatment comparison by patient group",
+      "next_step": "generate_canvasxpress_config with description='dumbbell plot of <baseline> to <followup> by <factor>'",
+      "scoring_factors": [
+        "cat + 2 numeric \u2192 before/after"
+      ]
+    },
+    {
+      "graphType": "StackedPercent",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "100% stacked bars \u2014 each bar sums to 100%.",
+      "clinical_use": "Relative AE severity distribution across arms",
+      "next_step": "generate_canvasxpress_config with description='100% stacked bar of <metric> by <category>'",
+      "scoring_factors": [
+        "2+ cats \u2192 proportion comparison"
+      ]
+    },
+    {
+      "graphType": "Ribbon",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Ribbon chart \u2014 area between two lines showing range over time.",
+      "clinical_use": "Mean \u00b1 SD lab value band over visits",
+      "next_step": "generate_canvasxpress_config with description='ribbon chart of <lower> to <upper> over <time>'",
+      "scoring_factors": [
+        "numeric start/end ranges per group"
+      ]
+    }
+  ],
+  "generate_hint": "Stacked chart of Q1 grouped by Category colored by Category2 \u2014 columns: Category, Q1, Q2, Q3, Q4, Category2, ExtraValue"
+}

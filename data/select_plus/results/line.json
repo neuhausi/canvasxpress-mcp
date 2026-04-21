@@ -1,0 +1,76 @@
+{
+  "intent": "Show monthly sales trend by region over time",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 2,
+    "n_time": 1,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Line",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Connected points showing trends over a continuous or ordinal axis.",
+    "clinical_use": "Lab values over visits, PK concentration-time profiles",
+    "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
+    "scoring_factors": [
+      "time + numeric \u2192 trend line",
+      "colour by category",
+      "enough time points"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "BarLine",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Combined bar + line on dual axes \u2014 compare count (bars) with rate (line).",
+      "clinical_use": "AE count bars with cumulative incidence line",
+      "next_step": "generate_canvasxpress_config with description='bar-line chart of <num1> bars and <num2> line by <factor>'",
+      "scoring_factors": [
+        "time + 2 numeric \u2192 dual-axis bar-line",
+        "grouped series"
+      ]
+    },
+    {
+      "graphType": "Spaghetti",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Individual trajectory lines per subject over time.",
+      "clinical_use": "Individual patient lab trajectories, PK per-subject profiles",
+      "next_step": "generate_canvasxpress_config with description='spaghetti plot of <numeric> over <time> per <subject_id>'",
+      "scoring_factors": [
+        "time + numeric + subject id",
+        "moderate n \u2014 trajectories readable"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    }
+  ],
+  "generate_hint": "Line chart of Sales over Month colored by Category2 \u2014 columns: Month, Sales, Region, Category2, ExtraValue"
+}

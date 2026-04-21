@@ -1,0 +1,10 @@
+{
+  "intent": "Show quarterly breakdown by region as stacked bar",
+  "data": [
+    ["Category", "Q1", "Q2", "Q3", "Q4", "Category2", "ExtraValue"],
+    ["North", 65, 24, 22, 62, "Alpha", 98.91],
+    ["South", 34, 69, 38, 25, "Beta", 56.14],
+    ["East", 74, 34, 75, 26, "Alpha", 67.17],
+    ["West", 44, 37, 49, 60, "Alpha", 56.54]
+  ]
+}

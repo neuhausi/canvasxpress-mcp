@@ -1,0 +1,14 @@
+{
+  "intent": "Show headcount hierarchically by department and sub-department",
+  "data": [
+    ["Department", "SubDept", "Headcount", "Category2", "ExtraValue"],
+    ["Engineering", "Backend", 24, "Delta", 18.03],
+    ["Engineering", "Frontend", 44, "Delta", 71.83],
+    ["Engineering", "DevOps", 23, "Alpha", 80.39],
+    ["Engineering", "QA", 58, "Alpha", 44.97],
+    ["Sales", "Inside", 59, "Beta", 1.82],
+    ["Sales", "Field", 13, "Alpha", 42.98],
+    ["HR", "Recruiting", 18, "Delta", 66.08],
+    ["HR", "L&D", 42, "Delta", 62.19]
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "intent": "Show frequency distribution of continuous measurement",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 2,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Histogram",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Binned frequency distribution of a single continuous variable.",
+    "clinical_use": "Baseline characteristic distribution",
+    "next_step": "generate_canvasxpress_config with description='histogram of <numeric>'",
+    "scoring_factors": [
+      "1+ numeric \u2192 frequency distribution",
+      "enough data for bins"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Boxplot",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ]
+    },
+    {
+      "graphType": "Violin",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Kernel density mirrored around a centre line \u2014 richer shape than boxplot.",
+      "clinical_use": "Biomarker distributions, gene expression by cell type",
+      "next_step": "generate_canvasxpress_config with description='violin plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution shape",
+        "enough data for density estimate"
+      ]
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.95,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
+    }
+  ],
+  "generate_hint": "Histogram chart of Value grouped by Group colored by Category2 \u2014 columns: Sample, Value, Group, Category2, ExtraValue"
+}

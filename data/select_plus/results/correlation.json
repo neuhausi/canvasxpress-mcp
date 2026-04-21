@@ -1,0 +1,75 @@
+{
+  "intent": "Show correlation matrix of gene expression across samples",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 9,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Correlation",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Symmetric heatmap of pairwise correlation coefficients.",
+    "clinical_use": "Lab correlation matrix, biomarker panel correlations",
+    "next_step": "generate_canvasxpress_config with description='correlation matrix heatmap'",
+    "scoring_factors": [
+      "2+ numeric \u2192 pairwise corr",
+      "many numeric vars \u2192 matrix useful"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ]
+    },
+    {
+      "graphType": "Scatter3D",
+      "score": 0.85,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ]
+    }
+  ],
+  "generate_hint": "Correlation chart of Gene1 grouped by Category2 \u2014 columns: Sample, Gene1, Gene2, Gene3, Gene4, Gene5, Gene6, Gene7, Gene8, Category2, ExtraValue"
+}

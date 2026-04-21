@@ -1,0 +1,73 @@
+{
+  "intent": "Ribbon plot of ranges per group",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Ribbon",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Ribbon chart \u2014 area between two lines showing range over time.",
+    "clinical_use": "Mean \u00b1 SD lab value band over visits",
+    "next_step": "generate_canvasxpress_config with description='ribbon chart of <lower> to <upper> over <time>'",
+    "scoring_factors": [
+      "numeric start/end ranges per group"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Gantt",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Horizontal bars with start/end times \u2014 subject-level timelines.",
+      "clinical_use": "Subject treatment timelines, concomitant medication exposure",
+      "next_step": "generate_canvasxpress_config with description='Gantt chart of <factor> from <start_time> to <end_time>'",
+      "scoring_factors": [
+        "numeric start/end + category \u2014 possible Gantt"
+      ]
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.95,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    }
+  ],
+  "generate_hint": "Ribbon chart of Start grouped by Group colored by Category2 \u2014 columns: Sample, Start, End, Group, Category2, ExtraValue"
+}

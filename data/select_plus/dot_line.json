@@ -1,0 +1,16 @@
+{
+  "intent": "Show mean response with SD at each timepoint by treatment group",
+  "data": [
+    ["Timepoint", "Mean", "SD", "Group", "Category2", "ExtraValue"],
+    ["BL", 51.2, 4.9, "Drug", "Gamma", 92.77],
+    ["W4", 52.1, 5.4, "Drug", "Gamma", 86.53],
+    ["W8", 44.0, 2.8, "Drug", "Beta", 80.19],
+    ["W12", 52.5, 3.9, "Drug", "Beta", 34.99],
+    ["W24", 42.2, 2.0, "Drug", "Beta", 74.2],
+    ["BL", 47.6, 5.6, "Placebo", "Alpha", 18.0],
+    ["W4", 51.3, 4.5, "Placebo", "Gamma", 42.54],
+    ["W8", 45.7, 3.9, "Placebo", "Gamma", 81.12],
+    ["W12", 49.1, 3.0, "Placebo", "Alpha", 52.47],
+    ["W24", 51.0, 2.4, "Placebo", "Alpha", 58.92]
+  ]
+}

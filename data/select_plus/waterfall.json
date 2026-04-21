@@ -1,0 +1,13 @@
+{
+  "intent": "Show cumulative financial waterfall from sales to net income",
+  "data": [
+    ["Category", "Value", "Category2", "ExtraValue"],
+    ["Sales", 120, "Gamma", 15.61],
+    ["COGS", -45, "Beta", 62.58],
+    ["Gross", -20, "Beta", 68.2],
+    ["OpEx", -30, "Beta", 26.44],
+    ["EBIT", 15, "Delta", 1.43],
+    ["Tax", -10, "Gamma", 33.3],
+    ["Net", 0, "Gamma", 14.89]
+  ]
+}

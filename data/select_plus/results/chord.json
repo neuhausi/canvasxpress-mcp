@@ -1,0 +1,70 @@
+{
+  "intent": "Show trade flow between global regions",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 2,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Sankey",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Flow diagram showing quantities moving between states or groups.",
+    "clinical_use": "Patient disposition, treatment pathway flow",
+    "next_step": "generate_canvasxpress_config with description='Sankey diagram of flow from <factor1> to <factor2>'",
+    "scoring_factors": [
+      "2 cats as source/target + flow value"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Alluvial",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Alluvial / Sankey-style flow diagram.",
+      "clinical_use": "Patient pathway flow across study visits",
+      "next_step": "generate_canvasxpress_config with description='alluvial diagram from <factor1> to <factor2>'",
+      "scoring_factors": [
+        "2+ cats + numeric \u2192 alluvial flow"
+      ]
+    },
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ]
+    },
+    {
+      "graphType": "Chord",
+      "score": 0.9,
+      "category": "network",
+      "description": "Circular chord diagram \u2014 pairwise flow between categories.",
+      "clinical_use": "Cross-arm patient movement, co-medication flows",
+      "next_step": "generate_canvasxpress_config with description='chord diagram of flow between <factor1> and <factor2>'",
+      "scoring_factors": [
+        "2 cats + numeric \u2192 circular flow"
+      ]
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    }
+  ],
+  "generate_hint": "Sankey chart of Value grouped by From colored by To \u2014 columns: From, To, Value, Category2, ExtraValue"
+}

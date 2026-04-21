@@ -1,0 +1,72 @@
+{
+  "intent": "Tournament bracket results by round",
+  "column_summary": {
+    "n_factor": 4,
+    "n_numeric": 1,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "TreeBracket",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Tree/dendrogram with bracket annotations.",
+    "clinical_use": "Hierarchical clustering of samples or genes",
+    "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
+    "scoring_factors": [
+      "category labels \u2192 dendrogram leaves"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=14 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.75,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
+    },
+    {
+      "graphType": "Bar",
+      "score": 0.7,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset"
+      ]
+    },
+    {
+      "graphType": "Stacked",
+      "score": 0.7,
+      "category": "single_dimensional",
+      "description": "Stacked bars showing part-of-whole within each group.",
+      "clinical_use": "AE severity breakdown per arm, disposition categories",
+      "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
+      "scoring_factors": [
+        "2+ categories ideal for stacking"
+      ]
+    }
+  ],
+  "generate_hint": "TreeBracket chart of ExtraValue grouped by Team colored by Round \u2014 columns: Team, Round, Result, Category2, ExtraValue"
+}

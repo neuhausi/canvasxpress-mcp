@@ -1,0 +1,75 @@
+{
+  "intent": "Show frequency of clinical research terms as word cloud",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 2,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "TagCloud",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Word/tag cloud sized by frequency.",
+    "clinical_use": "Frequently reported terms, SAE narratives word frequency",
+    "next_step": "generate_canvasxpress_config with description='word cloud of <factor> sized by frequency'",
+    "scoring_factors": [
+      "category labels \u2192 word cloud"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=15 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.75,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
+    }
+  ],
+  "generate_hint": "TagCloud chart of Frequency grouped by Term colored by Category \u2014 columns: Term, Frequency, Category, Category2, ExtraValue"
+}

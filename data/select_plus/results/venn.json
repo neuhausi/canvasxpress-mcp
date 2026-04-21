@@ -1,0 +1,73 @@
+{
+  "intent": "Show overlap between three gene sets",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 1,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Venn",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Overlapping circles showing set intersections.",
+    "clinical_use": "Overlapping AE populations, gene set comparison",
+    "next_step": "generate_canvasxpress_config with description='Venn diagram of overlapping sets'",
+    "scoring_factors": [
+      "2+ cats \u2014 possible set membership"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Upset",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "UpSet plot \u2014 scalable alternative to Venn for many sets.",
+      "clinical_use": "Multi-way AE overlap, multi-drug co-occurrence",
+      "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
+      "scoring_factors": [
+        "2+ cats \u2192 set membership"
+      ]
+    },
+    {
+      "graphType": "Density",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Smooth kernel density estimate \u2014 overlay multiple groups.",
+      "clinical_use": "Overlaid PK distributions across arms",
+      "next_step": "generate_canvasxpress_config with description='density plot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 density estimate",
+        "overlay groups by category",
+        "enough n for smooth density"
+      ]
+    },
+    {
+      "graphType": "CDF",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Cumulative distribution function plot.",
+      "clinical_use": "CDF of time-to-event, PK exposure CDF",
+      "next_step": "generate_canvasxpress_config with description='CDF of <numeric>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 CDF",
+        "enough data for smooth CDF",
+        "group overlay \u2192 empirical CDF per group"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats"
+      ]
+    }
+  ],
+  "generate_hint": "Venn chart of ExtraValue grouped by Set colored by Member \u2014 columns: Set, Member, Category2, ExtraValue"
+}

@@ -1,0 +1,12 @@
+{
+  "intent": "Show trade flow between global regions",
+  "data": [
+    ["From", "To", "Value", "Category2", "ExtraValue"],
+    ["US", "EU", 34, "Beta", 27.85],
+    ["US", "APAC", 47, "Beta", 33.34],
+    ["US", "LATAM", 67, "Gamma", 93.45],
+    ["EU", "APAC", 32, "Beta", 3.23],
+    ["EU", "LATAM", 97, "Beta", 72.02],
+    ["APAC", "LATAM", 19, "Delta", 25.37]
+  ]
+}

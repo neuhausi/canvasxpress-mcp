@@ -1,0 +1,21 @@
+{
+  "intent": "Show frequency of clinical research terms as word cloud",
+  "data": [
+    ["Term", "Frequency", "Category", "Category2", "ExtraValue"],
+    ["cancer", 85, "Molecular", "Beta", 51.52],
+    ["therapy", 72, "Clinical", "Alpha", 97.2],
+    ["survival", 68, "Molecular", "Delta", 26.92],
+    ["treatment", 65, "Molecular", "Delta", 18.74],
+    ["biomarker", 60, "Clinical", "Beta", 80.02],
+    ["mutation", 55, "Molecular", "Beta", 78.53],
+    ["response", 52, "Molecular", "Alpha", 49.78],
+    ["prognosis", 48, "Molecular", "Alpha", 73.34],
+    ["immunotherapy", 45, "Molecular", "Beta", 35.12],
+    ["gene", 40, "Molecular", "Alpha", 38.68],
+    ["protein", 38, "Molecular", "Gamma", 87.86],
+    ["cell", 35, "Clinical", "Gamma", 57.85],
+    ["pathway", 32, "Clinical", "Beta", 81.86],
+    ["clinical", 30, "Clinical", "Alpha", 1.09],
+    ["trial", 28, "Clinical", "Gamma", 17.46]
+  ]
+}

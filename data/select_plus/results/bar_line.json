@@ -1,0 +1,75 @@
+{
+  "intent": "Show monthly sales bars with market share trend line overlay",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 3,
+    "n_time": 1,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "BarLine",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Combined bar + line on dual axes \u2014 compare count (bars) with rate (line).",
+    "clinical_use": "AE count bars with cumulative incidence line",
+    "next_step": "generate_canvasxpress_config with description='bar-line chart of <num1> bars and <num2> line by <factor>'",
+    "scoring_factors": [
+      "time + 2 numeric \u2192 dual-axis bar-line",
+      "grouped series"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Line",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Connected points showing trends over a continuous or ordinal axis.",
+      "clinical_use": "Lab values over visits, PK concentration-time profiles",
+      "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
+      "scoring_factors": [
+        "time + numeric \u2192 trend line",
+        "colour by category",
+        "enough time points"
+      ]
+    },
+    {
+      "graphType": "Spaghetti",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Individual trajectory lines per subject over time.",
+      "clinical_use": "Individual patient lab trajectories, PK per-subject profiles",
+      "next_step": "generate_canvasxpress_config with description='spaghetti plot of <numeric> over <time> per <subject_id>'",
+      "scoring_factors": [
+        "time + numeric + subject id",
+        "moderate n \u2014 trajectories readable"
+      ]
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.95,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    }
+  ],
+  "generate_hint": "BarLine chart of Sales over Month colored by Category2 \u2014 columns: Month, Sales, MarketShare, Group, Category2, ExtraValue"
+}

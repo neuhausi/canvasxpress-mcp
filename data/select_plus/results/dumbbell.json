@@ -1,0 +1,74 @@
+{
+  "intent": "Before vs after comparison across regions as dumbbell chart",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Dumbbell",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Dumbbell / connected dot plot \u2014 before/after comparison per category.",
+    "clinical_use": "Baseline vs post-treatment comparison by patient group",
+    "next_step": "generate_canvasxpress_config with description='dumbbell plot of <baseline> to <followup> by <factor>'",
+    "scoring_factors": [
+      "cat + 2 numeric \u2192 before/after"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=5 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Scatter3D",
+      "score": 0.85,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ]
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.8,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category"
+      ]
+    }
+  ],
+  "generate_hint": "Dumbbell chart of Before grouped by Region colored by Category2 \u2014 columns: Region, Before, After, Category2, ExtraValue"
+}

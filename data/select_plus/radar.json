@@ -1,0 +1,10 @@
+{
+  "intent": "Compare team performance across five skill dimensions",
+  "data": [
+    ["Team", "Speed", "Strength", "Agility", "Endurance", "Precision", "Category2", "ExtraValue"],
+    ["Alpha", 89, 69, 83, 69, 97, "Beta", 10.07],
+    ["Beta", 77, 95, 41, 70, 47, "Beta", 31.33],
+    ["Gamma", 56, 44, 64, 80, 90, "Gamma", 62.94],
+    ["Delta", 54, 83, 84, 54, 91, "Delta", 99.33]
+  ]
+}

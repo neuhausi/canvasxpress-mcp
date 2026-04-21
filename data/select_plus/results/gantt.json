@@ -1,0 +1,73 @@
+{
+  "intent": "Show project schedule with task start and end dates by phase",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 1,
+    "n_time": 2,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Gantt",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Horizontal bars with start/end times \u2014 subject-level timelines.",
+    "clinical_use": "Subject treatment timelines, concomitant medication exposure",
+    "next_step": "generate_canvasxpress_config with description='Gantt chart of <factor> from <start_time> to <end_time>'",
+    "scoring_factors": [
+      "start/end dates + category"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=5 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Line",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Connected points showing trends over a continuous or ordinal axis.",
+      "clinical_use": "Lab values over visits, PK concentration-time profiles",
+      "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
+      "scoring_factors": [
+        "time + numeric \u2192 trend line",
+        "colour by category"
+      ]
+    },
+    {
+      "graphType": "Spaghetti",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Individual trajectory lines per subject over time.",
+      "clinical_use": "Individual patient lab trajectories, PK per-subject profiles",
+      "next_step": "generate_canvasxpress_config with description='spaghetti plot of <numeric> over <time> per <subject_id>'",
+      "scoring_factors": [
+        "time + numeric + subject id",
+        "moderate n \u2014 trajectories readable"
+      ]
+    },
+    {
+      "graphType": "TimeSeries",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Generic time series line chart.",
+      "clinical_use": "Lab values, vital signs over study time",
+      "next_step": "generate_canvasxpress_config with description='time series of <numeric> over <time>'",
+      "scoring_factors": [
+        "time + numeric \u2192 time series",
+        "multiple series by category"
+      ]
+    }
+  ],
+  "generate_hint": "Gantt chart of ExtraValue over Start colored by Phase \u2014 columns: Task, Start, End, Phase, Category2, ExtraValue"
+}

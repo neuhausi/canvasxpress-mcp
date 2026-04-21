@@ -1,0 +1,26 @@
+{
+  "intent": "Show individual data points for small cohort by group",
+  "data": [
+    ["Sample", "Group", "Value", "Category2", "ExtraValue"],
+    ["S1", "GroupA", 57.9, "Delta", 39.41],
+    ["S2", "GroupB", 68.1, "Alpha", 5.35],
+    ["S3", "GroupA", 56.8, "Beta", 54.17],
+    ["S4", "GroupB", 53.4, "Beta", 23.22],
+    ["S5", "GroupA", 60.5, "Gamma", 90.58],
+    ["S6", "GroupB", 66.3, "Alpha", 51.91],
+    ["S7", "GroupA", 54.3, "Gamma", 32.71],
+    ["S8", "GroupB", 52.2, "Beta", 76.32],
+    ["S9", "GroupA", 82.1, "Delta", 81.69],
+    ["S10", "GroupB", 50.9, "Gamma", 95.28],
+    ["S11", "GroupA", 74.9, "Beta", 6.94],
+    ["S12", "GroupB", 61.8, "Gamma", 73.99],
+    ["S13", "GroupA", 56.8, "Gamma", 6.92],
+    ["S14", "GroupB", 59.2, "Gamma", 81.44],
+    ["S15", "GroupA", 49.5, "Beta", 90.82],
+    ["S16", "GroupB", 58.2, "Delta", 73.07],
+    ["S17", "GroupA", 67.2, "Gamma", 31.91],
+    ["S18", "GroupB", 67.9, "Gamma", 22.89],
+    ["S19", "GroupA", 67.8, "Gamma", 11.01],
+    ["S20", "GroupB", 64.1, "Beta", 75.91]
+  ]
+}

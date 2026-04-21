@@ -1,0 +1,12 @@
+{
+  "intent": "Tornado sensitivity analysis of key business variables",
+  "data": [
+    ["Variable", "LowImpact", "HighImpact", "Category2", "ExtraValue"],
+    ["Price sensitivity", -25, 40, "Gamma", 87.89],
+    ["Market size", -15, 30, "Alpha", 13.61],
+    ["Cost reduction", -10, 20, "Alpha", 36.86],
+    ["Competitor entry", -20, 5, "Gamma", 41.32],
+    ["Regulatory change", -30, 10, "Delta", 75.48],
+    ["Technology adoption", -5, 35, "Beta", 61.78]
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "intent": "Compare team performance across five skill dimensions",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 6,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Radar",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Spider/radar chart \u2014 compare profiles across multiple axes.",
+    "clinical_use": "Safety profile comparison across arms",
+    "next_step": "generate_canvasxpress_config with description='radar chart of <numeric axes> by <factor>'",
+    "scoring_factors": [
+      "3+ numeric axes + category groups",
+      "5+ axes \u2014 spider chart ideal"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Bar",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset"
+      ]
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "4+ numeric vars \u2014 wide-format matrix view preferred over parallel coordinates",
+        "many numeric vars \u2192 matrix view"
+      ]
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=4 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Scatter3D",
+      "score": 0.85,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ]
+    }
+  ],
+  "generate_hint": "Radar chart of Speed grouped by Team colored by Category2 \u2014 columns: Team, Speed, Strength, Agility, Endurance, Precision, Category2, ExtraValue"
+}

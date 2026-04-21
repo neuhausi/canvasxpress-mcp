@@ -1,0 +1,76 @@
+{
+  "intent": "Bin scatter of two numeric variables across two groups",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Binplot",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Binned scatter \u2014 alternative to Hexplot for large datasets.",
+    "clinical_use": "High-density scatter of continuous biomarkers",
+    "next_step": "generate_canvasxpress_config with description='binplot of <num1> vs <num2>'",
+    "scoring_factors": [
+      "2 numeric \u2192 binned scatter",
+      "large n \u2192 binning reduces overplot"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Scatter2D",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.95,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    }
+  ],
+  "generate_hint": "Binplot chart of X grouped by Group colored by Category2 \u2014 columns: Sample, X, Y, Group, Category2, ExtraValue"
+}

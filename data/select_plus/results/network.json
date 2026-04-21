@@ -1,0 +1,70 @@
+{
+  "intent": "Show network connections between nodes with edge weights",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 2,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Network",
+    "score": 1.0,
+    "category": "network",
+    "description": "Nodes and edges for relational or pathway data.",
+    "clinical_use": "Pathway enrichment, protein-protein interaction",
+    "next_step": "generate_canvasxpress_config with description='network graph of pathways'",
+    "scoring_factors": [
+      "2 cats \u2014 possible node/edge pairs"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Sankey",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Flow diagram showing quantities moving between states or groups.",
+      "clinical_use": "Patient disposition, treatment pathway flow",
+      "next_step": "generate_canvasxpress_config with description='Sankey diagram of flow from <factor1> to <factor2>'",
+      "scoring_factors": [
+        "2 cats as source/target + flow value"
+      ]
+    },
+    {
+      "graphType": "Alluvial",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Alluvial / Sankey-style flow diagram.",
+      "clinical_use": "Patient pathway flow across study visits",
+      "next_step": "generate_canvasxpress_config with description='alluvial diagram from <factor1> to <factor2>'",
+      "scoring_factors": [
+        "2+ cats + numeric \u2192 alluvial flow"
+      ]
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    },
+    {
+      "graphType": "Chord",
+      "score": 0.9,
+      "category": "network",
+      "description": "Circular chord diagram \u2014 pairwise flow between categories.",
+      "clinical_use": "Cross-arm patient movement, co-medication flows",
+      "next_step": "generate_canvasxpress_config with description='chord diagram of flow between <factor1> and <factor2>'",
+      "scoring_factors": [
+        "2 cats + numeric \u2192 circular flow"
+      ]
+    }
+  ],
+  "generate_hint": "Network chart of Weight grouped by Source colored by Target \u2014 columns: Source, Target, Weight, Category2, ExtraValue"
+}

@@ -1,0 +1,75 @@
+{
+  "intent": "Compare score distributions across five departments",
+  "column_summary": {
+    "n_factor": 3,
+    "n_numeric": 2,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Ridgeline",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
+    "clinical_use": "Lab distributions across multiple visits or arms",
+    "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
+    "scoring_factors": [
+      "cat + numeric \u2192 stacked densities",
+      "enough n per group for density"
+    ]
+  },
+  "alternatives": [
+    {
+      "graphType": "Boxplot",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
+    },
+    {
+      "graphType": "Bar",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset"
+      ]
+    },
+    {
+      "graphType": "Violin",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Kernel density mirrored around a centre line \u2014 richer shape than boxplot.",
+      "clinical_use": "Biomarker distributions, gene expression by cell type",
+      "next_step": "generate_canvasxpress_config with description='violin plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution shape",
+        "enough data for density estimate"
+      ]
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
+    }
+  ],
+  "generate_hint": "Ridgeline chart of Score grouped by Department colored by Category2 \u2014 columns: Sample, Score, Department, Category2, ExtraValue"
+}
