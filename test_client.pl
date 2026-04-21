@@ -23,9 +23,18 @@ use URI::Escape qw(uri_escape);
 #   perl test_client.pl --modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
 #   perl test_client.pl --modify '{"graphType":"Heatmap","xAxis":["Gene"]}' "change colorScheme to Spectral"
 #
+#   # Create a map config (via MCP tool)
+#   perl test_client.pl --map World
+#   perl test_client.pl --map USAStates --title "Sales by State" --color-scheme Blues
+#   perl test_client.pl --map USA
+#   perl test_client.pl --map Europe --title "EU Revenue"
+#   perl test_client.pl --map CA --title "California Counties"
+#
 #   # REST endpoint (no MCP protocol — plain HTTP GET)
 #   perl test_client.pl --rest generate "Violin plot" "Gene,Expr,CellType" '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
 #   perl test_client.pl --rest modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
+#   perl test_client.pl --rest map World
+#   perl test_client.pl --rest map USAStates --title "Sales by State" --color-scheme Blues
 #   perl test_client.pl --rest generate "Bar chart" --target myCanvas           # echoes target in response
 #   perl test_client.pl --rest generate "Bar chart" --callback renderChart      # JSONP response
 #   perl test_client.pl --rest generate "Bar chart" --client-id req-1 --callback renderChart
@@ -111,6 +120,22 @@ my @GENERATE_EXAMPLES = (
     },
 );
 
+my @MAP_EXAMPLES = (
+    { label => "World map",        map_id => "World",          title => "Global Overview",   color_scheme => "Blues"    },
+    { label => "World continents", map_id => "WorldContinents", title => "World Continents"                             },
+    {
+        label => "USA States", map_id => "USAStates", title => "Sales by State", color_scheme => "YlOrRd",
+        data  => [["State","Value"],["CA",120],["NY",98],["TX",87],["FL",74],["WA",55]],
+    },
+    { label => "USA Counties",       map_id => "USACounties", title => "County-level Data"                           },
+    { label => "Country code (USA)", map_id => "USA",         title => "United States",      color_scheme => "Greens"  },
+    { label => "Country code (CAN)", map_id => "CAN",         title => "Canada"                                       },
+    { label => "Country name",       map_id => "Mexico",      title => "Mexico",             color_scheme => "Oranges" },
+    { label => "Continent (Europe)", map_id => "Europe",      title => "European Map",       color_scheme => "Tableau" },
+    { label => "US State code (CA)", map_id => "CA",          title => "California"                                   },
+    { label => "US State name",      map_id => "Texas",       title => "Texas",              color_scheme => "Reds"    },
+);
+
 my @MODIFY_EXAMPLES = (
     {
         label        => "Add title and switch theme",
@@ -150,10 +175,10 @@ if ($first_arg eq "--examples") {
 
 if ($first_arg eq "--rest") {
     # -----------------------------------------------------------------------
-    # REST mode — calls /generate or /modify directly (no MCP protocol)
+    # REST mode — calls /generate, /modify, or /map directly (no MCP protocol)
     # Supports ?callback=name (JSONP) and ?target=id
     # -----------------------------------------------------------------------
-    my $sub_cmd = $ARGV[1] // die "Usage: --rest generate|modify ...\n";
+    my $sub_cmd = $ARGV[1] // die "Usage: --rest generate|modify|map ...\n";
     my %extras;
 
     # Scan for --callback / --target / --client-id flags anywhere in remaining args
@@ -210,13 +235,63 @@ if ($first_arg eq "--rest") {
             print_modify_result($config, $r, $instruction);
         }
 
+    } elsif ($sub_cmd eq 'map') {
+        my $map_id = $rest_args[0] // die "Missing map_id\n";
+        my %params = (map_id => $map_id);
+        # Scan rest_args for --title / --color-scheme flags
+        my $j = 1;
+        while ($j <= $#rest_args) {
+            if    ($rest_args[$j] eq '--title'        && defined $rest_args[$j+1]) { $params{title}        = $rest_args[++$j] }
+            elsif ($rest_args[$j] eq '--color-scheme' && defined $rest_args[$j+1]) { $params{color_scheme} = $rest_args[++$j] }
+            elsif ($rest_args[$j] =~ /^\[/)                                        { $params{data}         = $rest_args[$j]   }
+            $j++;
+        }
+        $params{callback}  = $extras{callback}  if $extras{callback};
+        $params{target}    = $extras{target}    if $extras{target};
+        $params{client_id} = $extras{client_id} if $extras{client_id};
+        my $url = "$REST_URL/map?" . join("&", map { uri_escape($_) . "=" . uri_escape($params{$_}) } keys %params);
+        print "GET $url\n\n";
+        my $res  = $ua->get($url);
+        my $body = $res->decoded_content;
+        if ($extras{callback}) {
+            print "── JSONP response $SEP\n$body\n";
+        } else {
+            my $r = decode_json($body);
+            print_map_result($r);
+        }
+
     } else {
-        die "Unknown sub-command '$sub_cmd'. Use: generate | modify\n";
+        die "Unknown sub-command '$sub_cmd'. Use: generate | modify | map\n";
     }
     exit 0;
 }
 
-if ($first_arg eq "modify") {
+if ($first_arg eq '--map') {
+    my $map_id = $ARGV[1] // die "Usage: perl test_client.pl --map <map_id> [--title <title>] [--color-scheme <scheme>]\n";
+    my ($title, $color_scheme, $data);
+    my $i = 2;
+    while ($i <= $#ARGV) {
+        if    ($ARGV[$i] eq '--title'        && defined $ARGV[$i+1]) { $title        = $ARGV[++$i] }
+        elsif ($ARGV[$i] eq '--color-scheme' && defined $ARGV[$i+1]) { $color_scheme = $ARGV[++$i] }
+        elsif ($ARGV[$i] =~ /^\[/)                                   { $data         = decode_json($ARGV[$i]) }
+        $i++;
+    }
+    print "Tool         : create_map_config\n";
+    print "Map ID       : $map_id\n";
+    print "Title        : $title\n"        if $title;
+    print "Color scheme : $color_scheme\n" if $color_scheme;
+    printf "Data rows    : %d\n", scalar(@$data)-1 if $data;
+    print "\n";
+    my $args = {map_id => $map_id};
+    $args->{title}        = $title        if $title;
+    $args->{color_scheme} = $color_scheme if $color_scheme;
+    $args->{data}         = $data         if $data;
+    my $response = call_tool("create_map_config", $args);
+    print_map_result($response);
+    exit 0;
+}
+
+if ($first_arg eq 'modify') {
     my $orig_config = decode_json($ARGV[1] // die "Missing config JSON\n");
     my $instruction = $ARGV[2]             // die "Missing instruction\n";
     my ($headers, $data, $column_types) = parse_extra_args(@ARGV[3..$#ARGV]);
@@ -320,12 +395,51 @@ sub run_examples {
         print "\n$SEP\n" if $i < $#MODIFY_EXAMPLES;
     }
 
+    print "\n\n$SEP\n  MAP EXAMPLES\n$SEP\n";
+    my $nm = scalar @MAP_EXAMPLES;
+    for my $i (0..$#MAP_EXAMPLES) {
+        my $ex = $MAP_EXAMPLES[$i];
+        printf "\n[%d/%d] %s\n", $i+1, $nm, $ex->{label};
+        print "  Map ID      : $ex->{map_id}\n";
+        print "  Title       : $ex->{title}\n"        if $ex->{title};
+        print "  ColorScheme : $ex->{color_scheme}\n" if $ex->{color_scheme};
+        printf "  Data        : %d rows\n", scalar(@{$ex->{data}})-1 if $ex->{data};
+        print "\n";
+        eval {
+            my $args = {map_id => $ex->{map_id}};
+            $args->{title}        = $ex->{title}        if $ex->{title};
+            $args->{color_scheme} = $ex->{color_scheme} if $ex->{color_scheme};
+            $args->{data}         = $ex->{data}         if $ex->{data};
+            my $resp = call_tool("create_map_config", $args);
+            print_map_result($resp);
+        };
+        print "  Error: $@\n" if $@;
+        print "\n$SEP\n" if $i < $#MAP_EXAMPLES;
+    }
+
     print "\n$SEP2\n\n";
 }
 
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
+
+sub print_map_result {
+    my ($response) = @_;
+    print "Map ID       : " . ($response->{map_id} // "?") . "\n";
+    if ($response->{headers_used} && @{$response->{headers_used}}) {
+        print "Data columns : " . join(", ", @{$response->{headers_used}}) . "\n";
+    }
+    print "\n── Config $SEP\n";
+    print $json->encode($response->{config});
+    print "\n── Validation $SEP\n";
+    if ($response->{valid} // 1) {
+        print "Config is valid\n";
+    } else {
+        print "Warnings:\n";
+        print "   * $_\n" for @{$response->{warnings} // []};
+    }
+}
 
 sub print_generate_result {
     my ($response) = @_;

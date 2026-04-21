@@ -221,6 +221,10 @@ _GRAPH_TYPE_KEYWORDS: dict[str, str] = {
     "bubble": "ScatterBubble2D",
     "ridgeline": "Ridgeline", "ridge": "Ridgeline",
     "gantt": "Gantt", "tornado": "Tornado",
+    # Map chart — must come AFTER heatmap/treemap entries (shorter, would shadow them)
+    "choropleth": "Map", "geographic map": "Map", "world map": "Map",
+    "country map": "Map", "state map": "Map", "continent map": "Map",
+    "map of": "Map",
 }
 
 # Contradiction keywords - 2+ hits triggers Tier 3
@@ -238,6 +242,143 @@ def detect_graph_type(description: str) -> Optional[str]:
         if kw in desc_lower:
             return _GRAPH_TYPE_KEYWORDS[kw]
     return None
+
+
+# ---------------------------------------------------------------------------
+# Map ID inference
+# ---------------------------------------------------------------------------
+
+_MAP_ID_PATTERNS: list[tuple[str, str]] = [
+    # Regions / multi-country (check before individual countries)
+    ("world continent",           "WorldContinents"),
+    ("worldcontinent",            "WorldContinents"),
+    ("world medium",              "WorldMedium"),
+    ("worldmedium",               "WorldMedium"),
+    ("world high",                "WorldHigh"),
+    ("worldhigh",                 "WorldHigh"),
+    ("north america",             "NorthAmerica"),
+    ("south america",             "SouthAmerica"),
+    ("oceania",                   "Oceania"),
+    ("africa",                    "Africa"),
+    ("europe",                    "Europe"),
+    ("asia",                      "Asia"),
+    ("all countries",             "Countries"),
+    ("countries",                 "Countries"),
+    ("world",                     "World"),
+    # US Albers projection (explicit request only — pie overlays work on any map)
+    ("albers pie",              "albersStatesPie"),
+    ("albersstatespie",         "albersStatesPie"),
+    ("albers usa",              "albersStatesPie"),
+    ("albers state",            "albersStatesPie"),
+    # US sub-regions
+    ("usa congressional district","USADistricts"),
+    ("us congressional district", "USADistricts"),
+    ("congressional district",    "USADistricts"),
+    ("usa district",              "USADistricts"),
+    ("us district",               "USADistricts"),
+    ("usa county",                "USACounties"),
+    ("us county",                 "USACounties"),
+    ("usa state",                 "USAStates"),
+    ("us state",                  "USAStates"),
+    ("united states state",       "USAStates"),
+    ("united states",             "USAStates"),
+    # US states (full names)
+    ("california",         "CA"),
+    ("new york",           "NY"),
+    ("texas",              "TX"),
+    ("florida",            "FL"),
+    ("washington",         "WA"),
+    ("illinois",           "IL"),
+    ("ohio",               "OH"),
+    ("georgia",            "GA"),
+    ("michigan",           "MI"),
+    ("pennsylvania",       "PA"),
+    ("north carolina",     "NC"),
+    ("new jersey",         "NJ"),
+    ("virginia",           "VA"),
+    ("arizona",            "AZ"),
+    ("colorado",           "CO"),
+    ("oregon",             "OR"),
+    # Countries (full names)
+    ("canada",             "CAN"),
+    ("australia",          "AUS"),
+    ("united kingdom",     "GBR"),
+    ("great britain",      "GBR"),
+    ("brazil",             "BRA"),
+    ("mexico",             "MEX"),
+    ("france",             "FRA"),
+    ("germany",            "DEU"),
+    ("china",              "CHN"),
+    ("japan",              "JPN"),
+    ("india",              "IND"),
+    ("spain",              "ESP"),
+    ("italy",              "ITA"),
+    ("russia",             "RUS"),
+    ("argentina",          "ARG"),
+    ("south africa",       "ZAF"),
+    ("new zealand",        "NZL"),
+    ("netherlands",        "NLD"),
+    ("sweden",             "SWE"),
+    ("norway",             "NOR"),
+    ("denmark",            "DNK"),
+    ("finland",            "FIN"),
+    ("switzerland",        "CHE"),
+    ("portugal",           "PRT"),
+    ("poland",             "POL"),
+    # Fallback — generic map requests become the world map
+    ("usa",                "USA"),
+    ("u.s.a",              "USA"),
+]
+
+
+def _infer_map_id(description: str) -> Optional[str]:
+    """Try to extract a CanvasXpress mapId from a natural-language description."""
+    desc_lower = description.lower()
+    for pattern, map_id in _MAP_ID_PATTERNS:
+        if pattern in desc_lower:
+            return map_id
+    return None
+
+
+# Map mapId → human-readable description of what the first column's ID values should be
+_MAP_ID_COLUMN_HINT: dict[str, str] = {
+    "World":          "ISO 3-letter country codes (e.g. \"ALB\", \"ARG\", \"AUS\", \"BRA\", \"CAN\", \"CHN\", \"DEU\", \"ESP\", \"FRA\", \"GBR\", \"IND\", \"ITA\", \"JPN\", \"MEX\", \"RUS\", \"USA\", \"ZAF\")",
+    "WorldMedium":    "ISO 3-letter country codes (same as World — medium resolution)",
+    "WorldHigh":      "ISO 3-letter country codes (same as World — high resolution)",
+    "Countries":      "ISO 3-letter country codes (same as World — e.g. \"ALB\", \"ARG\", \"AUS\", \"BRA\", \"CAN\", \"CHN\", \"DEU\", \"ESP\", \"FRA\", \"GBR\", \"IND\", \"ITA\", \"JPN\", \"MEX\", \"RUS\", \"USA\", \"ZAF\")",
+    "WorldContinents":"continent names (\"Africa\", \"Asia\", \"Europe\", \"NorthAmerica\", \"Oceania\", \"SouthAmerica\")",
+    "Africa":         "ISO 3-letter codes for African countries (e.g. \"DZA\", \"EGY\", \"ETH\", \"GHA\", \"KEN\", \"MAR\", \"MOZ\", \"NGA\", \"ZAF\", \"TZA\", \"UGA\", \"ZMB\")",
+    "Asia":           "ISO 3-letter codes for Asian countries (e.g. \"BGD\", \"CHN\", \"IDN\", \"IND\", \"IRN\", \"IRQ\", \"JPN\", \"KAZ\", \"KOR\", \"MYS\", \"PAK\", \"PHL\", \"SAU\", \"THA\", \"TUR\", \"VNM\")",
+    "Europe":         "ISO 3-letter codes for European countries (e.g. \"AUT\", \"BEL\", \"CHE\", \"CZE\", \"DEU\", \"DNK\", \"ESP\", \"FIN\", \"FRA\", \"GBR\", \"GRC\", \"HUN\", \"ITA\", \"NLD\", \"NOR\", \"POL\", \"PRT\", \"ROU\", \"RUS\", \"SWE\", \"UKR\")",
+    "NorthAmerica":   "ISO 3-letter codes for North American countries (e.g. \"CAN\", \"CRI\", \"CUB\", \"DOM\", \"GTM\", \"HND\", \"HTI\", \"JAM\", \"MEX\", \"NIC\", \"PAN\", \"SLV\", \"TTO\", \"USA\")",
+    "SouthAmerica":   "ISO 3-letter codes for South American countries (e.g. \"ARG\", \"BOL\", \"BRA\", \"CHL\", \"COL\", \"ECU\", \"GUY\", \"PER\", \"PRY\", \"SUR\", \"URY\", \"VEN\")",
+    "Oceania":        "ISO 3-letter codes for Oceania countries (e.g. \"AUS\", \"FJI\", \"NZL\", \"PNG\", \"SLB\", \"VUT\")",
+    "USAStates":      "2-letter US state/territory codes (e.g. \"AL\", \"AK\", \"AZ\", \"AR\", \"CA\", \"CO\", \"CT\", \"DE\", \"FL\", \"GA\", \"HI\", \"ID\", \"IL\", \"IN\", \"IA\", \"KS\", \"KY\", \"LA\", \"ME\", \"MD\", \"MA\", \"MI\", \"MN\", \"MS\", \"MO\", \"MT\", \"NE\", \"NV\", \"NH\", \"NJ\", \"NM\", \"NY\", \"NC\", \"ND\", \"OH\", \"OK\", \"OR\", \"PA\", \"RI\", \"SC\", \"SD\", \"TN\", \"TX\", \"UT\", \"VT\", \"VA\", \"WA\", \"WV\", \"WI\", \"WY\", \"DC\")",
+    "albersStatesPie":"2-letter US state codes (same as USAStates — used for Albers pie maps)",
+    "USACounties":    "5-digit FIPS county codes (e.g. \"01001\" for Autauga AL, \"06037\" for Los Angeles CA, \"48113\" for Dallas TX)",
+    # Country sub-region values — use mapPropertyId in config to specify the matching feature property
+    "CAN":            "Canadian province/territory names — set mapPropertyId: \"prov_name_en\" in config (e.g. \"Alberta\", \"British Columbia\", \"Manitoba\", \"New Brunswick\", \"Newfoundland and Labrador\", \"Northwest Territories\", \"Nova Scotia\", \"Nunavut\", \"Ontario\", \"Prince Edward Island\", \"Quebec\", \"Saskatchewan\", \"Yukon\")",
+    "USA":            "2-letter US state codes (same as USAStates — e.g. \"CA\", \"TX\", \"NY\", \"FL\", \"WA\")",
+    "GBR":            "UK district/county HASC codes — set mapPropertyId: \"HASC_2\" in config (e.g. \"GB.BA\", \"GB.BN\", \"GB.BD\", \"GB.LN\", \"GB.KE\", \"GB.EX\" — 192 districts); or district names with mapPropertyId: \"NAME_2\"",
+    "AUS":            "Australian state/territory names — set mapPropertyId: \"STATE_NAME\" in config (e.g. \"New South Wales\", \"Victoria\", \"Queensland\", \"South Australia\", \"Western Australia\", \"Tasmania\", \"Northern Territory\", \"Australian Capital Territory\")",
+}
+
+
+def _map_id_column_hint(map_id: str) -> str:
+    """Return a hint string describing the expected ID values for the first column of a map dataset."""
+    hint = _MAP_ID_COLUMN_HINT.get(map_id)
+    if hint:
+        return hint
+    # For US 2-letter state codes used as map_id (e.g. "CA", "TX") — county-level maps
+    if len(map_id) == 2 and map_id.isupper():
+        return f"county names or FIPS codes within the state of {map_id}"
+    # For ISO 3-letter country codes not explicitly listed
+    if len(map_id) == 3 and map_id.isupper():
+        return (
+            f"feature property values from https://canvasxpress.org/data/maps/{map_id}.json"
+            f" — set mapPropertyId in config to specify which feature property to match against"
+        )
+    return "geographic ID codes matching the map's features"
 
 
 def detect_tier(
@@ -344,6 +485,90 @@ These are mandatory when the graph type is selected:
   Ridgeline: use ridgeBy (column name) instead of groupingFactors
   Spaghetti, TagCloud, WordCloud: must include colorBy
   KaplanMeier: xAxis = time column, yAxis = event/status column (0/1), use colorBy for grouping (treatment arms, etc.)
+  Map:       ALWAYS include mapId (REQUIRED — never omit it).
+             Infer mapId from the description using these rules:
+               World map / global         → "World"
+               World continents           → "WorldContinents"
+               Africa                     → "Africa"
+               Asia                       → "Asia"
+               Europe                     → "Europe"
+               North America              → "NorthAmerica"
+               South America              → "SouthAmerica"
+               Oceania / Pacific          → "Oceania"
+               US / United States (all)   → "USAStates"
+               US counties                → "USACounties"
+               Albers USA (explicit only)  → "albersStatesPie"
+                 Use ONLY when "Albers" projection is explicitly requested.
+                 Pie overlays work on ANY mapId — do NOT change mapId just because
+                 pie charts are requested.
+
+             PIE OVERLAYS — use decorations.pie for any map that shows pie charts
+             per region (e.g. "show party breakdown as pies", "pie for each state",
+             "pie chart per country"):
+               decorations.pie.smps   = [list of numeric columns for pie slices]
+               decorations.pie.colors = [one color per slice, optional]
+               decorations.pie.size   = 2.5 (float multiplier for pie size, optional)
+             sizeBy is a TOP-LEVEL config key (NOT inside decorations) — it is the column
+             name whose numeric values scale the pie/symbol size per region.
+             e.g. config = { "sizeBy": "Total", "decorations": { "pie": { "smps": [...] } } }
+             Do NOT put slice columns in xAxis — they belong only in decorations.pie.smps.
+             Pie overlays are independent of mapId and mapProjection.
+               Country by name or code    → ISO 3-letter code (Canada→"CAN", UK→"GBR",
+                                            Mexico→"MEX", France→"FRA", Germany→"DEU",
+                                            Australia→"AUS", Brazil→"BRA", India→"IND",
+                                            China→"CHN", Japan→"JPN", Spain→"ESP",
+                                            Italy→"ITA", Russia→"RUS", Argentina→"ARG")
+               US state by name or code   → 2-letter code (California→"CA", Texas→"TX",
+                                            New York→"NY", Florida→"FL", Washington→"WA")
+
+             MAP DATA FORMAT — when columns/headers are provided:
+             The FIRST column in the dataset is always the geographic ID column.
+             Its values identify map components (the "features") by their standard codes.
+             CanvasXpress automatically matches these IDs to the map geometry.
+             The remaining columns contain numeric values to display on the map.
+
+             ID column values by map type:
+               mapId="World" / continent regions
+                 → ISO 3-letter country codes: "ALB", "ARG", "ARM", "AUS", "AUT",
+                   "BEL", "BRA", "CAN", "CHE", "CHN", "DEU", "ESP", "FRA", "GBR",
+                   "IND", "ITA", "JPN", "KOR", "MEX", "NLD", "NOR", "POL", "PRT",
+                   "RUS", "SWE", "TUR", "UKR", "USA", "ZAF", etc.
+               mapId="WorldContinents"
+                 → Continent names: "Africa", "Asia", "Europe", "NorthAmerica",
+                   "Oceania", "SouthAmerica"
+               mapId="USAStates"
+                 → 2-letter US state FIPS codes: "AL", "AK", "AZ", "AR", "CA",
+                   "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+                   "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
+                   "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+                   "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+                   "VA", "WA", "WV", "WI", "WY", "DC"
+               mapId="USACounties"
+                 → 5-digit FIPS county codes: "01001", "06037", "48113", etc.
+               mapId=<country ISO3> (e.g. "CAN", "GBR", "AUS")
+                 → feature property values from the map file at
+                   https://canvasxpress.org/data/maps/<ISO3>.json
+                   Set mapPropertyId in config to specify which feature property to match.
+                   Canada (CAN) — use mapPropertyId: "prov_name_en"
+                     e.g. "Alberta", "British Columbia", "Manitoba", "New Brunswick",
+                          "Newfoundland and Labrador", "Northwest Territories", "Nova Scotia",
+                          "Nunavut", "Ontario", "Prince Edward Island", "Quebec",
+                          "Saskatchewan", "Yukon"
+                   Australia (AUS) — use mapPropertyId: "STATE_NAME"
+                     e.g. "New South Wales", "Victoria", "Queensland", "South Australia",
+                          "Western Australia", "Tasmania", "Northern Territory",
+                          "Australian Capital Territory"
+                   UK (GBR) — use mapPropertyId: "HASC_2" for 192 districts
+                     e.g. "GB.BA", "GB.BN", "GB.BD", "GB.LN", "GB.KE", "GB.EX"
+                     or mapPropertyId: "NAME_2" for district names
+               mapId=<US state code> (e.g. "CA", "TX", "NY")
+                 → County names or FIPS codes for that state's counties
+
+             IMPORTANT: Do NOT use the first column as xAxis, yAxis, or groupingFactors.
+             The ID column is consumed automatically by CanvasXpress map rendering.
+             Do NOT include xAxis, yAxis, or groupingFactors for Map charts.
+             For pie overlays: do NOT put slice columns in xAxis —
+             they belong only in decorations.pie.smps.
 
 ## STEP 4 — ASSIGN DATA COLUMNS TO PARAMETERS
 Using column names from the description or provided headers:
@@ -486,7 +711,30 @@ def generate_config(
 
     header_hint = ""
     if headers:
-        if column_types:
+        # Detect whether this is a Map chart so we can give the right column guidance
+        _detected_gt = detect_graph_type(description)
+        _is_map = _detected_gt == "Map"
+
+        if _is_map:
+            # For maps the first column is the geographic ID column; remaining columns are values.
+            _inferred_mid = _infer_map_id(description)
+            _id_hint = _map_id_column_hint(_inferred_mid) if _inferred_mid else "geographic ID codes"
+            _id_col  = headers[0]
+            _val_cols = headers[1:] if len(headers) > 1 else []
+            header_hint = (
+                f"\n\nThis is a Map chart. The dataset has these columns: {', '.join(headers)}."
+                f"\n   '{_id_col}' is the geographic ID column — its values must be {_id_hint}."
+            )
+            if _val_cols:
+                header_hint += (
+                    f"\n   The remaining columns ({', '.join(_val_cols)}) contain numeric values"
+                    f" to display on the map."
+                )
+            header_hint += (
+                "\n   Do NOT assign any of these columns to xAxis, yAxis, or groupingFactors."
+                "\n   The ID column is consumed automatically by CanvasXpress map rendering."
+            )
+        elif column_types:
             col_desc = ", ".join(
                 f"{col} ({column_types.get(col, 'unknown')})" for col in headers
             )
@@ -1082,6 +1330,7 @@ _PATH_TO_TOOL: dict[str, str] = {
     "/explain-r":      "explain_canvasxpress_r",
     "/explain-ggplot": "explain_ggplot_to_canvasxpress",
     "/minimal-params": "get_minimal_params",
+    "/map":            "create_map_config",
 }
 
 
@@ -1229,6 +1478,9 @@ _cors_middleware: list = [
         "All column references in the generated config are validated against the provided columns. "
         "Examples: 'clustered heatmap with RdBu colors', 'volcano plot with fold change on x-axis', "
         "'violin plot of gene expression by cell type', 'survival curve for two treatment groups'. "
+        "Also handles Map (choropleth) charts — include headers where the first column contains "
+        "geographic IDs (ISO-3 country codes for world maps, 2-letter state codes for US maps, etc.) "
+        "and remaining columns hold the values to display. "
         "Returns a validated JSON config object ready to pass to new CanvasXpress()."
     )
 )
@@ -1242,13 +1494,27 @@ def generate_canvasxpress_config(
     """
     Args:
         description: Plain English chart description.
+                     For Map charts, mention the geographic scope
+                     (e.g. 'world map', 'US states', 'map of Canada').
         headers: Optional list of column names from your dataset.
                  e.g. ["Gene", "Sample1", "Sample2", "Treatment"]
+                 For Map charts, the first column should be the geographic ID column
+                 (ISO-3 country codes for world maps, 2-letter state codes for US maps, etc.)
+                 and subsequent columns should contain numeric values to display.
+                 e.g. ["Country", "GDP", "Population"] for a world map
+                      ["State", "Sales", "Units"]     for a US states map
         data: Optional flat CSV-style array of arrays where the first row
               contains column headers and subsequent rows contain data values.
               e.g. [["Gene","Sample1","Treatment"],["BRCA1",1.2,"Control"]]
               When provided, headers are extracted from row 0 automatically.
               If both headers and data are provided, data takes precedence.
+              For Map charts, first-column values must be geographic ID codes:
+                World map:  ISO-3 codes like "ALB", "ARG", "AUS", "CAN", "FRA" ...
+                US States:  2-letter codes like "CA", "TX", "NY", "FL", "WA" ...
+                US Counties: 5-digit FIPS codes like "06037", "48113" ...
+                Country sub-regions: feature property values from
+                  https://canvasxpress.org/data/maps/<ISO3>.json —
+                  set mapPropertyId in config to specify the matching property.
         column_types: Optional dict mapping column name to type.
                       Valid types: "string", "numeric", "factor", "date".
                       e.g. {"Gene": "string", "Expression": "numeric", "Treatment": "factor"}
@@ -1327,6 +1593,15 @@ def generate_canvasxpress_config(
 
     graph_type = config.get("graphType", "unknown")
     log.info("Generated graphType: %s", graph_type)
+
+    # ── Map post-processing: ensure mapId is always set ─────────────────────
+    if graph_type == "Map" and not config.get("mapId"):
+        inferred = _infer_map_id(description)
+        if inferred:
+            config["mapId"] = inferred
+            log.info("Inferred mapId '%s' from description", inferred)
+        else:
+            log.warning("Map config missing mapId and could not infer from description: %s", description)
 
     # ── Validate column references ───────────────────────────────────────────
     if resolved_headers and config:
@@ -2532,6 +2807,335 @@ def get_minimal_parameters(graph_type: str) -> dict:
         "tip": "Use list_chart_types to see all valid graph types.",
     }
 
+
+# ---------------------------------------------------------------------------
+# ZIP code / location → lat/lng resolvers (free APIs, no key required)
+# ---------------------------------------------------------------------------
+
+def _zip_to_latlon(zipcode: str) -> tuple[float, float] | None:
+    """
+    Resolve a US ZIP code to (lat, lng) using the free zippopotam.us API.
+    Returns None on failure (bad ZIP, network error, etc.).
+    """
+    import urllib.request as _urlreq
+    import json as _json
+    zipcode = zipcode.strip().zfill(5)
+    url = f"https://api.zippopotam.us/us/{zipcode}"
+    try:
+        with _urlreq.urlopen(url, timeout=5) as resp:
+            data = _json.loads(resp.read())
+        place = data["places"][0]
+        return float(place["latitude"]), float(place["longitude"])
+    except Exception:
+        return None
+
+
+def _geocode_location(place: str) -> tuple[float, float] | None:
+    """
+    Geocode any city, address, or landmark worldwide using the free
+    Nominatim (OpenStreetMap) API.  Returns (lat, lng) or None on failure.
+    """
+    import urllib.request as _urlreq
+    import urllib.parse as _urlparse
+    import json as _json
+    url = ("https://nominatim.openstreetmap.org/search?"
+           + _urlparse.urlencode({"q": place.strip(), "format": "json", "limit": 1}))
+    req = _urlreq.Request(url, headers={"User-Agent": "canvasxpress-mcp/1.0"})
+    try:
+        with _urlreq.urlopen(req, timeout=5) as resp:
+            results = _json.loads(resp.read())
+        if results:
+            return float(results[0]["lat"]), float(results[0]["lon"])
+        return None
+    except Exception:
+        return None
+
+
+@mcp.tool(
+    description=(
+        "Generate a CanvasXpress map visualization config. "
+        "CanvasXpress supports world maps, continent maps, country maps, U.S. state maps, "
+        "and custom maps (via topoJSON). "
+        "Pass a map identifier to mapId: 'World', 'WorldContinents', 'Africa', 'Asia', "
+        "'Europe', 'NorthAmerica', 'SouthAmerica', 'Oceania', 'USAStates', 'USACounties', "
+        "a three-letter country code (e.g. 'USA', 'CAN', 'MEX', 'ARG', 'GBR'), "
+        "a two-letter U.S. state code (e.g. 'CA', 'NY', 'TX'), "
+        "or the full name of a country or U.S. state. "
+        "Optionally supply data to enrich the map — CanvasXpress automatically maps "
+        "the provided IDs to the corresponding geographic elements. "
+        "Optionally supply markers (lat/lng pins with labels, colors, and shapes) to annotate "
+        "specific locations on the map. "
+        "Supports pie chart overlays on map regions by passing decorations={'pie': {...}}, "
+        "and proportional sizing of regions/symbols via 'size_by'. "
+        "Returns a CanvasXpress JSON config ready to pass to new CanvasXpress()."
+    )
+)
+def create_map_config(
+    map_id: str,
+    data: list[list] | None = None,
+    title: str | None = None,
+    color_scheme: str | None = None,
+    markers: list[dict] | None = None,
+    color_by: str | None = None,
+    size_by: str | None = None,
+    decorations: dict | None = None,
+    topo_json: str | None = None,
+    legend_order: dict | None = None,
+) -> dict:
+    """
+    Args:
+        map_id:       Map identifier string. Examples:
+                      'World', 'WorldContinents', 'Africa', 'Asia', 'Europe',
+                      'NorthAmerica', 'SouthAmerica', 'Oceania',
+                      'USAStates', 'USACounties',
+                      three-letter country code ('USA', 'CAN', 'MEX', 'ARG', 'GBR'),
+                      two-letter U.S. state code ('CA', 'NY', 'TX', 'FL'),
+                      or the full name of a country or U.S. state.
+        data:         Optional CSV-style array of arrays (first row = column headers)
+                      to enrich the map with additional data.
+                      The FIRST data column must contain geographic ID codes that
+                      CanvasXpress uses to match rows to map features:
+                        map_id='World'        → ISO 3-letter country codes
+                                                 e.g. ["ALB","ARG","ARM","AUS","AUT",
+                                                        "BEL","BRA","CAN","CHN","DEU",
+                                                        "ESP","FRA","GBR","IND","ITA",
+                                                        "JPN","MEX","RUS","USA","ZAF"]
+                        map_id='WorldContinents' → continent names
+                                                 e.g. ["Africa","Asia","Europe",
+                                                        "NorthAmerica","Oceania","SouthAmerica"]
+                        map_id='USAStates'    → 2-letter US state codes
+                                                 e.g. ["AL","AK","AZ","AR","CA","CO",
+                                                        "CT","DE","FL","GA","HI","ID",
+                                                        "IL","IN","IA","KS","KY","LA",
+                                                        "ME","MD","MA","MI","MN","MO",
+                                                        "MS","MT","NE","NV","NH","NJ",
+                                                        "NM","NY","NC","ND","OH","OK",
+                                                        "OR","PA","RI","SC","SD","TN",
+                                                        "TX","UT","VT","VA","WA","WV",
+                                                        "WI","WY","DC"]
+                        map_id='USACounties'  → 5-digit FIPS county codes
+                                                 e.g. ["01001","06037","48113"]
+                        map_id=<country ISO3> → feature property values from the map file.
+                                                Use mapPropertyId in the config to specify
+                                                which feature property to match against.
+                          (e.g. 'CAN')  mapPropertyId: "prov_name_en"
+                                         e.g. ["Alberta","British Columbia","Manitoba",
+                                               "New Brunswick","Newfoundland and Labrador",
+                                               "Northwest Territories","Nova Scotia","Nunavut",
+                                               "Ontario","Prince Edward Island","Quebec",
+                                               "Saskatchewan","Yukon"]
+                          (e.g. 'AUS')  mapPropertyId: "STATE_NAME"
+                                         e.g. ["New South Wales","Victoria","Queensland",
+                                               "South Australia","Western Australia",
+                                               "Tasmania","Northern Territory",
+                                               "Australian Capital Territory"]
+                          (e.g. 'GBR')  mapPropertyId: "HASC_2" (192 districts)
+                                         e.g. ["GB.BA","GB.BN","GB.BD","GB.LN","GB.KE",...]
+                                         or mapPropertyId: "NAME_2" for district names.
+                                         See https://canvasxpress.org/data/maps/GBR.json
+                          Other ISO3    → check https://canvasxpress.org/data/maps/<ISO3>.json
+                        map_id=<US state code> → County FIPS codes or county names
+                      Remaining columns contain numeric values to visualize.
+                      e.g. [["Country","GDP","Population"],
+                             ["USA",21000,331],
+                             ["CAN",1800,38]]
+        title:        Optional chart title string.
+        color_scheme: Optional color palette name.
+                      e.g. 'Blues', 'RdBu', 'YlOrRd', 'Greens', 'Tableau'.
+        color_by:     Optional column name whose values color the map regions/symbols.
+                      e.g. 'Winner' to color states by election winner.
+        size_by:      Optional column name whose numeric values scale the size of each
+                      map symbol (relevant for pie or point maps).
+                      e.g. 'Total' to scale pie size by total votes.
+        decorations:  Optional dict of map decoration overlays, mirroring the CanvasXpress
+                      'decorations' config key.  Currently supports:
+                        'pie' (dict) — overlay pie charts on each map region.
+                          Keys:
+                            'smps'   (list[str], required) — columns that become pie slices.
+                            'colors' (list[str], optional) — one color per slice.
+                            'size'   (float, optional)     — size multiplier (default 2.5).
+                          When using pie overlays, set map_id to 'albersStatesPie' or another
+                          pie-capable map ID, and supply topo_json if needed.
+                      e.g. {'pie': {'smps': ['Democrat','Republican','Libertarian','Other'],
+                                    'colors': ['blue','red','yellow','green'],
+                                    'size': 2.5}}
+        topo_json:    Optional URL to a custom topoJSON file.
+                      e.g. 'https://www.canvasxpress.org/data/json/usa-albers-states.json'
+        legend_order: Optional dict mapping column names to an ordered list of values
+                      controlling legend display order.
+                      e.g. {'Winner': ['Republican', 'Democrat']}
+        markers:      Optional list of marker dicts to pin locations on the map.
+                      Each marker requires 'lat' and 'lng' (decimal degrees).
+                      Optional fields: 'label' (str), 'color' (str, default 'red'),
+                      'shape' ('teardrop'|'circle'|'star'|'square', default 'teardrop'),
+                      'size' (int 1-10, default 4).
+                      CanvasXpress uses coords: [lat, lng] format internally.
+                      Instead of 'lat'/'lng', you may pass:
+                        'zip'      — US ZIP code (resolved via zippopotam.us)
+                        'location' — any city, address, or landmark worldwide
+                                     (resolved via Nominatim/OpenStreetMap, free)
+                      e.g. [{'lat': 40.23, 'lng': -74.93, 'label': 'Newtown PA'},
+                             {'zip': '10001', 'label': 'New York, NY', 'color': 'blue'},
+                             {'location': 'Paris, France', 'label': 'Paris', 'color': 'green'},
+                             {'location': 'Tokyo', 'label': 'Tokyo', 'shape': 'circle'}]
+
+    Returns:
+        Dict with keys:
+          config       (dict) - CanvasXpress JSON config with graphType='Map' and mapId
+          valid        (bool) - True if the config is valid
+          warnings     (list) - any validation warnings
+          map_id       (str)  - the map identifier used
+          headers_used (list) - column headers from data (if provided)
+    """
+    map_id = map_id.strip() if map_id else ""
+    if not map_id:
+        return {
+            "config":       {},
+            "valid":        False,
+            "warnings":     ["'map_id' is required and cannot be empty."],
+            "map_id":       "",
+            "headers_used": [],
+        }
+
+    config: dict = {
+        "graphType": "Map",
+        "mapId":     map_id,
+    }
+
+    warnings: list[str] = []
+
+    if title and title.strip():
+        config["title"] = title.strip()
+
+    VALID_COLOR_SCHEMES = {
+        "YlGn", "YlGnBu", "GnBu", "BuGn", "PuBuGn", "PuBu", "BuPu", "RdPu", "PuRd",
+        "OrRd", "YlOrRd", "YlOrBr", "Purples", "Blues", "Greens", "Oranges", "Reds",
+        "Greys", "PuOr", "BrBG", "PRGn", "PiYG", "RdBu", "RdGy", "RdYlBu", "Spectral",
+        "RdYlGn", "Bootstrap", "Economist", "Excel", "GGPlot", "Solarized", "PaulTol",
+        "ColorBlind", "Tableau", "WallStreetJournal", "Stata", "BlackAndWhite", "CanvasXpress",
+    }
+    if color_scheme and color_scheme.strip():
+        cs = color_scheme.strip()
+        if cs not in VALID_COLOR_SCHEMES:
+            warnings.append(
+                f"Unknown colorScheme '{cs}'. "
+                f"Valid options: {', '.join(sorted(VALID_COLOR_SCHEMES))}"
+            )
+        config["colorScheme"] = cs
+
+    if color_by and color_by.strip():
+        config["colorBy"] = color_by.strip()
+
+    if size_by and size_by.strip():
+        config["sizeBy"] = size_by.strip()
+
+    if topo_json and topo_json.strip():
+        config["topoJSON"] = topo_json.strip()
+
+    if legend_order and isinstance(legend_order, dict):
+        config["legendOrder"] = legend_order
+
+    # Extract headers from data if provided
+    headers_used: list[str] = []
+    if data is not None:
+        try:
+            headers_used = extract_headers_from_data(data)
+        except ValueError as e:
+            return {
+                "config":       config,
+                "valid":        False,
+                "warnings":     [str(e)],
+                "map_id":       map_id,
+                "headers_used": [],
+            }
+
+    # Build decorations.marker array if markers were provided
+    if markers:
+        VALID_SHAPES = {"teardrop", "circle", "star", "square", "triangle", "diamond"}
+        marker_list = []
+        for i, m in enumerate(markers):
+            lat = m.get("lat")
+            lng = m.get("lng")
+            # Resolve US ZIP code if lat/lng not explicitly provided
+            if (lat is None or lng is None) and m.get("zip"):
+                resolved = _zip_to_latlon(str(m["zip"]))
+                if resolved is None:
+                    warnings.append(
+                        f"Marker {i}: could not resolve ZIP '{m['zip']}' to coordinates — skipped."
+                    )
+                    continue
+                lat, lng = resolved
+            # Resolve any city/place name worldwide via Nominatim
+            if (lat is None or lng is None) and m.get("location"):
+                resolved = _geocode_location(str(m["location"]))
+                if resolved is None:
+                    warnings.append(
+                        f"Marker {i}: could not geocode location '{m['location']}' — skipped."
+                    )
+                    continue
+                lat, lng = resolved
+            if lat is None or lng is None:
+                warnings.append(
+                    f"Marker {i}: missing 'lat'/'lng', 'zip', or 'location' — skipped."
+                )
+                continue
+            try:
+                lat = float(lat)
+                lng = float(lng)
+            except (TypeError, ValueError):
+                warnings.append(
+                    f"Marker {i}: 'lat' and 'lng' must be numeric — skipped."
+                )
+                continue
+            shape = m.get("shape", "teardrop")
+            if shape not in VALID_SHAPES:
+                warnings.append(
+                    f"Marker {i}: unknown shape '{shape}'. "
+                    f"Valid shapes: {', '.join(sorted(VALID_SHAPES))}. Defaulting to 'teardrop'."
+                )
+                shape = "teardrop"
+            entry: dict = {
+                "coords": [lat, lng],
+                "color":  m.get("color", "red"),
+                "shape":  shape,
+                "size":   int(m.get("size", 4)),
+            }
+            if m.get("label"):
+                entry["label"] = str(m["label"])
+            marker_list.append(entry)
+        if marker_list:
+            config["decorations"] = {"marker": marker_list}
+
+    # Build decorations.pie if supplied via the decorations parameter
+    if decorations and isinstance(decorations, dict):
+        pie = decorations.get("pie")
+        if pie and isinstance(pie, dict):
+            smps = pie.get("smps")
+            if not smps or not isinstance(smps, list):
+                warnings.append(
+                    "decorations.pie: 'smps' (list of column names) is required — skipped."
+                )
+            else:
+                pie_entry: dict = {"smps": smps}
+                if pie.get("colors") and isinstance(pie["colors"], list):
+                    pie_entry["colors"] = pie["colors"]
+                pie_entry["size"] = float(pie.get("size", 2.5))
+                # Merge into existing decorations dict (may already have 'marker')
+                if "decorations" not in config:
+                    config["decorations"] = {}
+                config["decorations"]["pie"] = [pie_entry]
+
+    log.info("Map config created: mapId=%s headers=%s markers=%d",
+             map_id, headers_used, len(markers) if markers else 0)
+    return {
+        "config":       config,
+        "valid":        len(warnings) == 0,
+        "warnings":     warnings,
+        "map_id":       map_id,
+        "headers_used": headers_used,
+    }
+
+
 # ---------------------------------------------------------------------------
 # HTML renderer — converts tool results to a display-ready HTML string
 # ---------------------------------------------------------------------------
@@ -2557,6 +3161,7 @@ _GT_EXAMPLE_SLUG: dict[str, str] = {
     "Violin": "violin", "Waterfall": "waterfall",
     # virtual types with hyphenated slug
     "KaplanMeier": "kaplan-meier",
+    "Map": "map",
     # virtual types with no dedicated page — fall back to underlying native type
     "Alluvial": "sankey", "Bin": "scatter2d", "Binplot": "scatter2d",
     "Bump": "scatter2d", "CDF": "scatter2d", "Cleveland": "dotplot",
@@ -2849,6 +3454,25 @@ def _result_to_html(result: dict, tool: str) -> str:
             _link("https://canvasxpress.org/parameters.html", "API reference"),
         ))
 
+    # ── map ──────────────────────────────────────────────────────────────────
+    elif tool == "map":
+        map_id = result.get("map_id", "")
+        config = result.get("config", {})
+        parts.append(f"<h3>Map Config: <code>{esc(map_id)}</code></h3>")
+        for w in result.get("warnings", []):
+            parts.append(f'<p class="cX-Chat-LLM-Error">{esc(w)}</p>')
+        parts.append(f"<pre><code>{esc(_json.dumps(config, indent=2))}</code></pre>")
+        headers_used = result.get("headers_used", [])
+        if headers_used:
+            parts.append(
+                f"<p><strong>Data columns:</strong> "
+                f"<span>{esc(', '.join(headers_used))}</span></p>"
+            )
+        parts.append(_footer(
+            _link("https://canvasxpress.org/examples/map-1.html", "Map examples"),
+            _link("https://canvasxpress.org/parameters.html", "API reference"),
+        ))
+
     parts.append("</div>")
     return {"content": "\n".join(parts)}
 
@@ -3105,6 +3729,7 @@ _UI_HTML = r"""<!DOCTYPE html>
   <div class="tab" data-tab="explain-r">Explain R</div>
   <div class="tab" data-tab="explain-ggplot">Explain ggplot</div>
   <div class="tab" data-tab="minimal-params">Minimal Params</div>
+  <div class="tab" data-tab="map">Map</div>
 </div>
 
 <!-- ── GENERATE ─────────────────────────────────────────────────────── -->
@@ -3235,6 +3860,21 @@ _UI_HTML = r"""<!DOCTYPE html>
   <label>Graph type <span>required</span><input type="text" id="mp-graph" placeholder="e.g. Scatter2D, Heatmap, KaplanMeier, BarLine"></label>
 </div>
 
+<!-- ── MAP ─────────────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-map">
+  <p class="hint">Create a CanvasXpress map visualization config. Supply a map identifier — world region, country code, or U.S. state code/name.</p>
+  <div class="section-label">Required</div>
+  <label>Map ID <span>world region, country code, or state code/name</span>
+    <input type="text" id="map-id" placeholder="e.g. World, USAStates, USA, CAN, CA, Texas, Europe">
+  </label>
+  <div class="section-label">Optional</div>
+  <label>Title<input type="text" id="map-title" placeholder="e.g. COVID-19 Cases by State"></label>
+  <label>Color scheme<input type="text" id="map-scheme" placeholder="e.g. Blues, YlOrRd, RdBu"></label>
+  <label>Data <span>JSON array of arrays — first row is headers</span>
+    <textarea id="map-data" placeholder='[["State","Value"],["CA",42],["NY",38]]'></textarea>
+  </label>
+</div>
+
 <!-- ── Actions + URL + Result ───────────────────────────────────────── -->
 <div class="actions">
   <button class="btn-primary" onclick="submit()">&#9654; Run</button>
@@ -3313,6 +3953,12 @@ function buildUrl() {
   } else if (activeTab==='minimal-params') {
     url+='minimal-params';
     if(v('mp-graph')) p.set('graph_type',v('mp-graph'));
+  } else if (activeTab==='map') {
+    url+='map';
+    if(v('map-id'))     p.set('map_id',      v('map-id'));
+    if(v('map-title'))  p.set('title',        v('map-title'));
+    if(v('map-scheme')) p.set('color_scheme', v('map-scheme'));
+    if(v('map-data'))   p.set('data',         v('map-data'));
   }
   var qs=p.toString(); url=qs?url+'?'+qs:url;
   document.getElementById('url-box').textContent=url;
@@ -3324,7 +3970,8 @@ function buildUrl() {
  'km-desc','km-headers','km-data','km-config','km-temp',
  'p-graph','p-param','ax-graph',
  'sel-intent','sel-types','sel-data','sel-nsamples',
- 'ex-prop','mp-graph'].forEach(function(id){
+ 'ex-prop','mp-graph',
+ 'map-id','map-title','map-scheme','map-data'].forEach(function(id){
   var el=document.getElementById(id);
   if(el) el.addEventListener('input',buildUrl);
 });
@@ -3349,7 +3996,8 @@ var TITLE_MAP={
   'generate':'Generated Config','modify':'Modified Config','km':'KM Config',
   'params':'Parameter Schema','axes':'Axis Info','select':'Chart Recommendation',
   'explain':'Property Explanation','explain-r':'R Guide',
-  'explain-ggplot':'ggplot2 Guide','minimal-params':'Minimal Parameters'
+  'explain-ggplot':'ggplot2 Guide','minimal-params':'Minimal Parameters',
+  'map':'Map Config'
 };
 
 async function submit(){
@@ -3369,7 +4017,7 @@ async function submit(){
       metaEl.innerHTML='<span class="badge invalid">Error '+resp.status+'</span>';
       preEl.textContent=data.error; return;
     }
-    if(['generate','modify','km'].indexOf(activeTab)!==-1){
+    if(['generate','modify','km','map'].indexOf(activeTab)!==-1){
       var cfg=data.config||{}, valid=data.valid, warns=data.warnings||[], errs=data.errors||[];
       var badge=(valid&&!errs.length)?'<span class="badge valid">\u2713 valid</span>':'<span class="badge invalid">\u2717 issues</span>';
       var gt=cfg.graphType||'?', hdr=(data.headers_used||[]).join(', ')||'\u2014';
@@ -3418,7 +4066,8 @@ async function submit(){
     'km-config':'config','km-temp':'temperature','p-graph':'graph_type',
     'p-param':'param_name','ax-graph':'graph_type','sel-intent':'intent',
     'sel-types':'column_types','sel-nsamples':'n_samples','ex-prop':'property',
-    'mp-graph':'graph_type'};
+    'mp-graph':'graph_type',
+    'map-id':'map_id','map-title':'title','map-scheme':'color_scheme','map-data':'data'};
   Object.keys(map).forEach(function(id){
     var val=p.get(map[id]), el=document.getElementById(id);
     if(val&&el) el.value=val;
@@ -3826,6 +4475,76 @@ async def rest_minimal_params(request: Request) -> Response:
         return _cx_response({"error": str(exc), "success": False}, cx, 500)
     result["html"] = _result_to_html(result, "minimal-params")
     return _cx_response(result, cx)
+
+@mcp.custom_route("/map", methods=["GET", "POST"])
+async def rest_map(request: Request) -> Response:
+    """
+    REST / JSONP endpoint for create_map_config.
+
+    GET  /map?map_id=World&title=World+Map&color_scheme=Blues
+    POST /map   (JSON body with same keys)
+
+    Query / body parameters:
+      map_id        (str, required) — map identifier e.g. 'World', 'USAStates', 'USA', 'CA'.
+      data          (str)           — optional JSON array of arrays (first row = headers).
+      title         (str)           — optional chart title.
+      color_scheme  (str)           — optional color palette name.
+      callback      (str)           — JSONP callback name.
+      target        (str)           — CanvasXpress chart target ID (passed through).
+      client_id     (str)           — CanvasXpress client ID (passed through).
+    """
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
+
+    map_id = (p.get("map_id") or "").strip()
+    if not map_id:
+        return _cx_response({"error": "'map_id' is required", "success": False}, cx, 400)
+
+    kwargs: dict = {"map_id": map_id}
+    if p.get("title", "").strip():
+        kwargs["title"] = p["title"].strip()
+    if p.get("color_scheme", "").strip():
+        kwargs["color_scheme"] = p["color_scheme"].strip()
+
+    raw_data = p.get("data")
+    if raw_data:
+        try:
+            kwargs["data"] = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+        except Exception as exc:
+            return _cx_response(
+                {"error": f"Could not parse 'data': {exc}", "success": False}, cx, 400
+            )
+
+    raw_markers = p.get("markers")
+    if raw_markers:
+        try:
+            kwargs["markers"] = json.loads(raw_markers) if isinstance(raw_markers, str) else raw_markers
+        except Exception as exc:
+            return _cx_response(
+                {"error": f"Could not parse 'markers': {exc}", "success": False}, cx, 400
+            )
+
+    try:
+        result = create_map_config(**kwargs)
+    except Exception as exc:
+        log.exception("REST /map error")
+        return _cx_response({
+            "config": {}, "valid": False, "success": False,
+            "warnings": ["Could not generate map configuration: " + str(exc)],
+            "map_id": map_id, "headers_used": [],
+        }, cx, 200)
+
+    result["html"] = _result_to_html(result, "map")
+    return _cx_response(result, cx)
+
 
 @mcp.custom_route("/feedback", methods=["GET", "POST"])
 async def rest_feedback(request: Request) -> Response:

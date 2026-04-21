@@ -915,7 +915,8 @@ def filter_unknown_params(config: dict) -> tuple[dict, list[str]]:
         # Kaplan-Meier
         "kmPvalue", "kmRiskTable", "showKMConfidenceIntervals", "showKMMedianSurvivalTime",
         # Map
-        "mapProjection", "mapColor", "mapGraticuleShow", "useLeaflet",
+        "mapId", "mapPropertyId", "mapProjection", "mapColor", "mapGraticuleShow", "useLeaflet",
+        "topoJSON", "legendOrder", "sizeBy",
         # Streamgraph
         "scatterStreamType",
         # Faceting and Pivoting

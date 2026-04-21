@@ -16,9 +16,18 @@ Usage:
     python test_client.py --modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart and switch to dark theme"
     python test_client.py --modify '{"graphType":"Heatmap","xAxis":["Gene"]}' "change colorScheme to Spectral"
 
+    # Create a map config (via MCP tool)
+    python test_client.py --map World
+    python test_client.py --map USAStates --title "Sales by State" --color-scheme Blues
+    python test_client.py --map USA
+    python test_client.py --map Europe --title "EU Revenue"
+    python test_client.py --map CA --title "California Counties"
+
     # REST endpoint (plain HTTP GET — no MCP protocol)
     python test_client.py --rest generate "Violin plot" "Gene,Expr,CellType" '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
     python test_client.py --rest modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
+    python test_client.py --rest map World
+    python test_client.py --rest map USAStates --title "Sales by State" --color-scheme Blues
     python test_client.py --rest generate "Bar chart" --target myCanvas      # echoes target in response
     python test_client.py --rest generate "Bar chart" --callback renderChart  # JSONP response
     python test_client.py --rest generate "Bar chart" --client-id req-1 --callback renderChart
@@ -103,6 +112,132 @@ GENERATE_EXAMPLES = [
         "description": "Sankey diagram showing patient flow from diagnosis through treatment to outcome",
         "headers": ["Diagnosis", "Treatment", "Outcome"],
         "column_types": {"Diagnosis": "factor", "Treatment": "factor", "Outcome": "factor"},
+    },
+]
+
+MAP_EXAMPLES = [
+    {
+        "label": "World map",
+        "map_id": "World",
+        "title": "Global Overview",
+        "color_scheme": "Blues",
+    },
+    {
+        "label": "World continents",
+        "map_id": "WorldContinents",
+        "title": "World Continents",
+    },
+    {
+        "label": "USA States",
+        "map_id": "USAStates",
+        "title": "Sales by State",
+        "color_scheme": "YlOrRd",
+        "data": [
+            ["State", "Value"],
+            ["CA", 120], ["NY", 98], ["TX", 87], ["FL", 74], ["WA", 55],
+        ],
+    },
+    {
+        "label": "USA Counties",
+        "map_id": "USACounties",
+        "title": "County-level Data",
+    },
+    {
+        "label": "Country code (USA)",
+        "map_id": "USA",
+        "title": "United States",
+        "color_scheme": "Greens",
+    },
+    {
+        "label": "Country code (CAN)",
+        "map_id": "CAN",
+        "title": "Canada",
+    },
+    {
+        "label": "Country name (Mexico)",
+        "map_id": "Mexico",
+        "title": "Mexico",
+        "color_scheme": "Oranges",
+    },
+    {
+        "label": "Continent (Europe)",
+        "map_id": "Europe",
+        "title": "European Map",
+        "color_scheme": "Tableau",
+    },
+    {
+        "label": "US State code (CA)",
+        "map_id": "CA",
+        "title": "California",
+    },
+    {
+        "label": "US State name (Texas)",
+        "map_id": "Texas",
+        "title": "Texas",
+        "color_scheme": "Reds",
+    },
+]
+
+MAP_EXAMPLES = [
+    {
+        "label": "World map",
+        "map_id": "World",
+        "title": "Global Overview",
+        "color_scheme": "Blues",
+    },
+    {
+        "label": "World continents",
+        "map_id": "WorldContinents",
+        "title": "World Continents",
+    },
+    {
+        "label": "USA States",
+        "map_id": "USAStates",
+        "title": "Sales by State",
+        "color_scheme": "YlOrRd",
+        "data": [
+            ["State", "Value"],
+            ["CA", 120], ["NY", 98], ["TX", 87], ["FL", 74], ["WA", 55],
+        ],
+    },
+    {
+        "label": "USA Counties",
+        "map_id": "USACounties",
+        "title": "County-level Data",
+    },
+    {
+        "label": "Country code (USA)",
+        "map_id": "USA",
+        "title": "United States",
+        "color_scheme": "Greens",
+    },
+    {
+        "label": "Country code (CAN)",
+        "map_id": "CAN",
+        "title": "Canada",
+    },
+    {
+        "label": "Country name (Mexico)",
+        "map_id": "Mexico",
+        "title": "Mexico",
+        "color_scheme": "Oranges",
+    },
+    {
+        "label": "Continent (Europe)",
+        "map_id": "Europe",
+        "title": "European Map",
+        "color_scheme": "Tableau",
+    },
+    {
+        "label": "US State code (CA)",
+        "map_id": "CA",
+        "title": "California",
+    },
+    {
+        "label": "US State name (Texas)",
+        "map_id": "Texas",
+        "title": "Texas",
+        "color_scheme": "Reds",
     },
 ]
 
@@ -245,6 +380,28 @@ def modify_config(config, instruction, headers=None, data=None, column_types=Non
         return _call_tool(client, sid, "modify_canvasxpress_config", args)
 
 
+def map_config(map_id, title=None, color_scheme=None, data=None):
+    with _make_client() as client:
+        sid = _connect(client)
+        print(f"Connected  : {MCP_URL}")
+        args = {"map_id": map_id}
+        if title:        args["title"]        = title
+        if color_scheme: args["color_scheme"] = color_scheme
+        if data:         args["data"]         = data
+        return _call_tool(client, sid, "create_map_config", args)
+
+
+def map_config(map_id, title=None, color_scheme=None, data=None):
+    with _make_client() as client:
+        sid = _connect(client)
+        print(f"Connected  : {MCP_URL}")
+        args = {"map_id": map_id}
+        if title:        args["title"]        = title
+        if color_scheme: args["color_scheme"] = color_scheme
+        if data:         args["data"]         = data
+        return _call_tool(client, sid, "create_map_config", args)
+
+
 def _print_generate_result(response):
     if response.get("headers_used"):
         print(f"Headers used : {', '.join(response['headers_used'])}")
@@ -279,6 +436,36 @@ def _print_modify_result(original, response, instruction):
     else:
         print("⚠️  Column reference warnings:")
         for w in response["warnings"]:
+            print(f"   • {w}")
+
+
+def _print_map_result(response):
+    print(f"Map ID       : {response.get('map_id', '?')}")
+    if response.get("headers_used"):
+        print(f"Data columns : {', '.join(response['headers_used'])}")
+    print(f"\n── Config {SEP}")
+    print(json.dumps(response["config"], indent=2))
+    print(f"\n── Validation {SEP}")
+    if response.get("valid", True):
+        print("✅ Config is valid")
+    else:
+        print("⚠️  Warnings:")
+        for w in response.get("warnings", []):
+            print(f"   • {w}")
+
+
+def _print_map_result(response):
+    print(f"Map ID       : {response.get('map_id', '?')}")
+    if response.get("headers_used"):
+        print(f"Data columns : {', '.join(response['headers_used'])}")
+    print(f"\n── Config {SEP}")
+    print(json.dumps(response["config"], indent=2))
+    print(f"\n── Validation {SEP}")
+    if response.get("valid", True):
+        print("✅ Config is valid")
+    else:
+        print("⚠️  Warnings:")
+        for w in response.get("warnings", []):
             print(f"   • {w}")
 
 
@@ -327,6 +514,46 @@ def run_examples():
         except Exception as e:
             print(f"  ❌ Error: {e}")
         if i < len(MODIFY_EXAMPLES):
+            print(f"\n{SEP}")
+    print(f"\n\n{SEP}\n  MAP EXAMPLES\n{SEP}")
+    for i, ex in enumerate(MAP_EXAMPLES, 1):
+        print(f"\n[{i}/{len(MAP_EXAMPLES)}] {ex['label']}")
+        print(f"  Map ID      : {ex['map_id']}")
+        if ex.get("title"):        print(f"  Title       : {ex['title']}")
+        if ex.get("color_scheme"): print(f"  ColorScheme : {ex['color_scheme']}")
+        if ex.get("data"):         print(f"  Data        : {len(ex['data'])-1} rows")
+        print()
+        try:
+            response = map_config(
+                map_id=ex["map_id"],
+                title=ex.get("title"),
+                color_scheme=ex.get("color_scheme"),
+                data=ex.get("data"),
+            )
+            _print_map_result(response)
+        except Exception as e:
+            print(f"  ❌ Error: {e}")
+        if i < len(MAP_EXAMPLES):
+            print(f"\n{SEP}")
+    print(f"\n\n{SEP}\n  MAP EXAMPLES\n{SEP}")
+    for i, ex in enumerate(MAP_EXAMPLES, 1):
+        print(f"\n[{i}/{len(MAP_EXAMPLES)}] {ex['label']}")
+        print(f"  Map ID      : {ex['map_id']}")
+        if ex.get("title"):        print(f"  Title       : {ex['title']}")
+        if ex.get("color_scheme"): print(f"  ColorScheme : {ex['color_scheme']}")
+        if ex.get("data"):         print(f"  Data        : {len(ex['data'])-1} rows")
+        print()
+        try:
+            response = map_config(
+                map_id=ex["map_id"],
+                title=ex.get("title"),
+                color_scheme=ex.get("color_scheme"),
+                data=ex.get("data"),
+            )
+            _print_map_result(response)
+        except Exception as e:
+            print(f"  ❌ Error: {e}")
+        if i < len(MAP_EXAMPLES):
             print(f"\n{SEP}")
 
     print(f"\n{SEP2}\n")
@@ -396,13 +623,97 @@ def main():
                 print(f"── JSONP response {'─'*40}\n{r.text}")
             else:
                 _print_modify_result(json.loads(rest_args[0]), r.json(), rest_args[1])
+
+        elif sub_cmd == "map":
+            if not rest_args:
+                print("Missing map_id", file=sys.stderr); sys.exit(1)
+            params["map_id"] = rest_args[0]
+            # Scan remaining rest_args for --title / --color-scheme flags
+            j = 1
+            while j < len(rest_args):
+                if rest_args[j] == "--title" and j + 1 < len(rest_args):
+                    params["title"] = rest_args[j + 1]; j += 2
+                elif rest_args[j] == "--color-scheme" and j + 1 < len(rest_args):
+                    params["color_scheme"] = rest_args[j + 1]; j += 2
+                elif rest_args[j].startswith("["):
+                    params["data"] = rest_args[j]; j += 1
+                else:
+                    j += 1
+            url = REST_URL + "/map"
+            print(f"GET {url}?{'&'.join(f'{k}={v}' for k, v in params.items())}\n")
+            r = httpx.get(url, params=params, timeout=30)
+            if callback:
+                print(f"── JSONP response {'─'*40}\n{r.text}")
+            else:
+                _print_map_result(r.json())
+
         else:
-            print(f"Unknown sub-command '{sub_cmd}'. Use: generate | modify", file=sys.stderr)
+            print(f"Unknown sub-command '{sub_cmd}'. Use: generate | modify | map", file=sys.stderr)
             sys.exit(1)
         return
 
     if args and args[0] == "--examples":
         run_examples()
+        return
+
+    if args and args[0] == "--map":
+        if len(args) < 2:
+            print("Usage: python test_client.py --map <map_id> [--title <title>] [--color-scheme <scheme>]", file=sys.stderr)
+            sys.exit(1)
+        map_id = args[1]
+        title = color_scheme = data = None
+        i = 2
+        while i < len(args):
+            if args[i] == "--title" and i + 1 < len(args):
+                title = args[i + 1]; i += 2
+            elif args[i] == "--color-scheme" and i + 1 < len(args):
+                color_scheme = args[i + 1]; i += 2
+            elif args[i].startswith("["):
+                data = json.loads(args[i]); i += 1
+            else:
+                i += 1
+        print(f"Tool         : create_map_config")
+        print(f"Map ID       : {map_id}")
+        if title:        print(f"Title        : {title}")
+        if color_scheme: print(f"Color scheme : {color_scheme}")
+        if data:         print(f"Data rows    : {len(data)-1}")
+        print()
+        try:
+            response = map_config(map_id, title=title, color_scheme=color_scheme, data=data)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        _print_map_result(response)
+        return
+
+    if args and args[0] == "--map":
+        if len(args) < 2:
+            print("Usage: python test_client.py --map <map_id> [--title <title>] [--color-scheme <scheme>]", file=sys.stderr)
+            sys.exit(1)
+        map_id = args[1]
+        title = color_scheme = data = None
+        i = 2
+        while i < len(args):
+            if args[i] == "--title" and i + 1 < len(args):
+                title = args[i + 1]; i += 2
+            elif args[i] == "--color-scheme" and i + 1 < len(args):
+                color_scheme = args[i + 1]; i += 2
+            elif args[i].startswith("["):
+                data = json.loads(args[i]); i += 1
+            else:
+                i += 1
+        print(f"Tool         : create_map_config")
+        print(f"Map ID       : {map_id}")
+        if title:        print(f"Title        : {title}")
+        if color_scheme: print(f"Color scheme : {color_scheme}")
+        if data:         print(f"Data rows    : {len(data)-1}")
+        print()
+        try:
+            response = map_config(map_id, title=title, color_scheme=color_scheme, data=data)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        _print_map_result(response)
         return
 
     if args and args[0] == "--modify":

@@ -15,9 +15,18 @@
  *   node test_client.mjs --modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
  *   node test_client.mjs --modify '{"graphType":"Heatmap","xAxis":["Gene"]}' "change colorScheme to Spectral"
  *
+ *   # Create a map config (via MCP tool)
+ *   node test_client.mjs --map World
+ *   node test_client.mjs --map USAStates --title "Sales by State" --color-scheme Blues
+ *   node test_client.mjs --map USA
+ *   node test_client.mjs --map Europe --title "EU Revenue"
+ *   node test_client.mjs --map CA --title "California Counties"
+ *
  *   # REST endpoint (plain HTTP GET — no MCP protocol)
  *   node test_client.mjs --rest generate "Violin plot" "Gene,Expr,CellType" '{"Gene":"string","Expr":"numeric","CellType":"factor"}'
  *   node test_client.mjs --rest modify '{"graphType":"Bar","xAxis":["Gene"]}' "add a title My Chart"
+ *   node test_client.mjs --rest map World
+ *   node test_client.mjs --rest map USAStates --title "Sales by State" --color-scheme Blues
  *   node test_client.mjs --rest generate "Bar chart" --target myCanvas       # echoes target in response
  *   node test_client.mjs --rest generate "Bar chart" --callback renderChart  # JSONP response
  *   node test_client.mjs --rest generate "Bar chart" --client-id req-1 --callback renderChart
@@ -105,6 +114,22 @@ const GENERATE_EXAMPLES = [
     headers: ["Diagnosis", "Treatment", "Outcome"],
     columnTypes: { Diagnosis: "factor", Treatment: "factor", Outcome: "factor" },
   },
+];
+
+const MAP_EXAMPLES = [
+  { label: "World map",        mapId: "World",          title: "Global Overview",    colorScheme: "Blues"   },
+  { label: "World continents", mapId: "WorldContinents", title: "World Continents"                          },
+  {
+    label: "USA States", mapId: "USAStates", title: "Sales by State", colorScheme: "YlOrRd",
+    data: [["State","Value"],["CA",120],["NY",98],["TX",87],["FL",74],["WA",55]],
+  },
+  { label: "USA Counties",       mapId: "USACounties", title: "County-level Data"                         },
+  { label: "Country code (USA)", mapId: "USA",         title: "United States",       colorScheme: "Greens" },
+  { label: "Country code (CAN)", mapId: "CAN",         title: "Canada"                                    },
+  { label: "Country name",       mapId: "Mexico",      title: "Mexico",              colorScheme: "Oranges"},
+  { label: "Continent (Europe)", mapId: "Europe",      title: "European Map",        colorScheme: "Tableau"},
+  { label: "US State code (CA)", mapId: "CA",          title: "California"                                },
+  { label: "US State name",      mapId: "Texas",       title: "Texas",              colorScheme: "Reds"   },
 ];
 
 const MODIFY_EXAMPLES = [
@@ -209,6 +234,21 @@ function printModifyResult(original, response, instruction) {
   }
 }
 
+function printMapResult(response) {
+  console.log(`Map ID       : ${response.map_id ?? "?"}`);
+  if (response.headers_used?.length)
+    console.log(`Data columns : ${response.headers_used.join(", ")}`);
+  console.log(`\n── Config ${SEP}`);
+  console.log(JSON.stringify(response.config, null, 2));
+  console.log(`\n── Validation ${SEP}`);
+  if (response.valid ?? true) {
+    console.log("✅ Config is valid");
+  } else {
+    console.log("⚠️  Warnings:");
+    (response.warnings || []).forEach(w => console.log(`   • ${w}`));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // --examples mode
 // ---------------------------------------------------------------------------
@@ -259,6 +299,28 @@ async function runExamples() {
       console.log(`  ❌ Error: ${e.message}`);
     }
     if (i < MODIFY_EXAMPLES.length - 1) console.log(`\n${SEP}`);
+  }
+
+  console.log(`\n\n${SEP}\n  MAP EXAMPLES\n${SEP}`);
+  for (let i = 0; i < MAP_EXAMPLES.length; i++) {
+    const ex = MAP_EXAMPLES[i];
+    console.log(`\n[${i+1}/${MAP_EXAMPLES.length}] ${ex.label}`);
+    console.log(`  Map ID      : ${ex.mapId}`);
+    if (ex.title)       console.log(`  Title       : ${ex.title}`);
+    if (ex.colorScheme) console.log(`  ColorScheme : ${ex.colorScheme}`);
+    if (ex.data)        console.log(`  Data        : ${ex.data.length - 1} rows`);
+    console.log();
+    try {
+      const toolArgs = { map_id: ex.mapId };
+      if (ex.title)       toolArgs.title        = ex.title;
+      if (ex.colorScheme) toolArgs.color_scheme = ex.colorScheme;
+      if (ex.data)        toolArgs.data         = ex.data;
+      const response = await callTool("create_map_config", toolArgs);
+      printMapResult(response);
+    } catch (e) {
+      console.log(`  ❌ Error: ${e.message}`);
+    }
+    if (i < MAP_EXAMPLES.length - 1) console.log(`\n${SEP}`);
   }
 
   console.log(`\n${SEP2}\n`);
@@ -327,8 +389,24 @@ async function main() {
       if (callback) { console.log(`── JSONP response ${SEP}\n${body}`); }
       else          { printModifyResult(JSON.parse(restArgs[0]), JSON.parse(body), restArgs[1]); }
 
+    } else if (subCmd === "map") {
+      if (!restArgs[0]) { console.error("Missing map_id"); process.exit(1); }
+      params.set("map_id", restArgs[0]);
+      // Parse --title / --color-scheme from remaining restArgs
+      for (let i = 1; i < restArgs.length; i++) {
+        if (restArgs[i] === "--title" && restArgs[i+1])        { params.set("title",        restArgs[++i]); }
+        else if (restArgs[i] === "--color-scheme" && restArgs[i+1]) { params.set("color_scheme", restArgs[++i]); }
+        else if (restArgs[i].startsWith("["))                  { params.set("data",         restArgs[i]);   }
+      }
+      const url = `${REST_URL}/map?${params}`;
+      console.log(`GET ${url}\n`);
+      const res  = await fetch(url);
+      const body = await res.text();
+      if (callback) { console.log(`── JSONP response ${SEP}\n${body}`); }
+      else          { printMapResult(JSON.parse(body)); }
+
     } else {
-      console.error(`Unknown sub-command '${subCmd}'. Use: generate | modify`);
+      console.error(`Unknown sub-command '${subCmd}'. Use: generate | modify | map`);
       process.exit(1);
     }
     return;
@@ -336,6 +414,33 @@ async function main() {
 
   if (args[0] === "--examples") {
     await runExamples();
+    return;
+  }
+
+  if (args[0] === "--map") {
+    if (args.length < 2) {
+      console.error("Usage: node test_client.mjs --map <map_id> [--title <title>] [--color-scheme <scheme>]");
+      process.exit(1);
+    }
+    const mapId = args[1];
+    let title = null, colorScheme = null, data = null;
+    for (let i = 2; i < args.length; i++) {
+      if (args[i] === "--title" && args[i+1])        { title       = args[++i]; }
+      else if (args[i] === "--color-scheme" && args[i+1]) { colorScheme = args[++i]; }
+      else if (args[i].startsWith("["))              { data        = JSON.parse(args[i]); }
+    }
+    console.log(`Tool         : create_map_config`);
+    console.log(`Map ID       : ${mapId}`);
+    if (title)       console.log(`Title        : ${title}`);
+    if (colorScheme) console.log(`Color scheme : ${colorScheme}`);
+    if (data)        console.log(`Data rows    : ${data.length - 1}`);
+    console.log();
+    const toolArgs = { map_id: mapId };
+    if (title)       toolArgs.title        = title;
+    if (colorScheme) toolArgs.color_scheme = colorScheme;
+    if (data)        toolArgs.data         = data;
+    const response = await callTool("create_map_config", toolArgs);
+    printMapResult(response);
     return;
   }
 
