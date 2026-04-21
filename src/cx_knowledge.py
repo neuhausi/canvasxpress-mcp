@@ -917,6 +917,8 @@ def filter_unknown_params(config: dict) -> tuple[dict, list[str]]:
         # Map
         "mapId", "mapPropertyId", "mapProjection", "mapColor", "mapGraticuleShow", "useLeaflet",
         "topoJSON", "legendOrder", "sizeBy",
+        # Server-side processing keys (removed before returning to CanvasXpress)
+        "_markers_to_geocode",
         # Streamgraph
         "scatterStreamType",
         # Faceting and Pivoting

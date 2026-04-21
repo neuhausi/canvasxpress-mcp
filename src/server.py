@@ -570,6 +570,24 @@ These are mandatory when the graph type is selected:
              For pie overlays: do NOT put slice columns in xAxis —
              they belong only in decorations.pie.smps.
 
+             MARKER PINS — when the description mentions specific places, landmarks,
+             addresses, ZIP codes, or any named locations to mark on the map, output
+             a "_markers_to_geocode" key at the top level of the config (NOT inside
+             decorations). Each item in the array must use ONE of:
+               {"location": "place name, city, or address", "label": "display label"}
+               {"zip": "US ZIP code", "label": "display label"}
+             Add optional "color" (default "red") and "shape"
+             ("teardrop"|"circle"|"star"|"square", default "teardrop").
+             Use "location" for any named place, city, landmark, or address worldwide.
+             Use "zip" for US ZIP codes (5 digits).
+             Do NOT guess or fabricate lat/lng coordinates — the server will geocode them.
+             Example for "markers at the Eiffel Tower, Big Ben, and ZIP 10001":
+               "_markers_to_geocode": [
+                 {"location": "Eiffel Tower, Paris", "label": "Eiffel Tower", "color": "red"},
+                 {"location": "Big Ben, London",      "label": "Big Ben",      "color": "blue"},
+                 {"zip": "10001",                     "label": "10001",        "color": "green"}
+               ]
+
 ## STEP 4 — ASSIGN DATA COLUMNS TO PARAMETERS
 Using column names from the description or provided headers:
   groupingFactors : factor/categorical columns for grouping and colouring (1D charts)
@@ -643,6 +661,9 @@ Examples of hallucinated names to NEVER use:
   showRegressionEllipse, showEllipse, ellipseShow, showGroupEllipses — use ellipseBy instead.
   yAxisTitle on 1D charts — use smpTitle instead.
   yAxis on single-dimensional or combined charts — never valid.
+EXCEPTION — "_markers_to_geocode" is a valid server-side processing key (NOT a CX parameter).
+  Include it whenever a Map description mentions named places, landmarks, addresses, or ZIP codes.
+  It will be removed from the config before sending to CanvasXpress.
 
 ## STEP 9 — VALIDATE
 Ensure graphType and all required axis parameters are present.
@@ -1603,6 +1624,52 @@ def generate_canvasxpress_config(
         else:
             log.warning("Map config missing mapId and could not infer from description: %s", description)
 
+    # ── Map post-processing: geocode _markers_to_geocode if LLM emitted them ─
+    _geocode_warnings: list[str] = []
+    raw_markers = config.pop("_markers_to_geocode", None)
+    if graph_type == "Map" and raw_markers and isinstance(raw_markers, list):
+        log.info("Geocoding %d marker(s) from _markers_to_geocode", len(raw_markers))
+        map_result = create_map_config(
+            map_id=config.get("mapId", "World"),
+            markers=raw_markers,
+        )
+        geocoded_decos = map_result.get("config", {}).get("decorations")
+        if geocoded_decos:
+            # Merge with any existing decorations (e.g. pie) from the LLM config
+            existing = config.get("decorations", {})
+            if isinstance(existing, dict):
+                existing.update(geocoded_decos)
+            else:
+                existing = geocoded_decos
+            config["decorations"] = existing
+            log.info("Added %d geocoded marker(s) to config", len(geocoded_decos.get("marker", [])))
+        if map_result.get("warnings"):
+            _geocode_warnings = map_result["warnings"]
+            log.warning("Geocoding warnings: %s", _geocode_warnings)
+
+    # ── KaplanMeier post-processing: fix colorBy type + fill missing axes ───
+    if graph_type == "KaplanMeier":
+        # colorBy must be a plain string, not a list
+        color_by = config.get("colorBy")
+        if isinstance(color_by, list):
+            config["colorBy"] = color_by[0] if color_by else None
+            if not color_by:
+                config.pop("colorBy", None)
+            log.info("KM: converted colorBy list to string: %s", config.get("colorBy"))
+
+        # If headers available and axes are missing/wrong, use heuristic detection
+        if resolved_headers and (not config.get("xAxis") or not config.get("yAxis")):
+            detection = cx_survival.detect_km_columns(resolved_headers)
+            if not config.get("xAxis") and detection.get("time_col"):
+                config["xAxis"] = [detection["time_col"]]
+                log.info("KM: auto-assigned xAxis=%s from column detection", config["xAxis"])
+            if not config.get("yAxis") and detection.get("event_col"):
+                config["yAxis"] = [detection["event_col"]]
+                log.info("KM: auto-assigned yAxis=%s from column detection", config["yAxis"])
+            if not config.get("colorBy") and detection.get("color_cols"):
+                config["colorBy"] = detection["color_cols"][0]
+                log.info("KM: auto-assigned colorBy=%s from column detection", config["colorBy"])
+
     # ── Validate column references ───────────────────────────────────────────
     if resolved_headers and config:
         validation = validate_config_headers(config, resolved_headers)
@@ -1628,7 +1695,7 @@ def generate_canvasxpress_config(
     return {
         "config":         config,
         "valid":          validation["valid"],
-        "warnings":       validation["warnings"],
+        "warnings":       validation["warnings"] + _geocode_warnings,
         "invalid_refs":   validation["invalid_refs"],
         "headers_used":   resolved_headers or [],
         "types_used":     column_types or {},
