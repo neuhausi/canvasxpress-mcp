@@ -317,9 +317,87 @@ VirtualHost include directory. The `ProxyPass / !` line **must be last**.
 > `ProxyPass` must be inside the same `<Location>` block; top-level `ProxyPass`
 > directives are intercepted by Passenger before they can fire.
 
-After editing:
+To write the file in one shot on the production server (run as root):
 
 ```bash
+cat > /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-proxy.conf << 'EOF'
+<Location /mcp>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/mcp
+    ProxyPassReverse http://127.0.0.1:8100/mcp
+</Location>
+<Location /generate>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/generate
+    ProxyPassReverse http://127.0.0.1:8100/generate
+</Location>
+<Location /modify>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/modify
+    ProxyPassReverse http://127.0.0.1:8100/modify
+</Location>
+<Location /km>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/km
+    ProxyPassReverse http://127.0.0.1:8100/km
+</Location>
+<Location /params>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/params
+    ProxyPassReverse http://127.0.0.1:8100/params
+</Location>
+<Location /axes>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/axes
+    ProxyPassReverse http://127.0.0.1:8100/axes
+</Location>
+<Location /select>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/select
+    ProxyPassReverse http://127.0.0.1:8100/select
+</Location>
+<Location /explain-r>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/explain-r
+    ProxyPassReverse http://127.0.0.1:8100/explain-r
+</Location>
+<Location /explain-ggplot>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/explain-ggplot
+    ProxyPassReverse http://127.0.0.1:8100/explain-ggplot
+</Location>
+<Location /explain>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/explain
+    ProxyPassReverse http://127.0.0.1:8100/explain
+</Location>
+<Location /minimal-params>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/minimal-params
+    ProxyPassReverse http://127.0.0.1:8100/minimal-params
+</Location>
+<Location /map>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/map
+    ProxyPassReverse http://127.0.0.1:8100/map
+</Location>
+<Location /feedback>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/feedback
+    ProxyPassReverse http://127.0.0.1:8100/feedback
+</Location>
+<Location /ui>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/ui
+    ProxyPassReverse http://127.0.0.1:8100/ui
+</Location>
+<Location /favicon.ico>
+    PassengerEnabled Off
+    ProxyPass http://127.0.0.1:8100/favicon.ico
+    ProxyPassReverse http://127.0.0.1:8100/favicon.ico
+</Location>
+EOF
+
 apachectl configtest && service httpd restart
 ```
 
@@ -1043,6 +1121,7 @@ cd canvasxpress-mcp/
 ./server.sh stop
 git fetch origin
 git reset --hard origin/main
+git apply --whitespace=nowarn canvasxpress-ctypes-fix.patch
 source .venv/bin/activate
 pip install -r requirements.txt
 ./server.sh start
@@ -1052,9 +1131,10 @@ pip install -r requirements.txt
 > the remote exactly. If you have local config files (`.env`, `data/call_log.db`)
 > they are untracked and will not be touched.
 >
-> To also remove untracked files (use with care):
+> If `src/server.py` is missing after the patch step (patch did not restore it),
+> recover it with:
 > ```bash
-> git clean -fd
+> git restore src/server.py
 > ```
 
 ---
