@@ -1,0 +1,143 @@
+{
+  "intent": "Show monthly sales bars with market share trend line overlay",
+  "column_summary": {
+    "n_factor": 1,
+    "n_numeric": 2,
+    "n_time": 1,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "BarLine",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Combined bar + line on dual axes \u2014 compare count (bars) with rate (line).",
+    "clinical_use": "AE count bars with cumulative incidence line",
+    "next_step": "generate_canvasxpress_config with description='bar-line chart of <num1> bars and <num2> line by <factor>'",
+    "scoring_factors": [
+      "time + 2 numeric \u2192 dual-axis bar-line",
+      "grouped series"
+    ],
+    "minimal_config": {
+      "graphType": "BarLine",
+      "xAxis": [
+        "Sales"
+      ],
+      "xAxis2": [
+        "MarketShare"
+      ],
+      "smpTitle": "Group"
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "Line",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Connected points showing trends over a continuous or ordinal axis.",
+      "clinical_use": "Lab values over visits, PK concentration-time profiles",
+      "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
+      "scoring_factors": [
+        "time + numeric \u2192 trend line",
+        "colour by category",
+        "enough time points"
+      ],
+      "minimal_config": {
+        "graphType": "Line",
+        "xAxis": [
+          "Sales"
+        ],
+        "groupingFactors": [
+          "Group"
+        ]
+      }
+    },
+    {
+      "graphType": "Spaghetti",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Individual trajectory lines per subject over time.",
+      "clinical_use": "Individual patient lab trajectories, PK per-subject profiles",
+      "next_step": "generate_canvasxpress_config with description='spaghetti plot of <numeric> over <time> per <subject_id>'",
+      "scoring_factors": [
+        "time + numeric + subject id",
+        "moderate n \u2014 trajectories readable"
+      ],
+      "minimal_config": {
+        "graphType": "Spaghetti",
+        "xAxis": [
+          "Month"
+        ],
+        "yAxis": [
+          "Sales"
+        ],
+        "colorBy": "Group",
+        "zAxis": []
+      }
+    },
+    {
+      "graphType": "Bar",
+      "score": 0.95,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset",
+        "manageable category count"
+      ],
+      "minimal_config": {
+        "graphType": "Bar",
+        "xAxis": [
+          "Sales"
+        ]
+      }
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ],
+      "minimal_config": {
+        "graphType": "Boxplot",
+        "xAxis": [
+          "Sales"
+        ],
+        "groupingFactors": [
+          "Group"
+        ]
+      }
+    }
+  ],
+  "generate_hint": "BarLine chart of Sales over Month \u2014 columns: Month, Sales, MarketShare, Group",
+  "tiebreak": {
+    "used": false,
+    "chosen": null,
+    "reason": "GEMINI_API_KEY is not set. Get a key from Google AI Studio and export it before starting the server."
+  },
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Month",
+    "Sales",
+    "MarketShare",
+    "Group"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">BarLine</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Combined bar + line on dual axes \u2014 compare count (bars) with rate (line).</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE count bars with cumulative incidence line</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>time + 2 numeric \u2192 dual-axis bar-line</li><li>grouped series</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;bar-line chart of &lt;num1&gt; bars and &lt;num2&gt; line by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;BarLine&quot;, &quot;xAxis&quot;: [&quot;Sales&quot;], &quot;xAxis2&quot;: [&quot;MarketShare&quot;], &quot;smpTitle&quot;: &quot;Group&quot;}\">Apply BarLine</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Line</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Connected points showing trends over a continuous or ordinal axis.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab values over visits, PK concentration-time profiles</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>time + numeric \u2192 trend line</li><li>colour by category</li><li>enough time points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;line chart of &lt;numeric&gt; over &lt;time&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Line&quot;, &quot;xAxis&quot;: [&quot;Sales&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Line</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Spaghetti</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual trajectory lines per subject over time.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual patient lab trajectories, PK per-subject profiles</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>time + numeric + subject id</li><li>moderate n \u2014 trajectories readable</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;spaghetti plot of &lt;numeric&gt; over &lt;time&gt; per &lt;subject_id&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Spaghetti&quot;, &quot;xAxis&quot;: [&quot;Month&quot;], &quot;yAxis&quot;: [&quot;Sales&quot;], &quot;colorBy&quot;: &quot;Group&quot;, &quot;zAxis&quot;: []}\">Apply Spaghetti</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 0.95</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Sales&quot;]}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li><li>multiple numeric vars</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;Sales&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Boxplot</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:47:24 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "fa3e4d0e-4a15-4d10-987c-d898301a0db9"
+}

@@ -1,0 +1,128 @@
+{
+  "intent": "Show headcount hierarchically by department and sub-department",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 1,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Stacked",
+    "score": 0.9,
+    "category": "single_dimensional",
+    "description": "Stacked bars showing part-of-whole within each group.",
+    "clinical_use": "AE severity breakdown per arm, disposition categories",
+    "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
+    "scoring_factors": [
+      "2+ categories ideal for stacking",
+      "few stack levels"
+    ],
+    "minimal_config": {
+      "graphType": "Stacked",
+      "xAxis": [
+        "Headcount"
+      ]
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "Bar",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset",
+        "manageable category count"
+      ],
+      "minimal_config": {
+        "graphType": "Bar",
+        "xAxis": [
+          "Headcount"
+        ]
+      }
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value"
+      ],
+      "minimal_config": {
+        "graphType": "Heatmap",
+        "xAxis": [
+          "Headcount"
+        ]
+      }
+    },
+    {
+      "graphType": "StackedPercent",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "100% stacked bars \u2014 each bar sums to 100%.",
+      "clinical_use": "Relative AE severity distribution across arms",
+      "next_step": "generate_canvasxpress_config with description='100% stacked bar of <metric> by <category>'",
+      "scoring_factors": [
+        "2+ cats \u2192 proportion comparison",
+        "few stack segments"
+      ],
+      "minimal_config": {
+        "graphType": "StackedPercent",
+        "xAxis": [
+          "Headcount"
+        ]
+      }
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=8 is small \u2014 Dotplot shows every observation clearly.",
+      "minimal_config": {
+        "graphType": "Dotplot",
+        "xAxis": [
+          "Headcount"
+        ],
+        "groupingFactors": [
+          "Department"
+        ]
+      }
+    }
+  ],
+  "generate_hint": "Stacked chart of Headcount grouped by Department colored by SubDept \u2014 columns: Department, SubDept, Headcount",
+  "tiebreak": {
+    "used": true,
+    "chosen": "Stacked",
+    "reason": "Best for showing the `Headcount` for"
+  },
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Department",
+    "SubDept",
+    "Headcount"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Stacked</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked bars showing part-of-whole within each group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE severity breakdown per arm, disposition categories</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ categories ideal for stacking</li><li>few stack levels</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Stacked&quot;, &quot;xAxis&quot;: [&quot;Headcount&quot;]}\">Apply Stacked</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>Best for showing the `Headcount` for</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Headcount&quot;]}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Heatmap</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE incidence by SOC \u00d7 arm, gene expression heatmap</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2 cats as row/col + numeric value</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;heatmap of &lt;numeric&gt; with &lt;factor1&gt; rows and &lt;factor2&gt; columns&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Heatmap&quot;, &quot;xAxis&quot;: [&quot;Headcount&quot;]}\">Apply Heatmap</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">StackedPercent</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">100% stacked bars \u2014 each bar sums to 100%.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Relative AE severity distribution across arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats \u2192 proportion comparison</li><li>few stack segments</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;100% stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;StackedPercent&quot;, &quot;xAxis&quot;: [&quot;Headcount&quot;]}\">Apply StackedPercent</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric</li><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;xAxis&quot;: [&quot;Headcount&quot;], &quot;groupingFactors&quot;: [&quot;Department&quot;]}\">Apply Dotplot</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:41:35 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "506c123e-ff34-4605-a8ff-2a14f180fa0d"
+}

@@ -1,0 +1,26 @@
+{
+  "intent": "Rank genes by expression fold change as lollipop chart",
+  "data": [
+    ["Gene", "Expression", "Direction"],
+    ["Gene1", -2.15, "Down"],
+    ["Gene2", -3.96, "Down"],
+    ["Gene3", 0.83, "Up"],
+    ["Gene4", 2.31, "Up"],
+    ["Gene5", -1.0, "Down"],
+    ["Gene6", 3.22, "Up"],
+    ["Gene7", 3.66, "Up"],
+    ["Gene8", -2.59, "Down"],
+    ["Gene9", -0.65, "Down"],
+    ["Gene10", -3.2, "Down"],
+    ["Gene11", 0.9, "Up"],
+    ["Gene12", 1.53, "Up"],
+    ["Gene13", -1.49, "Down"],
+    ["Gene14", -1.58, "Down"],
+    ["Gene15", -1.9, "Down"],
+    ["Gene16", 1.93, "Up"],
+    ["Gene17", -1.24, "Down"],
+    ["Gene18", 0.12, "Up"],
+    ["Gene19", 0.86, "Up"],
+    ["Gene20", -0.73, "Down"]
+  ]
+}

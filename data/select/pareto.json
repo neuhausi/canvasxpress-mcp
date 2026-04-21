@@ -1,0 +1,16 @@
+{
+  "intent": "Pareto chart of defect types by frequency",
+  "data": [
+    ["DefectType", "Count"],
+    ["Wrong dose", 145],
+    ["Mislabel", 98],
+    ["Contamination", 72],
+    ["Packaging", 55],
+    ["Missing info", 40],
+    ["Other A", 28],
+    ["Other B", 20],
+    ["Other C", 15],
+    ["Other D", 12],
+    ["Other E", 8]
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "intent": "Show network connections between nodes with edge weights",
+  "data": [
+    ["Source", "Target", "Weight"],
+    ["A", "B", 0.14],
+    ["A", "C", 0.46],
+    ["A", "F", 0.15],
+    ["B", "C", 0.36],
+    ["B", "D", 0.76],
+    ["B", "F", 0.71],
+    ["D", "E", 0.3]
+  ]
+}

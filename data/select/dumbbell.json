@@ -1,0 +1,11 @@
+{
+  "intent": "Before vs after comparison across regions as dumbbell chart",
+  "data": [
+    ["Region", "Before", "After"],
+    ["North", 37, 42.9],
+    ["South", 32, 29.0],
+    ["East", 51, 52.1],
+    ["West", 52, 56.4],
+    ["Central", 48, 57.5]
+  ]
+}

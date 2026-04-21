@@ -1,0 +1,138 @@
+{
+  "intent": "Show age group composition per product as 100% stacked bar",
+  "column_summary": {
+    "n_factor": 1,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Stacked",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Stacked bars showing part-of-whole within each group.",
+    "clinical_use": "AE severity breakdown per arm, disposition categories",
+    "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
+    "scoring_factors": [
+      "1 cat + numeric \u2014 possible stacked",
+      "few stack levels"
+    ],
+    "minimal_config": {
+      "graphType": "Stacked",
+      "xAxis": [
+        "Age18_34"
+      ]
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ],
+      "minimal_config": {
+        "graphType": "SPLOM",
+        "xAxis": [
+          "Age18_34",
+          "Age35_54",
+          "Age55plus"
+        ],
+        "yAxis": [
+          "Age18_34",
+          "Age35_54",
+          "Age55plus"
+        ]
+      }
+    },
+    {
+      "graphType": "StackedPercent",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "100% stacked bars \u2014 each bar sums to 100%.",
+      "clinical_use": "Relative AE severity distribution across arms",
+      "next_step": "generate_canvasxpress_config with description='100% stacked bar of <metric> by <category>'",
+      "scoring_factors": [
+        "few stack segments"
+      ],
+      "minimal_config": {
+        "graphType": "StackedPercent",
+        "xAxis": [
+          "Age18_34"
+        ]
+      }
+    },
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=5 is small \u2014 Dotplot shows every observation clearly.",
+      "minimal_config": {
+        "graphType": "Dotplot",
+        "xAxis": [
+          "Age18_34"
+        ],
+        "groupingFactors": []
+      }
+    },
+    {
+      "graphType": "Scatter3D",
+      "score": 0.85,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ],
+      "minimal_config": {
+        "graphType": "Scatter3D",
+        "xAxis": [
+          "Age18_34"
+        ],
+        "yAxis": [
+          "Age35_54"
+        ],
+        "zAxis": [
+          "Age55plus"
+        ]
+      }
+    }
+  ],
+  "generate_hint": "Stacked chart of Age18_34 grouped by Product \u2014 columns: Product, Age18_34, Age35_54, Age55plus",
+  "tiebreak": {
+    "used": true,
+    "chosen": "Stacked",
+    "reason": "This chart type effectively displays the contribution of"
+  },
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Product",
+    "Age18_34",
+    "Age35_54",
+    "Age55plus"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Stacked</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked bars showing part-of-whole within each group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE severity breakdown per arm, disposition categories</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1 cat + numeric \u2014 possible stacked</li><li>few stack levels</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Stacked&quot;, &quot;xAxis&quot;: [&quot;Age18_34&quot;]}\">Apply Stacked</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>This chart type effectively displays the contribution of</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">SPLOM</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Scatter plot matrix \u2014 all pairwise scatter plots in a grid.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Pairwise biomarker exploration, PK parameter matrix</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2\u20134 numeric \u2192 compact pairwise matrix</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot matrix of &lt;numeric variables&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;SPLOM&quot;, &quot;xAxis&quot;: [&quot;Age18_34&quot;, &quot;Age35_54&quot;, &quot;Age55plus&quot;], &quot;yAxis&quot;: [&quot;Age18_34&quot;, &quot;Age35_54&quot;, &quot;Age55plus&quot;]}\">Apply SPLOM</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">StackedPercent</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">100% stacked bars \u2014 each bar sums to 100%.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Relative AE severity distribution across arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>few stack segments</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;100% stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;StackedPercent&quot;, &quot;xAxis&quot;: [&quot;Age18_34&quot;]}\">Apply StackedPercent</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric</li><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;xAxis&quot;: [&quot;Age18_34&quot;], &quot;groupingFactors&quot;: []}\">Apply Dotplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter3D</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">3D scatter for three continuous dimensions.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multivariate exploratory analysis</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x/y/z scatter</li><li>colour by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;3D scatter of &lt;num1&gt; vs &lt;num2&gt; vs &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter3D&quot;, &quot;xAxis&quot;: [&quot;Age18_34&quot;], &quot;yAxis&quot;: [&quot;Age35_54&quot;], &quot;zAxis&quot;: [&quot;Age55plus&quot;]}\">Apply Scatter3D</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:41:23 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "e1d53b5e-3aa8-44c4-90fe-948b1cf9cbff"
+}

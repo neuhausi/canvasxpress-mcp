@@ -1,0 +1,151 @@
+{
+  "intent": "Show correlation matrix of gene expression across samples",
+  "column_summary": {
+    "n_factor": 1,
+    "n_numeric": 8,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Correlation",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Symmetric heatmap of pairwise correlation coefficients.",
+    "clinical_use": "Lab correlation matrix, biomarker panel correlations",
+    "next_step": "generate_canvasxpress_config with description='correlation matrix heatmap'",
+    "scoring_factors": [
+      "2+ numeric \u2192 pairwise corr",
+      "many numeric vars \u2192 matrix useful"
+    ],
+    "minimal_config": {
+      "graphType": "Correlation",
+      "xAxis": [
+        "Gene1"
+      ]
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
+      "scoring_factors": [
+        "5+ numeric \u2192 pairwise scatter matrix"
+      ],
+      "minimal_config": {
+        "graphType": "SPLOM",
+        "xAxis": [
+          "Gene1",
+          "Gene2",
+          "Gene3",
+          "Gene4",
+          "Gene5",
+          "Gene6",
+          "Gene7",
+          "Gene8"
+        ],
+        "yAxis": [
+          "Gene1",
+          "Gene2",
+          "Gene3",
+          "Gene4",
+          "Gene5",
+          "Gene6",
+          "Gene7",
+          "Gene8"
+        ]
+      }
+    },
+    {
+      "graphType": "Histogram",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Binned frequency distribution of a single continuous variable.",
+      "clinical_use": "Baseline characteristic distribution",
+      "next_step": "generate_canvasxpress_config with description='histogram of <numeric>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 frequency distribution",
+        "no category \u2192 single variable focus",
+        "enough data for bins"
+      ],
+      "minimal_config": {
+        "graphType": "Histogram",
+        "xAxis": [
+          "Gene1"
+        ]
+      }
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 0.8,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "sufficient points"
+      ],
+      "minimal_config": {
+        "graphType": "Scatter2D",
+        "xAxis": [
+          "Gene1"
+        ],
+        "yAxis": [
+          "Gene2"
+        ],
+        "zAxis": []
+      }
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.8,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "3+ numeric \u2192 parallel axes",
+        "4+ axes \u2014 parallel coordinates clearer than heatmap"
+      ],
+      "minimal_config": {
+        "graphType": "ParallelCoordinates",
+        "xAxis": [
+          "Gene1"
+        ]
+      }
+    }
+  ],
+  "generate_hint": "Correlation chart \u2014 columns: Sample, Gene1, Gene2, Gene3, Gene4, Gene5, Gene6, Gene7, Gene8",
+  "tiebreak": {
+    "used": false,
+    "chosen": null,
+    "reason": "GEMINI_API_KEY is not set. Get a key from Google AI Studio and export it before starting the server."
+  },
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Sample",
+    "Gene1",
+    "Gene2",
+    "Gene3",
+    "Gene4",
+    "Gene5",
+    "Gene6",
+    "Gene7",
+    "Gene8"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Correlation</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Symmetric heatmap of pairwise correlation coefficients.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab correlation matrix, biomarker panel correlations</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 pairwise corr</li><li>many numeric vars \u2192 matrix useful</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;correlation matrix heatmap&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Correlation&quot;, &quot;xAxis&quot;: [&quot;Gene1&quot;]}\">Apply Correlation</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">SPLOM</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Scatter plot matrix \u2014 all pairwise scatter plots in a grid.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Pairwise biomarker exploration, PK parameter matrix</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>5+ numeric \u2192 pairwise scatter matrix</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot matrix of &lt;numeric variables&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;SPLOM&quot;, &quot;xAxis&quot;: [&quot;Gene1&quot;, &quot;Gene2&quot;, &quot;Gene3&quot;, &quot;Gene4&quot;, &quot;Gene5&quot;, &quot;Gene6&quot;, &quot;Gene7&quot;, &quot;Gene8&quot;], &quot;yAxis&quot;: [&quot;Gene1&quot;, &quot;Gene2&quot;, &quot;Gene3&quot;, &quot;Gene4&quot;, &quot;Gene5&quot;, &quot;Gene6&quot;, &quot;Gene7&quot;, &quot;Gene8&quot;]}\">Apply SPLOM</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Histogram</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Binned frequency distribution of a single continuous variable.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Baseline characteristic distribution</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ numeric \u2192 frequency distribution</li><li>no category \u2192 single variable focus</li><li>enough data for bins</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;histogram of &lt;numeric&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Histogram&quot;, &quot;xAxis&quot;: [&quot;Gene1&quot;]}\">Apply Histogram</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>sufficient points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;Gene1&quot;], &quot;yAxis&quot;: [&quot;Gene2&quot;], &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">ParallelCoordinates</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">Parallel axes \u2014 each line is an observation, axes are variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multi-endpoint profile per subject, multivariate QC</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3+ numeric \u2192 parallel axes</li><li>4+ axes \u2014 parallel coordinates clearer than heatmap</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;parallel coordinates of &lt;numeric variables&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;ParallelCoordinates&quot;, &quot;xAxis&quot;: [&quot;Gene1&quot;]}\">Apply ParallelCoordinates</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:47:24 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "31bd7f25-ae7f-4645-a0bf-f424bc82cb86"
+}

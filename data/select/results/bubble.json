@@ -1,0 +1,149 @@
+{
+  "intent": "Bubble chart with x, y position and bubble size as third variable",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 3,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "ScatterBubble2D",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Bubble chart \u2014 2D scatter where bubble size encodes a third variable.",
+    "clinical_use": "Efficacy vs safety vs sample size, three-dimensional biomarker",
+    "next_step": "generate_canvasxpress_config with description='bubble chart of <num1> vs <num2> sized by <num3>'",
+    "scoring_factors": [
+      "3 numeric \u2192 x, y, size",
+      "colour bubbles by category"
+    ],
+    "minimal_config": {
+      "graphType": "ScatterBubble2D",
+      "xAxis": [
+        "X"
+      ],
+      "yAxis": [
+        "Y"
+      ],
+      "zAxis": [
+        "Size"
+      ],
+      "colorBy": "Group"
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "Bubble",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Bubble chart alias \u2014 scatter with size-encoded third variable.",
+      "clinical_use": "Three-dimensional biomarker exploration",
+      "next_step": "generate_canvasxpress_config with description='bubble chart of <num1> vs <num2> sized by <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x, y, size",
+        "colour bubbles by category"
+      ],
+      "minimal_config": {
+        "graphType": "Bubble",
+        "xAxis": [
+          "X"
+        ],
+        "groupingFactors": [
+          "Group"
+        ],
+        "yAxis": [],
+        "zAxis": []
+      }
+    },
+    {
+      "graphType": "Scatter2D",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ],
+      "minimal_config": {
+        "graphType": "Scatter2D",
+        "xAxis": [
+          "X"
+        ],
+        "yAxis": [
+          "Y"
+        ],
+        "colorBy": "Group",
+        "zAxis": []
+      }
+    },
+    {
+      "graphType": "Bar",
+      "score": 0.95,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset",
+        "manageable category count"
+      ],
+      "minimal_config": {
+        "graphType": "Bar",
+        "xAxis": [
+          "X"
+        ]
+      }
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.9,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ],
+      "minimal_config": {
+        "graphType": "Boxplot",
+        "xAxis": [
+          "X"
+        ],
+        "groupingFactors": [
+          "Group"
+        ]
+      }
+    }
+  ],
+  "generate_hint": "ScatterBubble2D chart of X grouped by Group \u2014 columns: Sample, X, Y, Size, Group",
+  "tiebreak": {
+    "used": false,
+    "chosen": null,
+    "reason": "GEMINI_API_KEY is not set. Get a key from Google AI Studio and export it before starting the server."
+  },
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Sample",
+    "X",
+    "Y",
+    "Size",
+    "Group"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">ScatterBubble2D</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Bubble chart \u2014 2D scatter where bubble size encodes a third variable.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Efficacy vs safety vs sample size, three-dimensional biomarker</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x, y, size</li><li>colour bubbles by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;bubble chart of &lt;num1&gt; vs &lt;num2&gt; sized by &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;ScatterBubble2D&quot;, &quot;xAxis&quot;: [&quot;X&quot;], &quot;yAxis&quot;: [&quot;Y&quot;], &quot;zAxis&quot;: [&quot;Size&quot;], &quot;colorBy&quot;: &quot;Group&quot;}\">Apply ScatterBubble2D</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bubble</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Bubble chart alias \u2014 scatter with size-encoded third variable.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Three-dimensional biomarker exploration</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x, y, size</li><li>colour bubbles by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;bubble chart of &lt;num1&gt; vs &lt;num2&gt; sized by &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bubble&quot;, &quot;xAxis&quot;: [&quot;X&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;], &quot;yAxis&quot;: [], &quot;zAxis&quot;: []}\">Apply Bubble</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>colour by category</li><li>sufficient points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;X&quot;], &quot;yAxis&quot;: [&quot;Y&quot;], &quot;colorBy&quot;: &quot;Group&quot;, &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 0.95</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;X&quot;]}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li><li>multiple numeric vars</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;X&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Boxplot</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:47:24 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "08be78b1-ee31-453f-a514-9a9e30e2dc47"
+}

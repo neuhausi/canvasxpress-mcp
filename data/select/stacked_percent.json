@@ -1,0 +1,11 @@
+{
+  "intent": "Show age group composition per product as 100% stacked bar",
+  "data": [
+    ["Product", "Age18_34", "Age35_54", "Age55plus"],
+    ["Alpha", 38, 25, 38],
+    ["Beta", 37, 28, 32],
+    ["Gamma", 19, 25, 49],
+    ["Delta", 30, 25, 44],
+    ["Epsilon", 39, 32, 50]
+  ]
+}

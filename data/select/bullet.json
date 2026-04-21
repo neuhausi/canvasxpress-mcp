@@ -1,0 +1,11 @@
+{
+  "intent": "Bullet chart comparing actual performance against targets",
+  "data": [
+    ["Metric", "Actual", "Target", "Min", "Max"],
+    ["Revenue", 57.4, 50, 0, 100],
+    ["Margin", 55.4, 54, 0, 100],
+    ["NPS", 58.3, 50, 0, 100],
+    ["Retention", 63.6, 71, 0, 100],
+    ["Growth", 56.7, 54, 0, 100]
+  ]
+}

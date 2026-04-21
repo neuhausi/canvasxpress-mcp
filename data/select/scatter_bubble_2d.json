@@ -1,0 +1,18 @@
+{
+  "intent": "Bubble chart of GDP per capita vs life expectancy sized by population",
+  "data": [
+    ["Country", "GDPperCapita", "LifeExpectancy", "Population", "Region"],
+    ["US", 65000, 78, 330, "Americas"],
+    ["DE", 48000, 81, 83, "Europe"],
+    ["JP", 42000, 84, 125, "Asia"],
+    ["BR", 15000, 75, 215, "Americas"],
+    ["IN", 7000, 70, 1400, "Asia"],
+    ["CN", 18000, 77, 1400, "Asia"],
+    ["FR", 44000, 82, 67, "Europe"],
+    ["NG", 5000, 62, 220, "Africa"],
+    ["ZA", 13000, 64, 60, "Africa"],
+    ["AU", 55000, 83, 26, "Oceania"],
+    ["MX", 19000, 75, 130, "Americas"],
+    ["KR", 35000, 83, 52, "Asia"]
+  ]
+}

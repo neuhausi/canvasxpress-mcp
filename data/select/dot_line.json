@@ -1,0 +1,16 @@
+{
+  "intent": "Show mean response with SD at each timepoint by treatment group",
+  "data": [
+    ["Timepoint", "Mean", "SD", "Group"],
+    ["BL", 54.8, 4.4, "Drug"],
+    ["W4", 51.8, 2.8, "Drug"],
+    ["W8", 44.0, 5.5, "Drug"],
+    ["W12", 46.5, 4.9, "Drug"],
+    ["W24", 51.5, 4.6, "Drug"],
+    ["BL", 51.7, 2.3, "Placebo"],
+    ["W4", 46.9, 4.5, "Placebo"],
+    ["W8", 41.1, 4.5, "Placebo"],
+    ["W12", 49.1, 4.8, "Placebo"],
+    ["W24", 49.0, 4.1, "Placebo"]
+  ]
+}

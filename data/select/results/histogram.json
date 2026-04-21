@@ -1,0 +1,135 @@
+{
+  "intent": "Show frequency distribution of continuous measurement",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 1,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "Histogram",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Binned frequency distribution of a single continuous variable.",
+    "clinical_use": "Baseline characteristic distribution",
+    "next_step": "generate_canvasxpress_config with description='histogram of <numeric>'",
+    "scoring_factors": [
+      "1+ numeric \u2192 frequency distribution",
+      "enough data for bins"
+    ],
+    "minimal_config": {
+      "graphType": "Histogram",
+      "xAxis": [
+        "Value"
+      ],
+      "colorBy": "Group"
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "Boxplot",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats"
+      ],
+      "minimal_config": {
+        "graphType": "Boxplot",
+        "xAxis": [
+          "Value"
+        ],
+        "groupingFactors": [
+          "Group"
+        ]
+      }
+    },
+    {
+      "graphType": "Bar",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "exactly 1 cat, 1 num \u2014 classic bar",
+        "small-medium dataset",
+        "manageable category count"
+      ],
+      "minimal_config": {
+        "graphType": "Bar",
+        "xAxis": [
+          "Value"
+        ]
+      }
+    },
+    {
+      "graphType": "Violin",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Kernel density mirrored around a centre line \u2014 richer shape than boxplot.",
+      "clinical_use": "Biomarker distributions, gene expression by cell type",
+      "next_step": "generate_canvasxpress_config with description='violin plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution shape",
+        "enough data for density estimate"
+      ],
+      "minimal_config": {
+        "graphType": "Violin",
+        "xAxis": [
+          "Value"
+        ],
+        "groupingFactors": [
+          "Group"
+        ]
+      }
+    },
+    {
+      "graphType": "Density",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Smooth kernel density estimate \u2014 overlay multiple groups.",
+      "clinical_use": "Overlaid PK distributions across arms",
+      "next_step": "generate_canvasxpress_config with description='density plot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 density estimate",
+        "overlay groups by category",
+        "enough n for smooth density"
+      ],
+      "minimal_config": {
+        "graphType": "Density",
+        "xAxis": [
+          "Value"
+        ],
+        "colorBy": "Group"
+      }
+    }
+  ],
+  "generate_hint": "Histogram chart of Value grouped by Group \u2014 columns: Sample, Value, Group",
+  "tiebreak": {
+    "used": false,
+    "chosen": null,
+    "reason": "GEMINI_API_KEY is not set. Get a key from Google AI Studio and export it before starting the server."
+  },
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Sample",
+    "Value",
+    "Group"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Histogram</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Binned frequency distribution of a single continuous variable.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Baseline characteristic distribution</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ numeric \u2192 frequency distribution</li><li>enough data for bins</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;histogram of &lt;numeric&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Histogram&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Group&quot;}\">Apply Histogram</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Boxplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>exactly 1 cat, 1 num \u2014 classic bar</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Value&quot;]}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Violin</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Kernel density mirrored around a centre line \u2014 richer shape than boxplot.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker distributions, gene expression by cell type</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution shape</li><li>enough data for density estimate</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;violin plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Violin&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Violin</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Density</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Smooth kernel density estimate \u2014 overlay multiple groups.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Overlaid PK distributions across arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ numeric \u2192 density estimate</li><li>overlay groups by category</li><li>enough n for smooth density</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;density plot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Density&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Group&quot;}\">Apply Density</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:47:24 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "1350dff0-3b1b-4881-bb2d-2c6730b842e0"
+}

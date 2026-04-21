@@ -1,0 +1,130 @@
+{
+  "intent": "Show frequency of clinical research terms as word cloud",
+  "column_summary": {
+    "n_factor": 2,
+    "n_numeric": 1,
+    "n_time": 0,
+    "n_bool": 0,
+    "n_text": 0
+  },
+  "top_recommendation": {
+    "graphType": "TagCloud",
+    "score": 1.0,
+    "category": "single_dimensional",
+    "description": "Word/tag cloud sized by frequency.",
+    "clinical_use": "Frequently reported terms, SAE narratives word frequency",
+    "next_step": "generate_canvasxpress_config with description='word cloud of <factor> sized by frequency'",
+    "scoring_factors": [
+      "category labels \u2192 word cloud"
+    ],
+    "minimal_config": {
+      "graphType": "TagCloud",
+      "xAxis": [
+        "Category"
+      ],
+      "colorBy": "Category"
+    }
+  },
+  "alternatives": [
+    {
+      "graphType": "Dotplot",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric",
+        "small n \u2014 show every point"
+      ],
+      "note": "n_samples=15 is small \u2014 Dotplot shows every observation clearly.",
+      "minimal_config": {
+        "graphType": "Dotplot",
+        "xAxis": [
+          "Frequency"
+        ],
+        "groupingFactors": [
+          "Category"
+        ]
+      }
+    },
+    {
+      "graphType": "Treemap",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Nested rectangles sized by value \u2014 hierarchical proportion.",
+      "clinical_use": "Hierarchical AE counts (SOC \u2192 PT)",
+      "next_step": "generate_canvasxpress_config with description='treemap of <numeric> by <factor> hierarchy'",
+      "scoring_factors": [
+        "cat + numeric \u2192 hierarchical size",
+        "nested hierarchy",
+        "many categories \u2192 treemap handles well"
+      ],
+      "minimal_config": {
+        "graphType": "Treemap",
+        "xAxis": [
+          "Frequency"
+        ],
+        "groupingFactors": [
+          "Category"
+        ]
+      }
+    },
+    {
+      "graphType": "Ridgeline",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
+      "clinical_use": "Lab distributions across multiple visits or arms",
+      "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 stacked densities",
+        "several groups to compare",
+        "4+ groups \u2192 ridgeline avoids overlapping color curves"
+      ],
+      "minimal_config": {
+        "graphType": "Ridgeline",
+        "xAxis": [
+          "Frequency"
+        ],
+        "ridgeBy": "Category"
+      }
+    },
+    {
+      "graphType": "Bar",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset",
+        "manageable category count"
+      ],
+      "minimal_config": {
+        "graphType": "Bar",
+        "xAxis": [
+          "Frequency"
+        ]
+      }
+    }
+  ],
+  "generate_hint": "TagCloud chart of Frequency grouped by Term colored by Category \u2014 columns: Term, Frequency, Category",
+  "valid": true,
+  "warnings": [],
+  "type_source": "inferred",
+  "headers_detected": [
+    "Term",
+    "Frequency",
+    "Category"
+  ],
+  "target": "",
+  "html": {
+    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">TagCloud</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Word/tag cloud sized by frequency.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Frequently reported terms, SAE narratives word frequency</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>category labels \u2192 word cloud</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;word cloud of &lt;factor&gt; sized by frequency&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;TagCloud&quot;, &quot;xAxis&quot;: [&quot;Category&quot;], &quot;colorBy&quot;: &quot;Category&quot;}\">Apply TagCloud</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric</li><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;xAxis&quot;: [&quot;Frequency&quot;], &quot;groupingFactors&quot;: [&quot;Category&quot;]}\">Apply Dotplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Treemap</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Nested rectangles sized by value \u2014 hierarchical proportion.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical AE counts (SOC \u2192 PT)</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 hierarchical size</li><li>nested hierarchy</li><li>many categories \u2192 treemap handles well</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;treemap of &lt;numeric&gt; by &lt;factor&gt; hierarchy&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Treemap&quot;, &quot;xAxis&quot;: [&quot;Frequency&quot;], &quot;groupingFactors&quot;: [&quot;Category&quot;]}\">Apply Treemap</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Ridgeline</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked density plots per group \u2014 compare distributions without overlap.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab distributions across multiple visits or arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 stacked densities</li><li>several groups to compare</li><li>4+ groups \u2192 ridgeline avoids overlapping color curves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;ridgeline plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Ridgeline&quot;, &quot;xAxis&quot;: [&quot;Frequency&quot;], &quot;ridgeBy&quot;: &quot;Category&quot;}\">Apply Ridgeline</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Frequency&quot;]}\">Apply Bar</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
+  },
+  "success": true,
+  "datetime": "Tue, 21 Apr 2026 03:41:27 GMT",
+  "tool": "select_canvasxpress_chart",
+  "request_id": "79a732b0-b022-4665-b3c9-37e195329d38"
+}

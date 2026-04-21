@@ -1,0 +1,10 @@
+{
+  "intent": "Show patient flow through clinical trial stages",
+  "data": [
+    ["Source", "Target", "Value"],
+    ["ScreenedIn", "Enrolled", 80],
+    ["ScreenedIn", "ScreenedOut", 40],
+    ["Enrolled", "Completed", 60],
+    ["Enrolled", "DropOut", 20]
+  ]
+}
