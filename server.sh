@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Usage: ./server.sh start | stop | restart | status
-PIDFILE="$(dirname "$0")/server.pid"
-LOGFILE="$(dirname "$0")/server.log"
-CMD="/Users/isaac/git/.venv/bin/python src/server.py"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PIDFILE="$SCRIPT_DIR/server.pid"
+LOGFILE="$SCRIPT_DIR/server.log"
+# Prefer a .venv one level up (dev layout), then a local .venv, then system python3
+if   [ -x "$SCRIPT_DIR/../.venv/bin/python" ]; then PYTHON="$SCRIPT_DIR/../.venv/bin/python"
+elif [ -x "$SCRIPT_DIR/.venv/bin/python" ];    then PYTHON="$SCRIPT_DIR/.venv/bin/python"
+else PYTHON="$(command -v python3 || command -v python)"; fi
+CMD="$PYTHON src/server.py"
 
 start() {
   if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
