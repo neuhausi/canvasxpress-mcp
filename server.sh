@@ -7,13 +7,14 @@ LOGFILE="$SCRIPT_DIR/server.log"
 if   [ -x "$SCRIPT_DIR/../.venv/bin/python" ]; then PYTHON="$SCRIPT_DIR/../.venv/bin/python"
 elif [ -x "$SCRIPT_DIR/.venv/bin/python" ];    then PYTHON="$SCRIPT_DIR/.venv/bin/python"
 else PYTHON="$(command -v python3 || command -v python)"; fi
-CMD="$PYTHON src/server.py"
+CMD="$PYTHON $SCRIPT_DIR/src/server.py"
 
 start() {
   if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     echo "Already running (pid $(cat "$PIDFILE"))"
     exit 1
   fi
+  cd "$SCRIPT_DIR"
   nohup $CMD >> "$LOGFILE" 2>&1 &
   echo $! > "$PIDFILE"
   echo "Started (pid $!)"
