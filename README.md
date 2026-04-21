@@ -128,6 +128,8 @@ for direct integration with CanvasXpress's `askLLM()` function.
 | `GET /explain-r` | CanvasXpress in R | none (optional: `topic`) |
 | `GET /explain-ggplot` | CanvasXpress ggplot2 bridge | none (optional: `topic`) |
 | `GET /minimal-params` | Minimal required parameters | `graph_type` |
+| `GET /map` | Map visualization config | `map_id` |
+| `GET /map` | Map visualization config | `map_id` |
 | `POST /feedback` | Rate a tool call thumbs up/down | `request_id`, `rating` |
 | `GET /feedback/export` | Export call log | — (optional: `tool`, `rated_only`, `limit`) |
 | `POST /feedback/purge` | Delete call log rows (**admin key required**) | — (optional: `tool`, `rated_only`) |
@@ -181,7 +183,23 @@ intent=show+expression+distribution+by+cell+type\
 curl -s "http://localhost:8100/explain?property=groupingFactors"
 
 # Minimal required parameters
+
+# Map config — world choropleth
+curl -s "http://localhost:8100/map?map_id=World&color_scheme=Blues&title=World+GDP"
+
+# Map config — US states pie chart
+curl -s "http://localhost:8100/map?map_id=USAStates\
+&color_by=Winner&size_by=Total\
+&topo_json=https://www.canvasxpress.org/data/json/usa-albers-states.json"
 curl -s "http://localhost:8100/minimal-params?graph_type=KaplanMeier"
+
+# Map config — world choropleth
+curl -s "http://localhost:8100/map?map_id=World&color_scheme=Blues&title=World+GDP"
+
+# Map config — US states pie chart
+curl -s "http://localhost:8100/map?map_id=USAStates\
+&color_by=Winner&size_by=Total\
+&topo_json=https://www.canvasxpress.org/data/json/usa-albers-states.json"
 ```
 
 ### CanvasXpress integration (JSONP)
@@ -249,6 +267,9 @@ VirtualHost include directory. The `ProxyPass / !` line **must be last**.
 <Location /minimal-params>
     PassengerEnabled Off
 </Location>
+<Location /map>
+    PassengerEnabled Off
+</Location>
 <Location /feedback>
     PassengerEnabled Off
 </Location>
@@ -277,6 +298,8 @@ ProxyPass        /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
 ProxyPassReverse /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
 ProxyPass        /minimal-params  http://127.0.0.1:8100/minimal-params
 ProxyPassReverse /minimal-params  http://127.0.0.1:8100/minimal-params
+ProxyPass        /map             http://127.0.0.1:8100/map
+ProxyPassReverse /map             http://127.0.0.1:8100/map
 ProxyPass        /feedback        http://127.0.0.1:8100/feedback
 ProxyPassReverse /feedback        http://127.0.0.1:8100/feedback
 ProxyPass        /ui              http://127.0.0.1:8100/ui
@@ -708,6 +731,102 @@ Return the minimal set of required parameters for a specific chart type.
   "required_parameters": ["graphType", "xAxis", "yAxis"],
   "tool":                "get_minimal_params",
   "valid":               true,
+
+---
+
+### `create_map_config`
+
+Generate a CanvasXpress map (choropleth, pie, or marker) config without an LLM call.
+Supports world maps, continent maps, country maps, US state/county maps, and custom
+topoJSON maps. Optionally overlays pie charts per region, proportional sizing, and
+geocoded marker pins.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `map_id` | string | ✅ | Map identifier — see table below |
+| `data` | array[][] | ❌ | CSV-style data; first row = headers, first column = geographic IDs |
+| `title` | string | ❌ | Chart title |
+| `color_scheme` | string | ❌ | Color palette e.g. `Blues`, `RdBu`, `YlOrRd` |
+| `color_by` | string | ❌ | Column name to color regions/symbols by |
+| `size_by` | string | ❌ | Column name whose values scale symbol/pie size per region |
+| `decorations` | object | ❌ | Decoration overlays — currently supports `pie` (see below) |
+| `topo_json` | string | ❌ | URL to a custom topoJSON file |
+| `legend_order` | object | ❌ | Map of column → ordered list of values for legend display |
+| `markers` | array | ❌ | List of marker pin dicts (see below) |
+
+**`map_id` values:**
+
+| `map_id` | Coverage | First-column ID format |
+|----------|----------|-----------------------|
+| `World` | All countries | ISO 3-letter codes (`USA`, `FRA`, `CHN`, …) |
+| `WorldContinents` | 6 continents | Continent names (`Africa`, `Asia`, `Europe`, …) |
+| `Africa`, `Asia`, `Europe`, `NorthAmerica`, `SouthAmerica`, `Oceania` | One continent | ISO 3-letter codes |
+| `USAStates` | 50 US states + DC | 2-letter codes (`CA`, `TX`, `NY`, …) |
+| `USACounties` | US counties | 5-digit FIPS codes (`06037`, `48113`, …) |
+| `albersStatesPie` | US states, Albers projection | 2-letter codes — use when Albers projection is explicitly requested |
+| ISO 3-letter code (`CAN`, `GBR`, `AUS`, …) | Country sub-regions | Feature property values — set `mapPropertyId` in config |
+| 2-letter US state code (`CA`, `TX`, `NY`, …) | State counties | County names or FIPS codes |
+
+**Pie overlay (`decorations.pie`):**
+
+```json
+"decorations": {
+  "pie": {
+    "smps":   ["Democrat", "Republican", "Libertarian", "Other"],
+    "colors": ["blue", "red", "yellow", "green"],
+    "size":   2.5
+  }
+}
+```
+
+`decorations.pie.size` is a float multiplier that controls how large each pie is drawn.
+`size_by` (top-level) is a column name that scales each pie proportionally to its data value.
+These two work independently — both can be used together.
+
+**Marker pins (`markers` list):**
+
+Each marker dict supports three ways to specify location:
+
+| Key | Description |
+|-----|-------------|
+| `lat` + `lng` | Explicit decimal-degree coordinates |
+| `zip` | US ZIP code — resolved via free zippopotam.us API |
+| `location` | Any city, address, or landmark — geocoded via Nominatim (OpenStreetMap) |
+
+Optional fields: `label` (string), `color` (default `"red"`), `shape` (`teardrop`\|`circle`\|`star`\|`square`, default `teardrop`), `size` (int 1–10, default `4`).
+
+**Response:**
+
+```json
+{
+  "config": {
+    "graphType":    "Map",
+    "mapId":        "USAStates",
+    "colorBy":      "Winner",
+    "sizeBy":       "Total",
+    "decorations":  { "pie": [{"smps": ["Democrat","Republican","Libertarian","Other"], "colors": ["blue","red","yellow","green"], "size": 2.5}] },
+    "legendOrder":  { "Winner": ["Republican","Democrat"] },
+    "title":        "2000 Presidential Elections"
+  },
+  "valid":        true,
+  "warnings":     [],
+  "map_id":       "USAStates",
+  "headers_used": ["Id","Total","Democrat","Republican","Libertarian","Other","State","Winner"],
+  "tool":         "create_map_config",
+  "datetime":     "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":   "j9lllk88-9l9k-3no7-kk5k-5kk8km279j00"
+}
+```
+
+**Example prompts for `generate_canvasxpress_config`:**
+```
+"Show GDP by country on a world map using Blues color scheme"
+"US states map colored by unemployment rate"
+"Create a map of France showing population by region"
+"Pie map of the 2000 US Presidential Election — Democrat, Republican, Libertarian, Other slices per state"
+"World map with markers at Paris, Tokyo, New York, and Sydney"
+"USA states map with markers at ZIP codes 10001, 90210, and 60601"
+```
   "datetime":            "Fri, 10 Apr 2026 19:00:00 GMT",
   "request_id":          "i8kkji77-8k8j-2mn6-jj4j-4jj7jl168i99"
 }
@@ -717,6 +836,102 @@ Return the minimal set of required parameters for a specific chart type.
 |-------|-------------|
 | `graphType` | The requested chart type |
 | `required_parameters` | Minimum set of parameters that must be populated for a valid config |
+
+---
+
+### `create_map_config`
+
+Generate a CanvasXpress map (choropleth, pie, or marker) config without an LLM call.
+Supports world maps, continent maps, country maps, US state/county maps, and custom
+topoJSON maps. Optionally overlays pie charts per region, proportional sizing, and
+geocoded marker pins.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `map_id` | string | ✅ | Map identifier — see table below |
+| `data` | array[][] | ❌ | CSV-style data; first row = headers, first column = geographic IDs |
+| `title` | string | ❌ | Chart title |
+| `color_scheme` | string | ❌ | Color palette e.g. `Blues`, `RdBu`, `YlOrRd` |
+| `color_by` | string | ❌ | Column name to color regions/symbols by |
+| `size_by` | string | ❌ | Column name whose values scale symbol/pie size per region |
+| `decorations` | object | ❌ | Decoration overlays — currently supports `pie` (see below) |
+| `topo_json` | string | ❌ | URL to a custom topoJSON file |
+| `legend_order` | object | ❌ | Map of column → ordered list of values for legend display |
+| `markers` | array | ❌ | List of marker pin dicts (see below) |
+
+**`map_id` values:**
+
+| `map_id` | Coverage | First-column ID format |
+|----------|----------|-----------------------|
+| `World` | All countries | ISO 3-letter codes (`USA`, `FRA`, `CHN`, …) |
+| `WorldContinents` | 6 continents | Continent names (`Africa`, `Asia`, `Europe`, …) |
+| `Africa`, `Asia`, `Europe`, `NorthAmerica`, `SouthAmerica`, `Oceania` | One continent | ISO 3-letter codes |
+| `USAStates` | 50 US states + DC | 2-letter codes (`CA`, `TX`, `NY`, …) |
+| `USACounties` | US counties | 5-digit FIPS codes (`06037`, `48113`, …) |
+| `albersStatesPie` | US states, Albers projection | 2-letter codes — use when Albers projection is explicitly requested |
+| ISO 3-letter code (`CAN`, `GBR`, `AUS`, …) | Country sub-regions | Feature property values — set `mapPropertyId` in config |
+| 2-letter US state code (`CA`, `TX`, `NY`, …) | State counties | County names or FIPS codes |
+
+**Pie overlay (`decorations.pie`):**
+
+```json
+"decorations": {
+  "pie": {
+    "smps":   ["Democrat", "Republican", "Libertarian", "Other"],
+    "colors": ["blue", "red", "yellow", "green"],
+    "size":   2.5
+  }
+}
+```
+
+`decorations.pie.size` is a float multiplier that controls how large each pie is drawn.
+`size_by` (top-level) is a column name that scales each pie proportionally to its data value.
+These two work independently — both can be used together.
+
+**Marker pins (`markers` list):**
+
+Each marker dict supports three ways to specify location:
+
+| Key | Description |
+|-----|-------------|
+| `lat` + `lng` | Explicit decimal-degree coordinates |
+| `zip` | US ZIP code — resolved via free zippopotam.us API |
+| `location` | Any city, address, or landmark — geocoded via Nominatim (OpenStreetMap) |
+
+Optional fields: `label` (string), `color` (default `"red"`), `shape` (`teardrop`\|`circle`\|`star`\|`square`, default `teardrop`), `size` (int 1–10, default `4`).
+
+**Response:**
+
+```json
+{
+  "config": {
+    "graphType":    "Map",
+    "mapId":        "USAStates",
+    "colorBy":      "Winner",
+    "sizeBy":       "Total",
+    "decorations":  { "pie": [{"smps": ["Democrat","Republican","Libertarian","Other"], "colors": ["blue","red","yellow","green"], "size": 2.5}] },
+    "legendOrder":  { "Winner": ["Republican","Democrat"] },
+    "title":        "2000 Presidential Elections"
+  },
+  "valid":        true,
+  "warnings":     [],
+  "map_id":       "USAStates",
+  "headers_used": ["Id","Total","Democrat","Republican","Libertarian","Other","State","Winner"],
+  "tool":         "create_map_config",
+  "datetime":     "Fri, 10 Apr 2026 19:00:00 GMT",
+  "request_id":   "j9lllk88-9l9k-3no7-kk5k-5kk8km279j00"
+}
+```
+
+**Example prompts for `generate_canvasxpress_config`:**
+```
+"Show GDP by country on a world map using Blues color scheme"
+"US states map colored by unemployment rate"
+"Create a map of France showing population by region"
+"Pie map of the 2000 US Presidential Election — Democrat, Republican, Libertarian, Other slices per state"
+"World map with markers at Paris, Tokyo, New York, and Sydney"
+"USA states map with markers at ZIP codes 10001, 90210, and 60601"
+```
 
 ---
 
@@ -1004,6 +1219,9 @@ cat > /etc/apache2/conf.d/userdata/ssl/2_4/canvasxpress/canvasxpress.org/mcp-pro
 <Location /minimal-params>
     PassengerEnabled Off
 </Location>
+<Location /map>
+    PassengerEnabled Off
+</Location>
 <Location /feedback>
     PassengerEnabled Off
 </Location>
@@ -1032,17 +1250,10 @@ ProxyPass        /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
 ProxyPassReverse /explain-ggplot  http://127.0.0.1:8100/explain-ggplot
 ProxyPass        /minimal-params  http://127.0.0.1:8100/minimal-params
 ProxyPassReverse /minimal-params  http://127.0.0.1:8100/minimal-params
+ProxyPass        /map             http://127.0.0.1:8100/map
+ProxyPassReverse /map             http://127.0.0.1:8100/map
 ProxyPass        /feedback        http://127.0.0.1:8100/feedback
 ProxyPassReverse /feedback        http://127.0.0.1:8100/feedback
-ProxyPass        /ui              http://127.0.0.1:8100/ui
-ProxyPassReverse /ui              http://127.0.0.1:8100/ui
-
-# Block the root from being proxied — serve the website normally
-# MUST be the last ProxyPass rule
-ProxyPass        /  !
-EOF
-
-apachectl configtest && service httpd restart
 ```
 
 > Add the new `<Location>` block and `ProxyPass`/`ProxyPassReverse` pair for the new
