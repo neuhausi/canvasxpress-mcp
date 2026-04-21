@@ -8,44 +8,27 @@
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "Gantt",
+    "graphType": "Ribbon",
     "score": 1.0,
     "category": "single_dimensional",
-    "description": "Horizontal bars with start/end times \u2014 subject-level timelines.",
-    "clinical_use": "Subject treatment timelines, concomitant medication exposure",
-    "next_step": "generate_canvasxpress_config with description='Gantt chart of <factor> from <start_time> to <end_time>'",
+    "description": "Ribbon chart \u2014 area between two lines showing range over time.",
+    "clinical_use": "Mean \u00b1 SD lab value band over visits",
+    "next_step": "generate_canvasxpress_config with description='ribbon chart of <lower> to <upper> over <time>'",
     "scoring_factors": [
-      "numeric start/end + category \u2014 possible Gantt"
-    ],
-    "minimal_config": {
-      "graphType": "Gantt",
-      "xAxis": [
-        "Start"
-      ],
-      "groupingFactors": [
-        "Group"
-      ]
-    }
+      "numeric start/end ranges per group"
+    ]
   },
   "alternatives": [
     {
-      "graphType": "Heatmap",
-      "score": 0.95,
+      "graphType": "Gantt",
+      "score": 1.0,
       "category": "single_dimensional",
-      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
-      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
-      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "description": "Horizontal bars with start/end times \u2014 subject-level timelines.",
+      "clinical_use": "Subject treatment timelines, concomitant medication exposure",
+      "next_step": "generate_canvasxpress_config with description='Gantt chart of <factor> from <start_time> to <end_time>'",
       "scoring_factors": [
-        "2 cats as row/col + numeric value",
-        "enough rows for matrix"
-      ],
-      "minimal_config": {
-        "graphType": "Heatmap",
-        "xAxis": [
-          "Start",
-          "End"
-        ]
-      }
+        "numeric start/end + category \u2014 possible Gantt"
+      ]
     },
     {
       "graphType": "Boxplot",
@@ -58,16 +41,7 @@
         "cat + numeric \u2192 distribution by group",
         "sufficient n for box stats",
         "multiple numeric vars"
-      ],
-      "minimal_config": {
-        "graphType": "Boxplot",
-        "xAxis": [
-          "Start"
-        ],
-        "groupingFactors": [
-          "Group"
-        ]
-      }
+      ]
     },
     {
       "graphType": "Scatter2D",
@@ -80,59 +54,21 @@
         "2+ numeric \u2192 x/y scatter",
         "colour by category",
         "sufficient points"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter2D",
-        "xAxis": [
-          "Start"
-        ],
-        "yAxis": [
-          "End"
-        ],
-        "colorBy": "Group",
-        "zAxis": []
-      }
+      ]
     },
     {
-      "graphType": "Bar",
-      "score": 0.85,
-      "category": "single_dimensional",
-      "description": "Vertical or horizontal bars comparing values across categories.",
-      "clinical_use": "AE counts by SOC/arm, subject counts by group",
-      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
       "scoring_factors": [
-        "1+ category + 1+ numeric",
-        "small-medium dataset"
-      ],
-      "minimal_config": {
-        "graphType": "Bar",
-        "xAxis": [
-          "Start"
-        ]
-      }
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
     }
   ],
-  "generate_hint": "Gantt chart of Start grouped by Sample colored by Group \u2014 columns: Sample, Start, End, Group",
-  "tiebreak": {
-    "used": true,
-    "chosen": "Gantt",
-    "reason": "This chart type is ideal for"
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Sample",
-    "Start",
-    "End",
-    "Group"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Gantt</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Horizontal bars with start/end times \u2014 subject-level timelines.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Subject treatment timelines, concomitant medication exposure</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>numeric start/end + category \u2014 possible Gantt</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;Gantt chart of &lt;factor&gt; from &lt;start_time&gt; to &lt;end_time&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Gantt&quot;, &quot;xAxis&quot;: [&quot;Start&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Gantt</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>This chart type is ideal for</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Heatmap</span><span class=\"cX-Chat-Select-Score\">score: 0.95</span></div>\n<p class=\"cX-Chat-Select-Desc\">Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE incidence by SOC \u00d7 arm, gene expression heatmap</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2 cats as row/col + numeric value</li><li>enough rows for matrix</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;heatmap of &lt;numeric&gt; with &lt;factor1&gt; rows and &lt;factor2&gt; columns&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Heatmap&quot;, &quot;xAxis&quot;: [&quot;Start&quot;, &quot;End&quot;]}\">Apply Heatmap</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li><li>multiple numeric vars</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;Start&quot;], &quot;groupingFactors&quot;: [&quot;Group&quot;]}\">Apply Boxplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>colour by category</li><li>sufficient points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;Start&quot;], &quot;yAxis&quot;: [&quot;End&quot;], &quot;colorBy&quot;: &quot;Group&quot;, &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Start&quot;]}\">Apply Bar</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:41:03 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "5ef9b99a-fa10-4f1c-b5b0-defa621bffdf"
+  "generate_hint": "Ribbon chart of Start grouped by Group \u2014 columns: Sample, Start, End, Group"
 }

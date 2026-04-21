@@ -3680,6 +3680,8 @@ _UI_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CanvasXpress MCP — Web UI</title>
 <link rel="icon" href="/favicon.ico" type="image/png">
+<link rel="stylesheet" href="https://canvasxpress.org/dist/canvasXpress.css" type="text/css"/>
+<script type="text/javascript" src="https://canvasxpress.org/dist/canvasXpress.min.js"></script>
 <style>
   *{box-sizing:border-box}
   body{font-family:system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 20px;background:#f5f5f5;color:#222}
@@ -3712,6 +3714,10 @@ _UI_HTML = r"""<!DOCTYPE html>
   .card{background:#fff;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px;padding:16px}
   .hint{font-size:.78rem;color:#888;margin-top:3px}
   .section-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#999;margin-top:18px;margin-bottom:4px;border-bottom:1px solid #eee;padding-bottom:3px}
+  #preview{margin-top:24px;margin-bottom:20px;height:auto;background:#fff;border:1px solid #ddd;border-radius:6px;padding:16px;display:none}
+  #preview h3{margin:0 0 10px;font-size:.95rem;display:flex;align-items:center;gap:10px}
+  #preview h3 span.preview-hint{font-size:.78rem;font-weight:400;color:#888}
+  #cx-preview-wrap{width:100%;position:relative;min-height:60px}
 </style>
 </head>
 <body>
@@ -3886,6 +3892,10 @@ _UI_HTML = r"""<!DOCTYPE html>
   <div class="meta" id="result-meta"></div>
   <pre id="result-pre"></pre>
 </div>
+<div id="preview">
+  <h3>Live Preview <span class="preview-hint">powered by CanvasXpress</span></h3>
+  <div id="cx-preview-wrap"><canvas id="cx-preview" width="1030" height="440"></canvas></div>
+</div>
 
 <script>
 const BASE = window.location.origin;
@@ -4045,9 +4055,18 @@ async function submit(){
       metaEl.innerHTML=count+' parameters &nbsp; source: <b>'+(data.schema_source||'?')+'</b>';
       preEl.textContent=JSON.stringify(data,null,2);
     } else if(activeTab==='select'){
-      var top=data.recommendations&&data.recommendations[0];
+      var top=data.top_recommendation;
       if(top) metaEl.innerHTML='Top recommendation: <b>'+top.graphType+'</b>';
       preEl.textContent=JSON.stringify(data,null,2);
+      // Only render preview when the user supplied data
+      var selRaw = v('sel-data');
+      if(selRaw && top && top.minimal_config) {
+        var selParsed = null;
+        try { selParsed = JSON.parse(selRaw); } catch(e){}
+        renderPreview(top.minimal_config, selParsed);
+      } else {
+        document.getElementById('preview').style.display = 'none';
+      }
     } else {
       preEl.textContent=JSON.stringify(data,null,2);
     }
@@ -4076,6 +4095,50 @@ async function submit(){
   if(p.get('topic')){['exr-topic','exg-topic'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=p.get('topic');});}
   buildUrl();
 })();
+
+// ── CanvasXpress live preview (Select Chart tab only) ────────────────────────
+var _cxPreviewInstance = null;
+
+/**
+ * Convert [[headers],[row,...], ...] into CanvasXpress raw data format.
+ * CanvasXpress accepts data as a flat array-of-arrays (first row = headers)
+ * when passed as the `data` key — identical to the km.json example format.
+ * We pass it straight through so CX handles type detection itself, mirroring
+ * how callbackLLM in canvasXpress.init.js works.
+ */
+function buildCxData(rawData) {
+  if (!rawData || !Array.isArray(rawData) || rawData.length < 2) return null;
+  return rawData;  // CanvasXpress accepts [[headers],[row...], ...] directly
+}
+
+/**
+ * Render (or re-render) a CanvasXpress chart in the preview area.
+ * Follows the same pattern as CanvasXpress.callbackLLM in canvasXpress.init.js:
+ *   1. Destroy any existing instance.
+ *   2. Recreate the canvas element.
+ *   3. Instantiate new CanvasXpress({renderTo, data, config}).
+ */
+function renderPreview(config, rawData) {
+  var previewEl = document.getElementById('preview');
+  var wrapEl    = document.getElementById('cx-preview-wrap');
+  if (!config || !config.graphType) { previewEl.style.display = 'none'; return; }
+  previewEl.style.display = 'block';
+  // Destroy previous instance and reset canvas
+  if (_cxPreviewInstance) {
+    try { _cxPreviewInstance.destroy('cx-preview'); } catch(e){}
+    _cxPreviewInstance = null;
+  }
+  wrapEl.innerHTML = '<canvas id="cx-preview" width="1030" height="440"></canvas>';
+  var cxData = buildCxData(rawData);
+  var cfg    = Object.assign({}, config);
+  try {
+    var initObj = { renderTo: 'cx-preview', config: cfg };
+    if (cxData) { initObj.data = cxData; }
+    _cxPreviewInstance = new CanvasXpress(initObj);
+  } catch(e) {
+    wrapEl.innerHTML = '<p style="color:#c0392b;font-size:.85rem;padding:8px">Preview error: ' + e.message + '</p>';
+  }
+}
 </script>
 </body>
 </html>

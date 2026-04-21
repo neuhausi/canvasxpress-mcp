@@ -8,27 +8,29 @@
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "Treemap",
+    "graphType": "Sunburst",
     "score": 1.0,
     "category": "single_dimensional",
-    "description": "Nested rectangles sized by value \u2014 hierarchical proportion.",
-    "clinical_use": "Hierarchical AE counts (SOC \u2192 PT)",
-    "next_step": "generate_canvasxpress_config with description='treemap of <numeric> by <factor> hierarchy'",
+    "description": "Radial hierarchical treemap \u2014 outer rings are children.",
+    "clinical_use": "Hierarchical AE breakdown (SOC \u2192 PT \u2192 severity)",
+    "next_step": "generate_canvasxpress_config with description='sunburst of <numeric> by nested <factor> hierarchy'",
     "scoring_factors": [
-      "cat + numeric \u2192 hierarchical size",
-      "nested hierarchy"
-    ],
-    "minimal_config": {
-      "graphType": "Treemap",
-      "xAxis": [
-        "Value"
-      ],
-      "groupingFactors": [
-        "Level1"
-      ]
-    }
+      "2+ cats + numeric \u2192 radial hierarchy"
+    ]
   },
   "alternatives": [
+    {
+      "graphType": "Treemap",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Nested rectangles sized by value \u2014 hierarchical proportion.",
+      "clinical_use": "Hierarchical AE counts (SOC \u2192 PT)",
+      "next_step": "generate_canvasxpress_config with description='treemap of <numeric> by <factor> hierarchy'",
+      "scoring_factors": [
+        "cat + numeric \u2192 hierarchical size",
+        "nested hierarchy"
+      ]
+    },
     {
       "graphType": "Bar",
       "score": 1.0,
@@ -38,99 +40,34 @@
       "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
       "scoring_factors": [
         "1+ category + 1+ numeric",
-        "small-medium dataset",
-        "manageable category count"
-      ],
-      "minimal_config": {
-        "graphType": "Bar",
-        "xAxis": [
-          "Value"
-        ],
-        "colorBy": "Level2"
-      }
+        "small-medium dataset"
+      ]
     },
     {
-      "graphType": "Stacked",
-      "score": 0.9,
-      "category": "single_dimensional",
-      "description": "Stacked bars showing part-of-whole within each group.",
-      "clinical_use": "AE severity breakdown per arm, disposition categories",
-      "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
-      "scoring_factors": [
-        "2+ categories ideal for stacking",
-        "few stack levels"
-      ],
-      "minimal_config": {
-        "graphType": "Stacked",
-        "xAxis": [
-          "Value"
-        ],
-        "colorBy": "Level2"
-      }
-    },
-    {
-      "graphType": "Sunburst",
-      "score": 0.9,
-      "category": "single_dimensional",
-      "description": "Radial hierarchical treemap \u2014 outer rings are children.",
-      "clinical_use": "Hierarchical AE breakdown (SOC \u2192 PT \u2192 severity)",
-      "next_step": "generate_canvasxpress_config with description='sunburst of <numeric> by nested <factor> hierarchy'",
-      "scoring_factors": [
-        "2+ cats + numeric \u2192 radial hierarchy"
-      ],
-      "minimal_config": {
-        "graphType": "Sunburst",
-        "hierarchy": [
-          "Level1",
-          "Level2"
-        ],
-        "xAxis": [
-          "Value"
-        ],
-        "colorBy": "Level2"
-      }
-    },
-    {
-      "graphType": "StackedPercent",
+      "graphType": "Dotplot",
       "score": 0.85,
       "category": "single_dimensional",
-      "description": "100% stacked bars \u2014 each bar sums to 100%.",
-      "clinical_use": "Relative AE severity distribution across arms",
-      "next_step": "generate_canvasxpress_config with description='100% stacked bar of <metric> by <category>'",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
       "scoring_factors": [
-        "2+ cats \u2192 proportion comparison",
-        "few stack segments"
+        "cat + numeric",
+        "small n \u2014 show every point"
       ],
-      "minimal_config": {
-        "graphType": "StackedPercent",
-        "xAxis": [
-          "Value"
-        ],
-        "colorBy": "Level2"
-      }
+      "note": "n_samples=18 is small \u2014 Dotplot shows every observation clearly."
+    },
+    {
+      "graphType": "Heatmap",
+      "score": 0.75,
+      "category": "single_dimensional",
+      "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
+      "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
+      "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+      "scoring_factors": [
+        "2 cats as row/col + numeric value",
+        "enough rows for matrix"
+      ]
     }
   ],
-  "generate_hint": "Treemap chart of Value grouped by Level1 colored by Level2 \u2014 columns: Level1, Level2, Level3, Value",
-  "tiebreak": {
-    "used": true,
-    "chosen": "Treemap",
-    "reason": "It is ideal for visualizing hierarchical data (Level"
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Level1",
-    "Level2",
-    "Level3",
-    "Value"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Treemap</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Nested rectangles sized by value \u2014 hierarchical proportion.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical AE counts (SOC \u2192 PT)</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 hierarchical size</li><li>nested hierarchy</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;treemap of &lt;numeric&gt; by &lt;factor&gt; hierarchy&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Treemap&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;groupingFactors&quot;: [&quot;Level1&quot;]}\">Apply Treemap</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>It is ideal for visualizing hierarchical data (Level</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Level2&quot;}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Stacked</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked bars showing part-of-whole within each group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE severity breakdown per arm, disposition categories</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ categories ideal for stacking</li><li>few stack levels</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Stacked&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Level2&quot;}\">Apply Stacked</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Sunburst</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Radial hierarchical treemap \u2014 outer rings are children.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical AE breakdown (SOC \u2192 PT \u2192 severity)</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats + numeric \u2192 radial hierarchy</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;sunburst of &lt;numeric&gt; by nested &lt;factor&gt; hierarchy&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Sunburst&quot;, &quot;hierarchy&quot;: [&quot;Level1&quot;, &quot;Level2&quot;], &quot;xAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Level2&quot;}\">Apply Sunburst</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">StackedPercent</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">100% stacked bars \u2014 each bar sums to 100%.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Relative AE severity distribution across arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats \u2192 proportion comparison</li><li>few stack segments</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;100% stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;StackedPercent&quot;, &quot;xAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Level2&quot;}\">Apply StackedPercent</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:41:27 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "070cc357-0ab7-4169-87f5-a3702d5d30a9"
+  "generate_hint": "Sunburst chart of Value grouped by Level1 colored by Level2 \u2014 columns: Level1, Level2, Level3, Value"
 }

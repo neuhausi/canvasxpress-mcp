@@ -463,6 +463,15 @@ CHART_CATALOGUE: dict[str, dict] = {
         "clinical_use": "Multi-way AE overlap, multi-drug co-occurrence",
         "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
     },
+    "Map": {
+        "category": "geographic",
+        "description": "Choropleth, bubble, pie or marker map — values encoded onto geographic regions or coordinates.",
+        "best_for": ["map", "choropleth", "geographic", "geospatial", "country", "state", "region",
+                     "world map", "usa map", "us map", "pie map", "marker map", "latitude", "longitude"],
+        "requires": {"n_fac": 1, "n_num": 1},
+        "clinical_use": "Site enrollment by country/region, prevalence by geography, election results by state",
+        "next_step": "create_map_config with map_id='<USAStates|World|USACounties|…>' and color_by='<column>'",
+    },
 }
 
 
@@ -511,6 +520,7 @@ _PATTERNS_RAW: dict[str, list[str]] = {
     "lower":          [r"lower", r"low$", r"min$", r"lb$", r"q1$", r"p25$"],
     "upper":          [r"upper", r"high$", r"max$", r"ub$", r"q3$", r"p75$"],
     "sd_sem":         [r"^sd$", r"^se$", r"^sem$", r"std", r"stderr", r"error$", r"_sd$", r"_se$"],
+    "geographic":     [r"^country$", r"^nation$", r"^state$", r"^province$", r"^fips$", r"^iso$", r"^iso2$", r"^iso3$", r"^lat$", r"^lng$", r"^lon$", r"latitude", r"longitude"],
 }
 
 _PATTERNS: dict[str, list[re.Pattern]] = {
@@ -665,8 +675,11 @@ def _score_heatmap(ctx: _Ctx) -> dict:
     if ctx.category >= 2 and ctx.numeric >= 1:
         score += 0.7
         factors.append("2 cats as row/col + numeric value")
+    if ctx.category >= 1 and ctx.numeric >= 4:
+        score += 0.5
+        factors.append("4+ numeric vars — wide-format matrix view preferred over parallel coordinates")
     if ctx.numeric >= 5:
-        score += 0.2
+        score += 0.1
         factors.append("many numeric vars → matrix view")
     if ctx.row_count > 10:
         score += 0.05
@@ -939,15 +952,18 @@ def _score_chord(ctx: _Ctx) -> dict:
 def _score_parallel_coordinates(ctx: _Ctx) -> dict:
     score = 0.0
     factors = []
-    if ctx.numeric >= 3:
-        score += 0.6
-        factors.append("3+ numeric → parallel axes")
+    if ctx.numeric >= 2:
+        score += 0.5
+        factors.append("2+ numeric → parallel axes")
     if ctx.category >= 1:
         score += 0.15
         factors.append("colour lines by category")
-    if ctx.numeric >= 4:
-        score += 0.2
-        factors.append("4+ axes — parallel coordinates clearer than heatmap")
+    if 2 <= ctx.numeric <= 3:
+        score += 0.25
+        factors.append("< 4 numeric cols — parallel coordinates preferred over heatmap")
+    elif ctx.numeric >= 4:
+        score -= 0.35
+        factors.append("4+ numeric cols — heatmap preferred for dense multivariate")
     return {"score": _clamp(score), "factors": factors}
 
 
@@ -1232,6 +1248,14 @@ def _score_upset(ctx: _Ctx) -> dict:
     return {"score": _clamp(score), "factors": factors}
 
 
+def _score_map(ctx: _Ctx) -> dict:
+    # Map has no distinctive structural signature — a category ID column + numeric
+    # is equally valid for Bar, Line, Heatmap, etc.  Score is kept near-zero so
+    # Map only surfaces when the user explicitly requests it via intent keywords
+    # (Layer 3) or explicit geographic column names (Layer 2).
+    return {"score": 0.0, "factors": []}
+
+
 # ---------------------------------------------------------------------------
 # Scorers registry
 # ---------------------------------------------------------------------------
@@ -1289,6 +1313,7 @@ _SCORERS: list[dict] = [
     {"name": "Tornado",             "graphType": "Tornado",             "fn": _score_tornado},
     {"name": "TreeBracket",         "graphType": "TreeBracket",         "fn": _score_tree_bracket},
     {"name": "Upset",               "graphType": "Upset",               "fn": _score_upset},
+    {"name": "Map",                 "graphType": "Map",                 "fn": _score_map},
 ]
 
 
@@ -1474,6 +1499,10 @@ def _compute_semantic_adjustments(col_names: list[str], column_types: dict[str, 
     if _any_col_matches(col_names, "cluster"):
         add("TreeBracket", 0.5)
         add("Heatmap", 0.2)
+
+    # Geographic columns → Map (only exact geographic ID column names, not generic ones)
+    if _any_col_matches(col_names, "geographic"):
+        add("Map", 0.3)  # small nudge — intent must confirm
 
     # Biomarker → Violin / Boxplot
     if _any_col_matches(col_names, "biomarker"):
@@ -1689,6 +1718,23 @@ _INTENT_BOOSTS: list[dict] = [
     # binplot
     {"kws": ["binplot", "bin scatter", "binned scatter", "bin plot"],
      "boosts": {"Binplot": 1.15}},
+    # map / choropleth / geographic — only fire on explicit map request phrases,
+    # NOT on substrings of 'heatmap' or 'treemap'
+    {"kws": ["choropleth", "geographic map", "geospatial map",
+             "world map", "usa map", "us map", "us states map", "usa states map",
+             "country map", "state map", "pie map", "marker map",
+             "map of the", "map of usa", "map of us ", "map of world",
+             "map of country", "map of state", "map of region",
+             "map showing", "map with", "on a map", "on the map",
+             "enrollment map", "prevalence map", "incidence map",
+             "geographic distribution", "geospatial distribution"],
+     "boosts": {"Map": 1.0}},
+    # intent starts with 'map' (e.g. "map of gdp by country", "map the us states")
+    {"kws": ["map of", "map the ", "map: "],
+     "boosts": {"Map": 1.0}},
+    # explicit geographic terms in intent
+    {"kws": ["latitude", "longitude"],
+     "boosts": {"Map": 0.8}},
 ]
 
 

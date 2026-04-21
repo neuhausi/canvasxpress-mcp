@@ -2,117 +2,70 @@
   "intent": "Upset plot showing intersections of four gene sets",
   "column_summary": {
     "n_factor": 1,
-    "n_numeric": 0,
+    "n_numeric": 4,
     "n_time": 0,
-    "n_bool": 4,
+    "n_bool": 0,
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "TagCloud",
-    "score": 0.3,
+    "graphType": "Upset",
+    "score": 1.0,
     "category": "single_dimensional",
-    "description": "Word/tag cloud sized by frequency.",
-    "clinical_use": "Frequently reported terms, SAE narratives word frequency",
-    "next_step": "generate_canvasxpress_config with description='word cloud of <factor> sized by frequency'",
-    "scoring_factors": [
-      "category labels \u2192 word cloud"
-    ],
-    "minimal_config": {
-      "graphType": "TagCloud",
-      "xAxis": []
-    }
+    "description": "UpSet plot \u2014 scalable alternative to Venn for many sets.",
+    "clinical_use": "Multi-way AE overlap, multi-drug co-occurrence",
+    "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
+    "scoring_factors": []
   },
   "alternatives": [
     {
-      "graphType": "TreeBracket",
-      "score": 0.35,
-      "category": "single_dimensional",
-      "description": "Tree/dendrogram with bracket annotations.",
-      "clinical_use": "Hierarchical clustering of samples or genes",
-      "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
+      "graphType": "SPLOM",
+      "score": 1.0,
+      "category": "multi_dimensional",
+      "description": "Scatter plot matrix \u2014 all pairwise scatter plots in a grid.",
+      "clinical_use": "Pairwise biomarker exploration, PK parameter matrix",
+      "next_step": "generate_canvasxpress_config with description='scatter plot matrix of <numeric variables>'",
       "scoring_factors": [
-        "category labels \u2192 dendrogram leaves"
-      ],
-      "minimal_config": {
-        "graphType": "TreeBracket",
-        "hierarchy": [],
-        "xAxis": []
-      }
-    },
-    {
-      "graphType": "Violin",
-      "score": 0.25,
-      "category": "single_dimensional",
-      "description": "Kernel density mirrored around a centre line \u2014 richer shape than boxplot.",
-      "clinical_use": "Biomarker distributions, gene expression by cell type",
-      "next_step": "generate_canvasxpress_config with description='violin plot of <numeric> by <factor>'",
-      "scoring_factors": [
-        "enough data for density estimate"
-      ],
-      "minimal_config": {
-        "graphType": "Violin",
-        "xAxis": [],
-        "groupingFactors": []
-      }
+        "2\u20134 numeric \u2192 compact pairwise matrix"
+      ]
     },
     {
       "graphType": "Boxplot",
-      "score": 0.2,
+      "score": 0.9,
       "category": "single_dimensional",
       "description": "Box-and-whisker showing median, IQR, and outliers per group.",
       "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
       "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
       "scoring_factors": [
-        "sufficient n for box stats"
-      ],
-      "minimal_config": {
-        "graphType": "Boxplot",
-        "xAxis": [],
-        "groupingFactors": []
-      }
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
     },
     {
-      "graphType": "Line",
-      "score": 0.2,
-      "category": "single_dimensional",
-      "description": "Connected points showing trends over a continuous or ordinal axis.",
-      "clinical_use": "Lab values over visits, PK concentration-time profiles",
-      "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
       "scoring_factors": [
+        "2+ numeric \u2192 x/y scatter",
         "colour by category",
-        "enough time points"
-      ],
-      "minimal_config": {
-        "graphType": "Line",
-        "xAxis": []
-      }
+        "sufficient points"
+      ]
+    },
+    {
+      "graphType": "Scatter3D",
+      "score": 0.85,
+      "category": "multi_dimensional",
+      "description": "3D scatter for three continuous dimensions.",
+      "clinical_use": "Multivariate exploratory analysis",
+      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
+      "scoring_factors": [
+        "3 numeric \u2192 x/y/z scatter",
+        "colour by category"
+      ]
     }
   ],
-  "generate_hint": "TagCloud chart \u2014 columns: Member, SetA, SetB, SetC, SetD",
-  "tiebreak": {
-    "used": true,
-    "chosen": "TagCloud",
-    "reason": "This chart type is best for visualizing the frequency"
-  },
-  "valid": false,
-  "warnings": [
-    "TagCloud: required parameter 'colorBy' is not populated",
-    "TagCloud: required parameter 'xAxis' is not populated"
-  ],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Member",
-    "SetA",
-    "SetB",
-    "SetC",
-    "SetD"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">TagCloud</span><span class=\"cX-Chat-Select-Score\">score: 0.3</span></div>\n<p class=\"cX-Chat-Select-Desc\">Word/tag cloud sized by frequency.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Frequently reported terms, SAE narratives word frequency</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>category labels \u2192 word cloud</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;word cloud of &lt;factor&gt; sized by frequency&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;TagCloud&quot;, &quot;xAxis&quot;: []}\">Apply TagCloud</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>This chart type is best for visualizing the frequency</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">TreeBracket</span><span class=\"cX-Chat-Select-Score\">score: 0.35</span></div>\n<p class=\"cX-Chat-Select-Desc\">Tree/dendrogram with bracket annotations.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical clustering of samples or genes</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>category labels \u2192 dendrogram leaves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;tree bracket dendrogram of &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;TreeBracket&quot;, &quot;hierarchy&quot;: [], &quot;xAxis&quot;: []}\">Apply TreeBracket</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Violin</span><span class=\"cX-Chat-Select-Score\">score: 0.25</span></div>\n<p class=\"cX-Chat-Select-Desc\">Kernel density mirrored around a centre line \u2014 richer shape than boxplot.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker distributions, gene expression by cell type</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>enough data for density estimate</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;violin plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Violin&quot;, &quot;xAxis&quot;: [], &quot;groupingFactors&quot;: []}\">Apply Violin</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.2</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>sufficient n for box stats</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [], &quot;groupingFactors&quot;: []}\">Apply Boxplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Line</span><span class=\"cX-Chat-Select-Score\">score: 0.2</span></div>\n<p class=\"cX-Chat-Select-Desc\">Connected points showing trends over a continuous or ordinal axis.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab values over visits, PK concentration-time profiles</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>colour by category</li><li>enough time points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;line chart of &lt;numeric&gt; over &lt;time&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Line&quot;, &quot;xAxis&quot;: []}\">Apply Line</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Error\">TagCloud: required parameter &#x27;colorBy&#x27; is not populated</p>\n<p class=\"cX-Chat-LLM-Error\">TagCloud: required parameter &#x27;xAxis&#x27; is not populated</p>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": false,
-  "datetime": "Tue, 21 Apr 2026 03:41:38 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "7e986530-e445-41ba-b1dd-57abf5cf79ff"
+  "generate_hint": "Upset chart of SetA grouped by Member \u2014 columns: Member, SetA, SetB, SetC, SetD"
 }

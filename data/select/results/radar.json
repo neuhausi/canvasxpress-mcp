@@ -8,25 +8,30 @@
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "Bar",
+    "graphType": "Radar",
     "score": 1.0,
-    "category": "single_dimensional",
-    "description": "Vertical or horizontal bars comparing values across categories.",
-    "clinical_use": "AE counts by SOC/arm, subject counts by group",
-    "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+    "category": "multi_dimensional",
+    "description": "Spider/radar chart \u2014 compare profiles across multiple axes.",
+    "clinical_use": "Safety profile comparison across arms",
+    "next_step": "generate_canvasxpress_config with description='radar chart of <numeric axes> by <factor>'",
     "scoring_factors": [
-      "1+ category + 1+ numeric",
-      "small-medium dataset",
-      "manageable category count"
-    ],
-    "minimal_config": {
-      "graphType": "Bar",
-      "xAxis": [
-        "Speed"
-      ]
-    }
+      "3+ numeric axes + category groups",
+      "5+ axes \u2014 spider chart ideal"
+    ]
   },
   "alternatives": [
+    {
+      "graphType": "Bar",
+      "score": 1.0,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset"
+      ]
+    },
     {
       "graphType": "Dotplot",
       "score": 0.85,
@@ -38,14 +43,7 @@
         "cat + numeric",
         "small n \u2014 show every point"
       ],
-      "note": "n_samples=4 is small \u2014 Dotplot shows every observation clearly.",
-      "minimal_config": {
-        "graphType": "Dotplot",
-        "xAxis": [
-          "Speed"
-        ],
-        "groupingFactors": []
-      }
+      "note": "n_samples=4 is small \u2014 Dotplot shows every observation clearly."
     },
     {
       "graphType": "Scatter3D",
@@ -57,38 +55,7 @@
       "scoring_factors": [
         "3 numeric \u2192 x/y/z scatter",
         "colour by category"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter3D",
-        "xAxis": [
-          "Speed"
-        ],
-        "yAxis": [
-          "Strength"
-        ],
-        "zAxis": [
-          "Agility"
-        ]
-      }
-    },
-    {
-      "graphType": "Ridgeline",
-      "score": 0.85,
-      "category": "single_dimensional",
-      "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
-      "clinical_use": "Lab distributions across multiple visits or arms",
-      "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
-      "scoring_factors": [
-        "cat + numeric \u2192 stacked densities",
-        "several groups to compare",
-        "4+ groups \u2192 ridgeline avoids overlapping color curves"
-      ],
-      "minimal_config": {
-        "graphType": "Ridgeline",
-        "xAxis": [
-          "Speed"
-        ]
-      }
+      ]
     },
     {
       "graphType": "Scatter2D",
@@ -100,37 +67,8 @@
       "scoring_factors": [
         "2+ numeric \u2192 x/y scatter",
         "colour by category"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter2D",
-        "xAxis": [
-          "Speed"
-        ],
-        "yAxis": [
-          "Strength"
-        ],
-        "zAxis": []
-      }
+      ]
     }
   ],
-  "generate_hint": "Bar chart of Speed grouped by Team \u2014 columns: Team, Speed, Strength, Agility, Endurance, Precision",
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Team",
-    "Speed",
-    "Strength",
-    "Agility",
-    "Endurance",
-    "Precision"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Speed&quot;]}\">Apply Bar</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric</li><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;xAxis&quot;: [&quot;Speed&quot;], &quot;groupingFactors&quot;: []}\">Apply Dotplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter3D</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">3D scatter for three continuous dimensions.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multivariate exploratory analysis</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x/y/z scatter</li><li>colour by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;3D scatter of &lt;num1&gt; vs &lt;num2&gt; vs &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter3D&quot;, &quot;xAxis&quot;: [&quot;Speed&quot;], &quot;yAxis&quot;: [&quot;Strength&quot;], &quot;zAxis&quot;: [&quot;Agility&quot;]}\">Apply Scatter3D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Ridgeline</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked density plots per group \u2014 compare distributions without overlap.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab distributions across multiple visits or arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 stacked densities</li><li>several groups to compare</li><li>4+ groups \u2192 ridgeline avoids overlapping color curves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;ridgeline plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Ridgeline&quot;, &quot;xAxis&quot;: [&quot;Speed&quot;]}\">Apply Ridgeline</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>colour by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;Speed&quot;], &quot;yAxis&quot;: [&quot;Strength&quot;], &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:41:01 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "9c23fb56-94b6-4014-b0b4-f210f62ac3b1"
+  "generate_hint": "Radar chart of Speed grouped by Team \u2014 columns: Team, Speed, Strength, Agility, Endurance, Precision"
 }

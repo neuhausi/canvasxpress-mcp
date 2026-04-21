@@ -1,19 +1,111 @@
 """
-Generate test data files in data/select/ for every CanvasXpress chart type.
-Each file contains {"intent": "...", "data": [[header...], [row...]...]}
+Generate test data files in data/select/ for every CanvasXpress chart type,
+run chart-type selection on them, then produce an augmented set in
+data/select_plus/ with two extra columns and run selection on those too.
+
 Run from repo root: python3 gen_select_data.py
 """
-import json, os, random, datetime
+import csv, datetime, glob, json, os, random, re, sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+from cx_selector import select_chart
 
 random.seed(42)
 OUT = os.path.join(os.path.dirname(__file__), "data", "select")
 os.makedirs(OUT, exist_ok=True)
 
+_DATE_RE = re.compile(
+    r"^\d{4}-\d{2}(-\d{2})?$"
+    r"|^\d{1,2}/\d{1,2}/\d{2,4}$"
+    r"|^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)",
+    re.IGNORECASE,
+)
+
+def _infer(val):
+    if isinstance(val, bool):             return "boolean"
+    if isinstance(val, (int, float)):     return "numeric"
+    if isinstance(val, str) and _DATE_RE.match(val): return "time"
+    return "factor"
+
+_SUMMARY_FIELDS = [
+    "file", "intent", "top_graphType", "top_score", "top_category",
+    "scoring_factors",
+    "alt1_graphType", "alt1_score",
+    "alt2_graphType", "alt2_score",
+    "alt3_graphType", "alt3_score",
+    "n_factor", "n_numeric", "n_time", "n_bool",
+    "generate_hint",
+]
+
+def run_results_and_summary(src_dir, results_dir):
+    """Run select_chart on every JSON in src_dir; write results + summary to results_dir."""
+    os.makedirs(results_dir, exist_ok=True)
+    for src_path in sorted(glob.glob(os.path.join(src_dir, "*.json"))):
+        with open(src_path) as fh:
+            payload = json.load(fh)
+        intent = payload.get("intent", "")
+        data   = payload.get("data", [])
+        if len(data) < 2:
+            continue
+        headers      = data[0]
+        rows         = data[1:]
+        column_types = {h: _infer(rows[0][i]) for i, h in enumerate(headers)}
+        n_samples    = len(rows)
+        result       = select_chart(intent=intent, column_types=column_types, n_samples=n_samples)
+        out_path     = os.path.join(results_dir, os.path.basename(src_path))
+        with open(out_path, "w") as fh:
+            json.dump(result, fh, indent=2)
+        print("result →", os.path.basename(out_path),
+              "→", result.get("top_recommendation", {}).get("graphType"))
+    print(f"\nResults written to {results_dir}")
+
+    summary_rows = []
+    for res_path in sorted(glob.glob(os.path.join(results_dir, "*.json"))):
+        if os.path.basename(res_path) == "SUMMARY.json":
+            continue
+        with open(res_path) as fh:
+            res = json.load(fh)
+        top  = res.get("top_recommendation", {})
+        alts = res.get("alternatives", [])
+        col  = res.get("column_summary", {})
+        summary_rows.append({
+            "file":            os.path.splitext(os.path.basename(res_path))[0],
+            "intent":          res.get("intent", ""),
+            "top_graphType":   top.get("graphType", ""),
+            "top_score":       top.get("score", ""),
+            "top_category":    top.get("category", ""),
+            "scoring_factors": " | ".join(top.get("scoring_factors", [])),
+            "alt1_graphType":  alts[0]["graphType"] if len(alts) > 0 else "",
+            "alt1_score":      alts[0]["score"]     if len(alts) > 0 else "",
+            "alt2_graphType":  alts[1]["graphType"] if len(alts) > 1 else "",
+            "alt2_score":      alts[1]["score"]     if len(alts) > 1 else "",
+            "alt3_graphType":  alts[2]["graphType"] if len(alts) > 2 else "",
+            "alt3_score":      alts[2]["score"]     if len(alts) > 2 else "",
+            "n_factor":        col.get("n_factor", 0),
+            "n_numeric":       col.get("n_numeric", 0),
+            "n_time":          col.get("n_time", 0),
+            "n_bool":          col.get("n_bool", 0),
+            "generate_hint":   res.get("generate_hint", ""),
+        })
+    tsv_path = os.path.join(results_dir, "SUMMARY.tsv")
+    with open(tsv_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=_SUMMARY_FIELDS, delimiter="\t")
+        writer.writeheader()
+        writer.writerows(summary_rows)
+    print(f"Summary TSV → {tsv_path}")
+    json_path = os.path.join(results_dir, "SUMMARY.json")
+    with open(json_path, "w") as fh:
+        json.dump(summary_rows, fh, indent=2)
+    print(f"Summary JSON → {json_path}")
+
 
 def write(name, rows, intent):
     path = os.path.join(OUT, name + ".json")
+    compact_rows = "[" + ",\n    ".join(json.dumps(r) for r in rows) + "]"
+    payload = json.dumps({"intent": intent, "data": []}, indent=2)
+    payload = payload.replace('"data": []', f'"data": [\n    {compact_rows[1:-1].strip()}\n  ]')
     with open(path, "w") as f:
-        json.dump({"intent": intent, "data": rows}, f, indent=2)
+        f.write(payload)
     print("wrote", path)
 
 
@@ -61,7 +153,7 @@ write("heatmap", r, "Show gene expression heatmap across samples")
 
 # ── Line ──────────────────────────────────────────────────────────────────────
 r = [["Month", "Sales", "Region"]]
-for g in ["North", "South"]:
+for g in ["North", "South", "East"]:
     for m in range(1, 13):
         r.append([f"2024-{m:02d}", round(random.gauss(100, 15), 1), g])
 write("line", r, "Show monthly sales trend by region over time")
@@ -221,11 +313,12 @@ for i, a in enumerate(regions):
 write("chord", r, "Show trade flow between global regions")
 
 # ── ParallelCoordinates ───────────────────────────────────────────────────────
-r = [["Sample", "F1", "F2", "F3", "F4", "F5", "Class"]]
+# 3 numeric cols: < 4 numeric → ParallelCoordinates wins over Heatmap
+r = [["Sample", "F1", "F2", "F3", "Class"]]
 for cls in ["Class1", "Class2", "Class3"]:
     for i in range(25):
         r.append([f"{cls}_{i+1}"] +
-                 [round(random.gauss(ord(cls[-1]) * 10, 5), 1) for _ in range(5)] +
+                 [round(random.gauss(ord(cls[-1]) * 10, 5), 1) for _ in range(3)] +
                  [cls])
 write("parallel_coordinates", r, "Show multivariate profiles of three classes")
 
@@ -437,10 +530,76 @@ for i in range(50):
     r.append([f"G{i+1}"] + [random.choice([0, 1]) for _ in range(4)])
 write("upset", r, "Upset plot showing intersections of four gene sets")
 
+# ── Map (choropleth — US states) ──────────────────────────────────────────────
+_US_STATES = [
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
+    "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+    "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+    "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+    "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC",
+]
+r = [["State", "Enrollment", "CompletionRate"]]
+for st in _US_STATES:
+    r.append([st, random.randint(50, 500), round(random.uniform(0.55, 0.98), 2)])
+write("map", r, "Show clinical trial enrollment and completion rate by US state on a map")
+
+# ── Map (world choropleth) ─────────────────────────────────────────────────────
+_COUNTRIES = [
+    "USA","GBR","DEU","FRA","ITA","ESP","CAN","AUS","JPN","CHN",
+    "BRA","IND","ZAF","NGA","MEX","ARG","KOR","NLD","SWE","NOR",
+    "POL","BEL","CHE","AUT","DNK","FIN","PRT","GRC","CZE","HUN",
+]
+r = [["Country", "GDP", "Population"]]
+for co in _COUNTRIES:
+    r.append([co, round(random.uniform(0.5, 25.0), 2), random.randint(5, 1400)])
+write("map_world", r, "World map showing GDP and population by country")
+
 
 print("\nDone. Files in", OUT)
-import glob
 files = sorted(glob.glob(os.path.join(OUT, "*.json")))
 print(f"{len(files)} files:")
 for f in files:
     print(" ", os.path.basename(f))
+
+# ── Results + summary for data/select/ ────────────────────────────────────────
+run_results_and_summary(OUT, os.path.join(OUT, "results"))
+
+# ── Augmented data/select_plus/ ───────────────────────────────────────────────
+PLUS_DIR = os.path.join(os.path.dirname(__file__), "data", "select_plus")
+os.makedirs(PLUS_DIR, exist_ok=True)
+
+_EXTRA_CATS       = ["Alpha", "Beta", "Gamma", "Delta"]
+EXTRA_FACTOR_COL  = "Category2"
+EXTRA_NUMERIC_COL = "ExtraValue"
+
+def augment(data: list) -> list:
+    if len(data) < 1:
+        return data
+    header = data[0] + [EXTRA_FACTOR_COL, EXTRA_NUMERIC_COL]
+    rows = [header]
+    for row in data[1:]:
+        cat   = _EXTRA_CATS[random.randint(0, len(_EXTRA_CATS) - 1)]
+        extra = round(random.uniform(1.0, 100.0), 2)
+        rows.append(list(row) + [cat, extra])
+    return rows
+
+def write_plus(name: str, payload: dict) -> None:
+    data = augment(payload.get("data", []))
+    compact_rows = "[" + ",\n    ".join(json.dumps(r) for r in data) + "]"
+    out = json.dumps({"intent": payload.get("intent", ""), "data": []}, indent=2)
+    out = out.replace('"data": []', f'"data": [\n    {compact_rows[1:-1].strip()}\n  ]')
+    dest = os.path.join(PLUS_DIR, name)
+    with open(dest, "w") as fh:
+        fh.write(out)
+    print("wrote", dest)
+
+random.seed(99)
+for src_path in sorted(glob.glob(os.path.join(OUT, "*.json"))):
+    with open(src_path) as fh:
+        payload = json.load(fh)
+    write_plus(os.path.basename(src_path), payload)
+
+print(f"\nDone — {len(glob.glob(os.path.join(PLUS_DIR, '*.json')))} files in {PLUS_DIR}")
+
+# ── Results + summary for data/select_plus/ ───────────────────────────────────
+run_results_and_summary(PLUS_DIR, os.path.join(PLUS_DIR, "results"))

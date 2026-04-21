@@ -8,42 +8,27 @@
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "Dotplot",
-    "score": 0.35,
+    "graphType": "TreeBracket",
+    "score": 1.0,
     "category": "single_dimensional",
-    "description": "Individual data points per group \u2014 best when n < ~50 per group.",
-    "clinical_use": "Individual lab values, small Phase I cohorts",
-    "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
+    "description": "Tree/dendrogram with bracket annotations.",
+    "clinical_use": "Hierarchical clustering of samples or genes",
+    "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
     "scoring_factors": [
-      "small n \u2014 show every point"
-    ],
-    "note": "n_samples=14 is small \u2014 Dotplot shows every observation clearly.",
-    "minimal_config": {
-      "graphType": "Dotplot",
-      "groupingFactors": [
-        "Round"
-      ],
-      "xAxis": []
-    }
+      "category labels \u2192 dendrogram leaves"
+    ]
   },
   "alternatives": [
     {
-      "graphType": "Ridgeline",
-      "score": 0.4,
+      "graphType": "Alluvial",
+      "score": 0.6,
       "category": "single_dimensional",
-      "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
-      "clinical_use": "Lab distributions across multiple visits or arms",
-      "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
+      "description": "Alluvial / Sankey-style flow diagram.",
+      "clinical_use": "Patient pathway flow across study visits",
+      "next_step": "generate_canvasxpress_config with description='alluvial diagram from <factor1> to <factor2>'",
       "scoring_factors": [
-        "several groups to compare",
-        "4+ groups \u2192 ridgeline avoids overlapping color curves"
-      ],
-      "minimal_config": {
-        "graphType": "Ridgeline",
-        "ridgeBy": "Round",
-        "colorBy": "Result",
-        "xAxis": []
-      }
+        "3+ factor cols with no numeric \u2192 sequential state transitions"
+      ]
     },
     {
       "graphType": "Upset",
@@ -54,35 +39,19 @@
       "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
       "scoring_factors": [
         "2+ cats \u2192 set membership"
-      ],
-      "minimal_config": {
-        "graphType": "Upset",
-        "groupingFactors": [
-          "Round"
-        ],
-        "colorBy": "Result",
-        "xAxis": []
-      }
+      ]
     },
     {
-      "graphType": "TreeBracket",
+      "graphType": "Dotplot",
       "score": 0.35,
       "category": "single_dimensional",
-      "description": "Tree/dendrogram with bracket annotations.",
-      "clinical_use": "Hierarchical clustering of samples or genes",
-      "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
+      "description": "Individual data points per group \u2014 best when n < ~50 per group.",
+      "clinical_use": "Individual lab values, small Phase I cohorts",
+      "next_step": "generate_canvasxpress_config with description='dot plot of <numeric> by <factor>'",
       "scoring_factors": [
-        "category labels \u2192 dendrogram leaves"
+        "small n \u2014 show every point"
       ],
-      "minimal_config": {
-        "graphType": "TreeBracket",
-        "groupingFactors": [
-          "Round"
-        ],
-        "colorBy": "Result",
-        "hierarchy": [],
-        "xAxis": []
-      }
+      "note": "n_samples=14 is small \u2014 Dotplot shows every observation clearly."
     },
     {
       "graphType": "Network",
@@ -93,39 +62,8 @@
       "next_step": "generate_canvasxpress_config with description='network graph of pathways'",
       "scoring_factors": [
         "2 cats \u2014 possible node/edge pairs"
-      ],
-      "minimal_config": {
-        "graphType": "Network",
-        "groupingFactors": [
-          "Round"
-        ],
-        "colorBy": "Result",
-        "xAxis": []
-      }
+      ]
     }
   ],
-  "generate_hint": "Dotplot chart \u2014 columns: Team, Round, Result",
-  "tiebreak": {
-    "used": true,
-    "chosen": "Dotplot",
-    "reason": "It can display individual data points for categorical"
-  },
-  "valid": false,
-  "warnings": [
-    "Dotplot: required parameter 'xAxis' is not populated"
-  ],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Team",
-    "Round",
-    "Result"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.35</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;groupingFactors&quot;: [&quot;Round&quot;], &quot;xAxis&quot;: []}\">Apply Dotplot</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>It can display individual data points for categorical</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Ridgeline</span><span class=\"cX-Chat-Select-Score\">score: 0.4</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked density plots per group \u2014 compare distributions without overlap.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab distributions across multiple visits or arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>several groups to compare</li><li>4+ groups \u2192 ridgeline avoids overlapping color curves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;ridgeline plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Ridgeline&quot;, &quot;ridgeBy&quot;: &quot;Round&quot;, &quot;colorBy&quot;: &quot;Result&quot;, &quot;xAxis&quot;: []}\">Apply Ridgeline</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Upset</span><span class=\"cX-Chat-Select-Score\">score: 0.4</span></div>\n<p class=\"cX-Chat-Select-Desc\">UpSet plot \u2014 scalable alternative to Venn for many sets.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multi-way AE overlap, multi-drug co-occurrence</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats \u2192 set membership</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;UpSet plot of set intersections across &lt;factors&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Upset&quot;, &quot;groupingFactors&quot;: [&quot;Round&quot;], &quot;colorBy&quot;: &quot;Result&quot;, &quot;xAxis&quot;: []}\">Apply Upset</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">TreeBracket</span><span class=\"cX-Chat-Select-Score\">score: 0.35</span></div>\n<p class=\"cX-Chat-Select-Desc\">Tree/dendrogram with bracket annotations.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical clustering of samples or genes</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>category labels \u2192 dendrogram leaves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;tree bracket dendrogram of &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;TreeBracket&quot;, &quot;groupingFactors&quot;: [&quot;Round&quot;], &quot;colorBy&quot;: &quot;Result&quot;, &quot;hierarchy&quot;: [], &quot;xAxis&quot;: []}\">Apply TreeBracket</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Network</span><span class=\"cX-Chat-Select-Score\">score: 0.3</span></div>\n<p class=\"cX-Chat-Select-Desc\">Nodes and edges for relational or pathway data.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Pathway enrichment, protein-protein interaction</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2 cats \u2014 possible node/edge pairs</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;network graph of pathways&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Network&quot;, &quot;groupingFactors&quot;: [&quot;Round&quot;], &quot;colorBy&quot;: &quot;Result&quot;, &quot;xAxis&quot;: []}\">Apply Network</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Error\">Dotplot: required parameter &#x27;xAxis&#x27; is not populated</p>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": false,
-  "datetime": "Tue, 21 Apr 2026 03:41:34 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "141e99a6-f215-444b-9210-ad66bdb71353"
+  "generate_hint": "TreeBracket chart \u2014 columns: Team, Round, Result"
 }

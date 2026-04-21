@@ -16,36 +16,9 @@
     "next_step": "generate_canvasxpress_config with description='alluvial diagram from <factor1> to <factor2>'",
     "scoring_factors": [
       "3+ factor cols with no numeric \u2192 sequential state transitions"
-    ],
-    "minimal_config": {
-      "graphType": "Alluvial",
-      "sankeyAxes": [
-        "Baseline",
-        "Week12"
-      ],
-      "colorBy": "Week12",
-      "xAxis": []
-    }
+    ]
   },
   "alternatives": [
-    {
-      "graphType": "Ridgeline",
-      "score": 0.4,
-      "category": "single_dimensional",
-      "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
-      "clinical_use": "Lab distributions across multiple visits or arms",
-      "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
-      "scoring_factors": [
-        "several groups to compare",
-        "4+ groups \u2192 ridgeline avoids overlapping color curves"
-      ],
-      "minimal_config": {
-        "graphType": "Ridgeline",
-        "ridgeBy": "Baseline",
-        "colorBy": "Week12",
-        "xAxis": []
-      }
-    },
     {
       "graphType": "CDF",
       "score": 0.4,
@@ -56,15 +29,7 @@
       "scoring_factors": [
         "enough data for smooth CDF",
         "group overlay \u2192 empirical CDF per group"
-      ],
-      "minimal_config": {
-        "graphType": "CDF",
-        "groupingFactors": [
-          "Baseline"
-        ],
-        "colorBy": "Week12",
-        "xAxis": []
-      }
+      ]
     },
     {
       "graphType": "Upset",
@@ -75,15 +40,19 @@
       "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
       "scoring_factors": [
         "2+ cats \u2192 set membership"
-      ],
-      "minimal_config": {
-        "graphType": "Upset",
-        "groupingFactors": [
-          "Baseline"
-        ],
-        "colorBy": "Week12",
-        "xAxis": []
-      }
+      ]
+    },
+    {
+      "graphType": "Density",
+      "score": 0.35,
+      "category": "single_dimensional",
+      "description": "Smooth kernel density estimate \u2014 overlay multiple groups.",
+      "clinical_use": "Overlaid PK distributions across arms",
+      "next_step": "generate_canvasxpress_config with description='density plot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "overlay groups by category",
+        "enough n for smooth density"
+      ]
     },
     {
       "graphType": "TreeBracket",
@@ -94,36 +63,8 @@
       "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
       "scoring_factors": [
         "category labels \u2192 dendrogram leaves"
-      ],
-      "minimal_config": {
-        "graphType": "TreeBracket",
-        "groupingFactors": [
-          "Baseline"
-        ],
-        "colorBy": "Week12",
-        "hierarchy": [],
-        "xAxis": []
-      }
+      ]
     }
   ],
-  "generate_hint": "Alluvial chart \u2014 columns: PatientID, Baseline, Week12, Week24",
-  "valid": false,
-  "warnings": [
-    "Alluvial: required parameter 'xAxis' is not populated"
-  ],
-  "type_source": "inferred",
-  "headers_detected": [
-    "PatientID",
-    "Baseline",
-    "Week12",
-    "Week24"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Alluvial</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Alluvial / Sankey-style flow diagram.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Patient pathway flow across study visits</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3+ factor cols with no numeric \u2192 sequential state transitions</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;alluvial diagram from &lt;factor1&gt; to &lt;factor2&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Alluvial&quot;, &quot;sankeyAxes&quot;: [&quot;Baseline&quot;, &quot;Week12&quot;], &quot;colorBy&quot;: &quot;Week12&quot;, &quot;xAxis&quot;: []}\">Apply Alluvial</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Ridgeline</span><span class=\"cX-Chat-Select-Score\">score: 0.4</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked density plots per group \u2014 compare distributions without overlap.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab distributions across multiple visits or arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>several groups to compare</li><li>4+ groups \u2192 ridgeline avoids overlapping color curves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;ridgeline plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Ridgeline&quot;, &quot;ridgeBy&quot;: &quot;Baseline&quot;, &quot;colorBy&quot;: &quot;Week12&quot;, &quot;xAxis&quot;: []}\">Apply Ridgeline</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">CDF</span><span class=\"cX-Chat-Select-Score\">score: 0.4</span></div>\n<p class=\"cX-Chat-Select-Desc\">Cumulative distribution function plot.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> CDF of time-to-event, PK exposure CDF</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>enough data for smooth CDF</li><li>group overlay \u2192 empirical CDF per group</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;CDF of &lt;numeric&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;CDF&quot;, &quot;groupingFactors&quot;: [&quot;Baseline&quot;], &quot;colorBy&quot;: &quot;Week12&quot;, &quot;xAxis&quot;: []}\">Apply CDF</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Upset</span><span class=\"cX-Chat-Select-Score\">score: 0.4</span></div>\n<p class=\"cX-Chat-Select-Desc\">UpSet plot \u2014 scalable alternative to Venn for many sets.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multi-way AE overlap, multi-drug co-occurrence</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats \u2192 set membership</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;UpSet plot of set intersections across &lt;factors&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Upset&quot;, &quot;groupingFactors&quot;: [&quot;Baseline&quot;], &quot;colorBy&quot;: &quot;Week12&quot;, &quot;xAxis&quot;: []}\">Apply Upset</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">TreeBracket</span><span class=\"cX-Chat-Select-Score\">score: 0.35</span></div>\n<p class=\"cX-Chat-Select-Desc\">Tree/dendrogram with bracket annotations.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical clustering of samples or genes</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>category labels \u2192 dendrogram leaves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;tree bracket dendrogram of &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;TreeBracket&quot;, &quot;groupingFactors&quot;: [&quot;Baseline&quot;], &quot;colorBy&quot;: &quot;Week12&quot;, &quot;hierarchy&quot;: [], &quot;xAxis&quot;: []}\">Apply TreeBracket</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Error\">Alluvial: required parameter &#x27;xAxis&#x27; is not populated</p>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": false,
-  "datetime": "Tue, 21 Apr 2026 03:47:24 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "3565ac41-41e4-4b16-8ee7-2f0edabf583a"
+  "generate_hint": "Alluvial chart \u2014 columns: PatientID, Baseline, Week12, Week24"
 }

@@ -16,33 +16,31 @@
     "next_step": "generate_canvasxpress_config with description='Venn diagram of overlapping sets'",
     "scoring_factors": [
       "2+ cats \u2014 possible set membership"
-    ],
-    "minimal_config": {
-      "graphType": "Venn",
-      "groupingFactors": [
-        "Set"
-      ],
-      "xAxis": []
-    }
+    ]
   },
   "alternatives": [
     {
       "graphType": "Upset",
-      "score": 0.8,
+      "score": 1.0,
       "category": "single_dimensional",
       "description": "UpSet plot \u2014 scalable alternative to Venn for many sets.",
       "clinical_use": "Multi-way AE overlap, multi-drug co-occurrence",
       "next_step": "generate_canvasxpress_config with description='UpSet plot of set intersections across <factors>'",
       "scoring_factors": [
         "2+ cats \u2192 set membership"
-      ],
-      "minimal_config": {
-        "graphType": "Upset",
-        "groupingFactors": [
-          "Set"
-        ],
-        "xAxis": []
-      }
+      ]
+    },
+    {
+      "graphType": "CDF",
+      "score": 0.4,
+      "category": "single_dimensional",
+      "description": "Cumulative distribution function plot.",
+      "clinical_use": "CDF of time-to-event, PK exposure CDF",
+      "next_step": "generate_canvasxpress_config with description='CDF of <numeric>'",
+      "scoring_factors": [
+        "enough data for smooth CDF",
+        "group overlay \u2192 empirical CDF per group"
+      ]
     },
     {
       "graphType": "Density",
@@ -54,12 +52,7 @@
       "scoring_factors": [
         "overlay groups by category",
         "enough n for smooth density"
-      ],
-      "minimal_config": {
-        "graphType": "Density",
-        "colorBy": "Set",
-        "xAxis": []
-      }
+      ]
     },
     {
       "graphType": "TreeBracket",
@@ -70,52 +63,8 @@
       "next_step": "generate_canvasxpress_config with description='tree bracket dendrogram of <factor>'",
       "scoring_factors": [
         "category labels \u2192 dendrogram leaves"
-      ],
-      "minimal_config": {
-        "graphType": "TreeBracket",
-        "groupingFactors": [
-          "Set"
-        ],
-        "hierarchy": [],
-        "xAxis": []
-      }
-    },
-    {
-      "graphType": "Network",
-      "score": 0.3,
-      "category": "network",
-      "description": "Nodes and edges for relational or pathway data.",
-      "clinical_use": "Pathway enrichment, protein-protein interaction",
-      "next_step": "generate_canvasxpress_config with description='network graph of pathways'",
-      "scoring_factors": [
-        "2 cats \u2014 possible node/edge pairs"
-      ],
-      "minimal_config": {
-        "graphType": "Network",
-        "groupingFactors": [
-          "Set"
-        ],
-        "xAxis": []
-      }
+      ]
     }
   ],
-  "generate_hint": "Venn chart \u2014 columns: Set, Member",
-  "valid": false,
-  "warnings": [
-    "Venn: required parameter 'vennGroups' is not populated",
-    "Venn: required parameter 'xAxis' is not populated"
-  ],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Set",
-    "Member"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Venn</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Overlapping circles showing set intersections.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Overlapping AE populations, gene set comparison</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats \u2014 possible set membership</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;Venn diagram of overlapping sets&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Venn&quot;, &quot;groupingFactors&quot;: [&quot;Set&quot;], &quot;xAxis&quot;: []}\">Apply Venn</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Upset</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">UpSet plot \u2014 scalable alternative to Venn for many sets.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multi-way AE overlap, multi-drug co-occurrence</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ cats \u2192 set membership</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;UpSet plot of set intersections across &lt;factors&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Upset&quot;, &quot;groupingFactors&quot;: [&quot;Set&quot;], &quot;xAxis&quot;: []}\">Apply Upset</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Density</span><span class=\"cX-Chat-Select-Score\">score: 0.35</span></div>\n<p class=\"cX-Chat-Select-Desc\">Smooth kernel density estimate \u2014 overlay multiple groups.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Overlaid PK distributions across arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>overlay groups by category</li><li>enough n for smooth density</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;density plot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Density&quot;, &quot;colorBy&quot;: &quot;Set&quot;, &quot;xAxis&quot;: []}\">Apply Density</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">TreeBracket</span><span class=\"cX-Chat-Select-Score\">score: 0.35</span></div>\n<p class=\"cX-Chat-Select-Desc\">Tree/dendrogram with bracket annotations.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical clustering of samples or genes</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>category labels \u2192 dendrogram leaves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;tree bracket dendrogram of &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;TreeBracket&quot;, &quot;groupingFactors&quot;: [&quot;Set&quot;], &quot;hierarchy&quot;: [], &quot;xAxis&quot;: []}\">Apply TreeBracket</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Network</span><span class=\"cX-Chat-Select-Score\">score: 0.3</span></div>\n<p class=\"cX-Chat-Select-Desc\">Nodes and edges for relational or pathway data.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Pathway enrichment, protein-protein interaction</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2 cats \u2014 possible node/edge pairs</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;network graph of pathways&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Network&quot;, &quot;groupingFactors&quot;: [&quot;Set&quot;], &quot;xAxis&quot;: []}\">Apply Network</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Error\">Venn: required parameter &#x27;vennGroups&#x27; is not populated</p>\n<p class=\"cX-Chat-LLM-Error\">Venn: required parameter &#x27;xAxis&#x27; is not populated</p>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": false,
-  "datetime": "Tue, 21 Apr 2026 03:41:38 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "8272341b-fd47-41d6-96fb-3f12218afc9d"
+  "generate_hint": "Venn chart \u2014 columns: Set, Member"
 }

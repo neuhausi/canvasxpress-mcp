@@ -2,33 +2,23 @@
   "intent": "Show multivariate profiles of three classes",
   "column_summary": {
     "n_factor": 2,
-    "n_numeric": 5,
+    "n_numeric": 3,
     "n_time": 0,
     "n_bool": 0,
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "Heatmap",
-    "score": 0.95,
-    "category": "single_dimensional",
-    "description": "Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.",
-    "clinical_use": "AE incidence by SOC \u00d7 arm, gene expression heatmap",
-    "next_step": "generate_canvasxpress_config with description='heatmap of <numeric> with <factor1> rows and <factor2> columns'",
+    "graphType": "ParallelCoordinates",
+    "score": 1.0,
+    "category": "multi_dimensional",
+    "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+    "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+    "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
     "scoring_factors": [
-      "2 cats as row/col + numeric value",
-      "many numeric vars \u2192 matrix view",
-      "enough rows for matrix"
-    ],
-    "minimal_config": {
-      "graphType": "Heatmap",
-      "xAxis": [
-        "F1",
-        "F2",
-        "F3",
-        "F4",
-        "F5"
-      ]
-    }
+      "2+ numeric \u2192 parallel axes",
+      "colour lines by category",
+      "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+    ]
   },
   "alternatives": [
     {
@@ -42,16 +32,7 @@
         "cat + numeric \u2192 distribution by group",
         "sufficient n for box stats",
         "multiple numeric vars"
-      ],
-      "minimal_config": {
-        "graphType": "Boxplot",
-        "xAxis": [
-          "F1"
-        ],
-        "groupingFactors": [
-          "Class"
-        ]
-      }
+      ]
     },
     {
       "graphType": "Scatter2D",
@@ -64,18 +45,7 @@
         "2+ numeric \u2192 x/y scatter",
         "colour by category",
         "sufficient points"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter2D",
-        "xAxis": [
-          "F1"
-        ],
-        "yAxis": [
-          "F2"
-        ],
-        "colorBy": "Class",
-        "zAxis": []
-      }
+      ]
     },
     {
       "graphType": "Scatter3D",
@@ -87,68 +57,21 @@
       "scoring_factors": [
         "3 numeric \u2192 x/y/z scatter",
         "colour by category"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter3D",
-        "xAxis": [
-          "F1"
-        ],
-        "yAxis": [
-          "F2"
-        ],
-        "zAxis": [
-          "F3"
-        ],
-        "colorBy": "Class"
-      }
+      ]
     },
     {
-      "graphType": "Treemap",
+      "graphType": "Density",
       "score": 0.85,
       "category": "single_dimensional",
-      "description": "Nested rectangles sized by value \u2014 hierarchical proportion.",
-      "clinical_use": "Hierarchical AE counts (SOC \u2192 PT)",
-      "next_step": "generate_canvasxpress_config with description='treemap of <numeric> by <factor> hierarchy'",
+      "description": "Smooth kernel density estimate \u2014 overlay multiple groups.",
+      "clinical_use": "Overlaid PK distributions across arms",
+      "next_step": "generate_canvasxpress_config with description='density plot of <numeric> grouped by <factor>'",
       "scoring_factors": [
-        "cat + numeric \u2192 hierarchical size",
-        "nested hierarchy",
-        "many categories \u2192 treemap handles well"
-      ],
-      "minimal_config": {
-        "graphType": "Treemap",
-        "xAxis": [
-          "F1"
-        ],
-        "groupingFactors": [
-          "Class"
-        ]
-      }
+        "1+ numeric \u2192 density estimate",
+        "overlay groups by category",
+        "enough n for smooth density"
+      ]
     }
   ],
-  "generate_hint": "Heatmap chart of F1 grouped by Sample colored by Class \u2014 columns: Sample, F1, F2, F3, F4, F5, Class",
-  "tiebreak": {
-    "used": true,
-    "chosen": "Heatmap",
-    "reason": "Best for visualizing the values of multiple numeric features"
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Sample",
-    "F1",
-    "F2",
-    "F3",
-    "F4",
-    "F5",
-    "Class"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Heatmap</span><span class=\"cX-Chat-Select-Score\">score: 0.95</span></div>\n<p class=\"cX-Chat-Select-Desc\">Color-coded matrix \u2014 rows \u00d7 columns with optional clustering and dendrograms.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE incidence by SOC \u00d7 arm, gene expression heatmap</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2 cats as row/col + numeric value</li><li>many numeric vars \u2192 matrix view</li><li>enough rows for matrix</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;heatmap of &lt;numeric&gt; with &lt;factor1&gt; rows and &lt;factor2&gt; columns&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Heatmap&quot;, &quot;xAxis&quot;: [&quot;F1&quot;, &quot;F2&quot;, &quot;F3&quot;, &quot;F4&quot;, &quot;F5&quot;]}\">Apply Heatmap</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>Best for visualizing the values of multiple numeric features</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li><li>multiple numeric vars</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;F1&quot;], &quot;groupingFactors&quot;: [&quot;Class&quot;]}\">Apply Boxplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>colour by category</li><li>sufficient points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;F1&quot;], &quot;yAxis&quot;: [&quot;F2&quot;], &quot;colorBy&quot;: &quot;Class&quot;, &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter3D</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">3D scatter for three continuous dimensions.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multivariate exploratory analysis</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x/y/z scatter</li><li>colour by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;3D scatter of &lt;num1&gt; vs &lt;num2&gt; vs &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter3D&quot;, &quot;xAxis&quot;: [&quot;F1&quot;], &quot;yAxis&quot;: [&quot;F2&quot;], &quot;zAxis&quot;: [&quot;F3&quot;], &quot;colorBy&quot;: &quot;Class&quot;}\">Apply Scatter3D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Treemap</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Nested rectangles sized by value \u2014 hierarchical proportion.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Hierarchical AE counts (SOC \u2192 PT)</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 hierarchical size</li><li>nested hierarchy</li><li>many categories \u2192 treemap handles well</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;treemap of &lt;numeric&gt; by &lt;factor&gt; hierarchy&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Treemap&quot;, &quot;xAxis&quot;: [&quot;F1&quot;], &quot;groupingFactors&quot;: [&quot;Class&quot;]}\">Apply Treemap</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:40:57 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "7ac095eb-4b74-4e95-9011-b6f75ebf67dc"
+  "generate_hint": "ParallelCoordinates chart of F1 grouped by Class \u2014 columns: Sample, F1, F2, F3, Class"
 }

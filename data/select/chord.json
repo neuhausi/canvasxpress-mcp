@@ -2,11 +2,11 @@
   "intent": "Show trade flow between global regions",
   "data": [
     ["From", "To", "Value"],
-    ["US", "EU", 80],
-    ["US", "APAC", 16],
-    ["US", "LATAM", 11],
-    ["EU", "APAC", 42],
-    ["EU", "LATAM", 35],
-    ["APAC", "LATAM", 89]
+    ["US", "EU", 34],
+    ["US", "APAC", 47],
+    ["US", "LATAM", 67],
+    ["EU", "APAC", 32],
+    ["EU", "LATAM", 97],
+    ["APAC", "LATAM", 19]
   ]
 }

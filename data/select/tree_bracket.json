@@ -3,18 +3,18 @@
   "data": [
     ["Team", "Round", "Result"],
     ["Alpha", "Quarterfinal", "Win"],
-    ["Beta", "Quarterfinal", "Loss"],
+    ["Beta", "Quarterfinal", "Win"],
     ["Gamma", "Quarterfinal", "Loss"],
     ["Delta", "Quarterfinal", "Win"],
     ["Epsilon", "Quarterfinal", "Loss"],
-    ["Zeta", "Quarterfinal", "Loss"],
-    ["Eta", "Quarterfinal", "Win"],
-    ["Theta", "Quarterfinal", "Loss"],
+    ["Zeta", "Quarterfinal", "Win"],
+    ["Eta", "Quarterfinal", "Loss"],
+    ["Theta", "Quarterfinal", "Win"],
     ["Alpha", "Semifinal", "Win"],
     ["Gamma", "Semifinal", "Loss"],
     ["Epsilon", "Semifinal", "Loss"],
     ["Theta", "Semifinal", "Loss"],
     ["Alpha", "Final", "Loss"],
-    ["Epsilon", "Final", "Win"]
+    ["Epsilon", "Final", "Loss"]
   ]
 }

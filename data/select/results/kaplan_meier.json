@@ -2,9 +2,9 @@
   "intent": "Survival analysis comparing drug vs placebo arm",
   "column_summary": {
     "n_factor": 2,
-    "n_numeric": 1,
+    "n_numeric": 2,
     "n_time": 0,
-    "n_bool": 1,
+    "n_bool": 0,
     "n_text": 0
   },
   "top_recommendation": {
@@ -15,125 +15,61 @@
     "clinical_use": "OS, PFS, EFS by treatment arm",
     "next_step": "generate_km_config \u2014 use the dedicated KM skill for best results",
     "scoring_factors": [
-      "numeric time + category group",
-      "binary event indicator + numeric time"
-    ],
-    "minimal_config": {
-      "graphType": "KaplanMeier",
-      "xAxis": [
-        "Time"
-      ],
-      "yAxis": [
-        "Event"
-      ],
-      "colorBy": "Arm",
-      "zAxis": []
-    }
+      "numeric time + category group"
+    ]
   },
   "alternatives": [
     {
-      "graphType": "Bar",
-      "score": 1.0,
-      "category": "single_dimensional",
-      "description": "Vertical or horizontal bars comparing values across categories.",
-      "clinical_use": "AE counts by SOC/arm, subject counts by group",
-      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
-      "scoring_factors": [
-        "1+ category + 1+ numeric",
-        "exactly 1 cat, 1 num \u2014 classic bar",
-        "small-medium dataset"
-      ],
-      "minimal_config": {
-        "graphType": "Bar",
-        "xAxis": [
-          "Time"
-        ]
-      }
-    },
-    {
       "graphType": "Boxplot",
-      "score": 0.8,
+      "score": 0.9,
       "category": "single_dimensional",
       "description": "Box-and-whisker showing median, IQR, and outliers per group.",
       "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
       "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
       "scoring_factors": [
         "cat + numeric \u2192 distribution by group",
-        "sufficient n for box stats"
-      ],
-      "minimal_config": {
-        "graphType": "Boxplot",
-        "xAxis": [
-          "Time"
-        ],
-        "groupingFactors": [
-          "Arm"
-        ]
-      }
+        "sufficient n for box stats",
+        "multiple numeric vars"
+      ]
     },
     {
-      "graphType": "Violin",
-      "score": 0.8,
-      "category": "single_dimensional",
-      "description": "Kernel density mirrored around a centre line \u2014 richer shape than boxplot.",
-      "clinical_use": "Biomarker distributions, gene expression by cell type",
-      "next_step": "generate_canvasxpress_config with description='violin plot of <numeric> by <factor>'",
+      "graphType": "Scatter2D",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Points on x/y axes revealing correlation between two numeric variables.",
+      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
+      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
       "scoring_factors": [
-        "cat + numeric \u2192 distribution shape",
-        "enough data for density estimate"
-      ],
-      "minimal_config": {
-        "graphType": "Violin",
-        "xAxis": [
-          "Time"
-        ],
-        "groupingFactors": [
-          "Arm"
-        ]
-      }
+        "2+ numeric \u2192 x/y scatter",
+        "colour by category",
+        "sufficient points"
+      ]
     },
     {
-      "graphType": "Spaghetti",
-      "score": 0.75,
-      "category": "single_dimensional",
-      "description": "Individual trajectory lines per subject over time.",
-      "clinical_use": "Individual patient lab trajectories, PK per-subject profiles",
-      "next_step": "generate_canvasxpress_config with description='spaghetti plot of <numeric> over <time> per <subject_id>'",
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
       "scoring_factors": [
-        "moderate n \u2014 trajectories readable"
-      ],
-      "minimal_config": {
-        "graphType": "Spaghetti",
-        "xAxis": [
-          "Time"
-        ],
-        "colorBy": "Arm",
-        "yAxis": [],
-        "zAxis": []
-      }
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
+    },
+    {
+      "graphType": "Bar",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset"
+      ]
     }
   ],
-  "generate_hint": "KaplanMeier chart of Time grouped by Arm \u2014 columns: Patient, Time, Event, Arm",
-  "tiebreak": {
-    "used": true,
-    "chosen": "KaplanMeier",
-    "reason": "This chart is specifically designed to visualize time"
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Patient",
-    "Time",
-    "Event",
-    "Arm"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">KaplanMeier</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Kaplan-Meier survival curve with optional CI and risk table.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> OS, PFS, EFS by treatment arm</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>numeric time + category group</li><li>binary event indicator + numeric time</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_km_config \u2014 use the dedicated KM skill for best results</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;KaplanMeier&quot;, &quot;xAxis&quot;: [&quot;Time&quot;], &quot;yAxis&quot;: [&quot;Event&quot;], &quot;colorBy&quot;: &quot;Arm&quot;, &quot;zAxis&quot;: []}\">Apply KaplanMeier</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>This chart is specifically designed to visualize time</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>exactly 1 cat, 1 num \u2014 classic bar</li><li>small-medium dataset</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Time&quot;]}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;Time&quot;], &quot;groupingFactors&quot;: [&quot;Arm&quot;]}\">Apply Boxplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Violin</span><span class=\"cX-Chat-Select-Score\">score: 0.8</span></div>\n<p class=\"cX-Chat-Select-Desc\">Kernel density mirrored around a centre line \u2014 richer shape than boxplot.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker distributions, gene expression by cell type</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution shape</li><li>enough data for density estimate</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;violin plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Violin&quot;, &quot;xAxis&quot;: [&quot;Time&quot;], &quot;groupingFactors&quot;: [&quot;Arm&quot;]}\">Apply Violin</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Spaghetti</span><span class=\"cX-Chat-Select-Score\">score: 0.75</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual trajectory lines per subject over time.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual patient lab trajectories, PK per-subject profiles</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>moderate n \u2014 trajectories readable</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;spaghetti plot of &lt;numeric&gt; over &lt;time&gt; per &lt;subject_id&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Spaghetti&quot;, &quot;xAxis&quot;: [&quot;Time&quot;], &quot;colorBy&quot;: &quot;Arm&quot;, &quot;yAxis&quot;: [], &quot;zAxis&quot;: []}\">Apply Spaghetti</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:40:47 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "12d13c87-4518-4d9f-8dbd-b6c8eb5875e0"
+  "generate_hint": "KaplanMeier chart of Time grouped by Arm \u2014 columns: Patient, Time, Event, Arm"
 }

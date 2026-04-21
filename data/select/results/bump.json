@@ -1,9 +1,9 @@
 {
   "intent": "Show ranking changes of drugs over years",
   "column_summary": {
-    "n_factor": 1,
+    "n_factor": 2,
     "n_numeric": 1,
-    "n_time": 1,
+    "n_time": 0,
     "n_bool": 0,
     "n_text": 0
   },
@@ -14,63 +14,9 @@
     "description": "Rank-over-time (bump) chart \u2014 tracks rank changes longitudinally.",
     "clinical_use": "Site or patient ranking across visits",
     "next_step": "generate_canvasxpress_config with description='bump chart of <factor> rank over <time>'",
-    "scoring_factors": [
-      "time + cat + numeric rank"
-    ],
-    "minimal_config": {
-      "graphType": "Bump",
-      "xAxis": [
-        "Rank"
-      ],
-      "groupingFactors": [
-        "Drug"
-      ],
-      "yAxis": []
-    }
+    "scoring_factors": []
   },
   "alternatives": [
-    {
-      "graphType": "Bar",
-      "score": 1.0,
-      "category": "single_dimensional",
-      "description": "Vertical or horizontal bars comparing values across categories.",
-      "clinical_use": "AE counts by SOC/arm, subject counts by group",
-      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
-      "scoring_factors": [
-        "1+ category + 1+ numeric",
-        "exactly 1 cat, 1 num \u2014 classic bar",
-        "small-medium dataset",
-        "manageable category count"
-      ],
-      "minimal_config": {
-        "graphType": "Bar",
-        "xAxis": [
-          "Rank"
-        ]
-      }
-    },
-    {
-      "graphType": "Line",
-      "score": 0.95,
-      "category": "single_dimensional",
-      "description": "Connected points showing trends over a continuous or ordinal axis.",
-      "clinical_use": "Lab values over visits, PK concentration-time profiles",
-      "next_step": "generate_canvasxpress_config with description='line chart of <numeric> over <time> colored by <factor>'",
-      "scoring_factors": [
-        "time + numeric \u2192 trend line",
-        "colour by category",
-        "enough time points"
-      ],
-      "minimal_config": {
-        "graphType": "Line",
-        "xAxis": [
-          "Rank"
-        ],
-        "groupingFactors": [
-          "Drug"
-        ]
-      }
-    },
     {
       "graphType": "Dotplot",
       "score": 0.85,
@@ -81,58 +27,45 @@
       "scoring_factors": [
         "cat + numeric",
         "small n \u2014 show every point"
-      ],
-      "minimal_config": {
-        "graphType": "Dotplot",
-        "xAxis": [
-          "Rank"
-        ],
-        "groupingFactors": [
-          "Drug"
-        ]
-      }
+      ]
     },
     {
-      "graphType": "Ridgeline",
+      "graphType": "CDF",
       "score": 0.85,
       "category": "single_dimensional",
-      "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
-      "clinical_use": "Lab distributions across multiple visits or arms",
-      "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
+      "description": "Cumulative distribution function plot.",
+      "clinical_use": "CDF of time-to-event, PK exposure CDF",
+      "next_step": "generate_canvasxpress_config with description='CDF of <numeric>'",
       "scoring_factors": [
-        "cat + numeric \u2192 stacked densities",
-        "several groups to compare",
-        "4+ groups \u2192 ridgeline avoids overlapping color curves"
-      ],
-      "minimal_config": {
-        "graphType": "Ridgeline",
-        "xAxis": [
-          "Rank"
-        ],
-        "ridgeBy": "Drug"
-      }
+        "1+ numeric \u2192 CDF",
+        "enough data for smooth CDF",
+        "group overlay \u2192 empirical CDF per group"
+      ]
+    },
+    {
+      "graphType": "Boxplot",
+      "score": 0.8,
+      "category": "single_dimensional",
+      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
+      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
+      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "scoring_factors": [
+        "cat + numeric \u2192 distribution by group",
+        "sufficient n for box stats"
+      ]
+    },
+    {
+      "graphType": "Bar",
+      "score": 0.7,
+      "category": "single_dimensional",
+      "description": "Vertical or horizontal bars comparing values across categories.",
+      "clinical_use": "AE counts by SOC/arm, subject counts by group",
+      "next_step": "generate_canvasxpress_config with description='grouped bar chart of <metric> by <category>'",
+      "scoring_factors": [
+        "1+ category + 1+ numeric",
+        "small-medium dataset"
+      ]
     }
   ],
-  "generate_hint": "Bump chart of Rank over Year \u2014 columns: Drug, Year, Rank",
-  "tiebreak": {
-    "used": false,
-    "chosen": null,
-    "reason": "GEMINI_API_KEY is not set. Get a key from Google AI Studio and export it before starting the server."
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Drug",
-    "Year",
-    "Rank"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bump</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Rank-over-time (bump) chart \u2014 tracks rank changes longitudinally.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Site or patient ranking across visits</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>time + cat + numeric rank</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;bump chart of &lt;factor&gt; rank over &lt;time&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bump&quot;, &quot;xAxis&quot;: [&quot;Rank&quot;], &quot;groupingFactors&quot;: [&quot;Drug&quot;], &quot;yAxis&quot;: []}\">Apply Bump</button>\n</div>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bar</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Vertical or horizontal bars comparing values across categories.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE counts by SOC/arm, subject counts by group</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1+ category + 1+ numeric</li><li>exactly 1 cat, 1 num \u2014 classic bar</li><li>small-medium dataset</li><li>manageable category count</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;grouped bar chart of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bar&quot;, &quot;xAxis&quot;: [&quot;Rank&quot;]}\">Apply Bar</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Line</span><span class=\"cX-Chat-Select-Score\">score: 0.95</span></div>\n<p class=\"cX-Chat-Select-Desc\">Connected points showing trends over a continuous or ordinal axis.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab values over visits, PK concentration-time profiles</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>time + numeric \u2192 trend line</li><li>colour by category</li><li>enough time points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;line chart of &lt;numeric&gt; over &lt;time&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Line&quot;, &quot;xAxis&quot;: [&quot;Rank&quot;], &quot;groupingFactors&quot;: [&quot;Drug&quot;]}\">Apply Line</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric</li><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;xAxis&quot;: [&quot;Rank&quot;], &quot;groupingFactors&quot;: [&quot;Drug&quot;]}\">Apply Dotplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Ridgeline</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked density plots per group \u2014 compare distributions without overlap.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab distributions across multiple visits or arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 stacked densities</li><li>several groups to compare</li><li>4+ groups \u2192 ridgeline avoids overlapping color curves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;ridgeline plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Ridgeline&quot;, &quot;xAxis&quot;: [&quot;Rank&quot;], &quot;ridgeBy&quot;: &quot;Drug&quot;}\">Apply Ridgeline</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:47:24 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "5ba0a1e2-5014-4816-90d5-cb434983cf6d"
+  "generate_hint": "Bump chart of Rank grouped by Drug colored by Year \u2014 columns: Drug, Year, Rank"
 }

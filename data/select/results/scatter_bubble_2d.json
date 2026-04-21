@@ -17,20 +17,7 @@
     "scoring_factors": [
       "3 numeric \u2192 x, y, size",
       "colour bubbles by category"
-    ],
-    "minimal_config": {
-      "graphType": "ScatterBubble2D",
-      "xAxis": [
-        "GDPperCapita"
-      ],
-      "yAxis": [
-        "LifeExpectancy"
-      ],
-      "zAxis": [
-        "Population"
-      ],
-      "colorBy": "Region"
-    }
+    ]
   },
   "alternatives": [
     {
@@ -43,18 +30,7 @@
       "scoring_factors": [
         "3 numeric \u2192 x, y, size",
         "colour bubbles by category"
-      ],
-      "minimal_config": {
-        "graphType": "Bubble",
-        "xAxis": [
-          "GDPperCapita"
-        ],
-        "groupingFactors": [
-          "Region"
-        ],
-        "yAxis": [],
-        "zAxis": []
-      }
+      ]
     },
     {
       "graphType": "Scatter2D",
@@ -67,18 +43,20 @@
         "2+ numeric \u2192 x/y scatter",
         "colour by category",
         "sufficient points"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter2D",
-        "xAxis": [
-          "GDPperCapita"
-        ],
-        "yAxis": [
-          "LifeExpectancy"
-        ],
-        "colorBy": "Region",
-        "zAxis": []
-      }
+      ]
+    },
+    {
+      "graphType": "ParallelCoordinates",
+      "score": 0.9,
+      "category": "multi_dimensional",
+      "description": "Parallel axes \u2014 each line is an observation, axes are variables.",
+      "clinical_use": "Multi-endpoint profile per subject, multivariate QC",
+      "next_step": "generate_canvasxpress_config with description='parallel coordinates of <numeric variables> colored by <factor>'",
+      "scoring_factors": [
+        "2+ numeric \u2192 parallel axes",
+        "colour lines by category",
+        "< 4 numeric cols \u2014 parallel coordinates preferred over heatmap"
+      ]
     },
     {
       "graphType": "Dotplot",
@@ -91,65 +69,8 @@
         "cat + numeric",
         "small n \u2014 show every point"
       ],
-      "note": "n_samples=12 is small \u2014 Dotplot shows every observation clearly.",
-      "minimal_config": {
-        "graphType": "Dotplot",
-        "xAxis": [
-          "GDPperCapita"
-        ],
-        "groupingFactors": [
-          "Region"
-        ]
-      }
-    },
-    {
-      "graphType": "Scatter3D",
-      "score": 0.85,
-      "category": "multi_dimensional",
-      "description": "3D scatter for three continuous dimensions.",
-      "clinical_use": "Multivariate exploratory analysis",
-      "next_step": "generate_canvasxpress_config with description='3D scatter of <num1> vs <num2> vs <num3>'",
-      "scoring_factors": [
-        "3 numeric \u2192 x/y/z scatter",
-        "colour by category"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter3D",
-        "xAxis": [
-          "GDPperCapita"
-        ],
-        "yAxis": [
-          "LifeExpectancy"
-        ],
-        "zAxis": [
-          "Population"
-        ],
-        "colorBy": "Region"
-      }
+      "note": "n_samples=12 is small \u2014 Dotplot shows every observation clearly."
     }
   ],
-  "generate_hint": "ScatterBubble2D chart of GDPperCapita grouped by Country colored by Region \u2014 columns: Country, GDPperCapita, LifeExpectancy, Population, Region",
-  "tiebreak": {
-    "used": true,
-    "chosen": "ScatterBubble2D",
-    "reason": "This chart type is"
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Country",
-    "GDPperCapita",
-    "LifeExpectancy",
-    "Population",
-    "Region"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">ScatterBubble2D</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Bubble chart \u2014 2D scatter where bubble size encodes a third variable.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Efficacy vs safety vs sample size, three-dimensional biomarker</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x, y, size</li><li>colour bubbles by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;bubble chart of &lt;num1&gt; vs &lt;num2&gt; sized by &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;ScatterBubble2D&quot;, &quot;xAxis&quot;: [&quot;GDPperCapita&quot;], &quot;yAxis&quot;: [&quot;LifeExpectancy&quot;], &quot;zAxis&quot;: [&quot;Population&quot;], &quot;colorBy&quot;: &quot;Region&quot;}\">Apply ScatterBubble2D</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>This chart type is</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Bubble</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Bubble chart alias \u2014 scatter with size-encoded third variable.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Three-dimensional biomarker exploration</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x, y, size</li><li>colour bubbles by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;bubble chart of &lt;num1&gt; vs &lt;num2&gt; sized by &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Bubble&quot;, &quot;xAxis&quot;: [&quot;GDPperCapita&quot;], &quot;groupingFactors&quot;: [&quot;Region&quot;], &quot;yAxis&quot;: [], &quot;zAxis&quot;: []}\">Apply Bubble</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>colour by category</li><li>sufficient points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;GDPperCapita&quot;], &quot;yAxis&quot;: [&quot;LifeExpectancy&quot;], &quot;colorBy&quot;: &quot;Region&quot;, &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Dotplot</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Individual data points per group \u2014 best when n &lt; ~50 per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Individual lab values, small Phase I cohorts</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric</li><li>small n \u2014 show every point</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;dot plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Dotplot&quot;, &quot;xAxis&quot;: [&quot;GDPperCapita&quot;], &quot;groupingFactors&quot;: [&quot;Region&quot;]}\">Apply Dotplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter3D</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">3D scatter for three continuous dimensions.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Multivariate exploratory analysis</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>3 numeric \u2192 x/y/z scatter</li><li>colour by category</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;3D scatter of &lt;num1&gt; vs &lt;num2&gt; vs &lt;num3&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter3D&quot;, &quot;xAxis&quot;: [&quot;GDPperCapita&quot;], &quot;yAxis&quot;: [&quot;LifeExpectancy&quot;], &quot;zAxis&quot;: [&quot;Population&quot;], &quot;colorBy&quot;: &quot;Region&quot;}\">Apply Scatter3D</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:41:14 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "94430a1f-15ca-4d29-96eb-4dcbc48df7ea"
+  "generate_hint": "ScatterBubble2D chart of GDPperCapita grouped by Country colored by Region \u2014 columns: Country, GDPperCapita, LifeExpectancy, Population, Region"
 }

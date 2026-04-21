@@ -1,76 +1,32 @@
 {
   "intent": "Show composition of device usage over time as streamgraph",
   "column_summary": {
-    "n_factor": 1,
-    "n_numeric": 2,
+    "n_factor": 2,
+    "n_numeric": 1,
     "n_time": 0,
     "n_bool": 0,
     "n_text": 0
   },
   "top_recommendation": {
-    "graphType": "Stacked",
+    "graphType": "Streamgraph",
     "score": 1.0,
     "category": "single_dimensional",
-    "description": "Stacked bars showing part-of-whole within each group.",
-    "clinical_use": "AE severity breakdown per arm, disposition categories",
-    "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
-    "scoring_factors": [
-      "1 cat + numeric \u2014 possible stacked",
-      "few stack levels"
-    ],
-    "minimal_config": {
-      "graphType": "Stacked",
-      "xAxis": [
-        "Year"
-      ]
-    }
+    "description": "Stacked area with smooth flow \u2014 shows relative composition over time.",
+    "clinical_use": "Concomitant medication use over study duration",
+    "next_step": "generate_canvasxpress_config with description='streamgraph of <numeric> by <factor> over <time>'",
+    "scoring_factors": []
   },
   "alternatives": [
     {
-      "graphType": "Boxplot",
-      "score": 0.9,
+      "graphType": "Stacked",
+      "score": 1.0,
       "category": "single_dimensional",
-      "description": "Box-and-whisker showing median, IQR, and outliers per group.",
-      "clinical_use": "Lab value distributions by arm/visit, PK endpoints",
-      "next_step": "generate_canvasxpress_config with description='boxplot of <numeric> grouped by <factor>'",
+      "description": "Stacked bars showing part-of-whole within each group.",
+      "clinical_use": "AE severity breakdown per arm, disposition categories",
+      "next_step": "generate_canvasxpress_config with description='stacked bar of <metric> by <category>'",
       "scoring_factors": [
-        "cat + numeric \u2192 distribution by group",
-        "sufficient n for box stats",
-        "multiple numeric vars"
-      ],
-      "minimal_config": {
-        "graphType": "Boxplot",
-        "xAxis": [
-          "Year"
-        ],
-        "groupingFactors": [
-          "Category"
-        ]
-      }
-    },
-    {
-      "graphType": "Scatter2D",
-      "score": 0.9,
-      "category": "multi_dimensional",
-      "description": "Points on x/y axes revealing correlation between two numeric variables.",
-      "clinical_use": "Biomarker vs response, PK/PD, PCA plot by treatment",
-      "next_step": "generate_canvasxpress_config with description='scatter plot of <num1> vs <num2> colored by <factor>'",
-      "scoring_factors": [
-        "2+ numeric \u2192 x/y scatter",
-        "colour by category",
-        "sufficient points"
-      ],
-      "minimal_config": {
-        "graphType": "Scatter2D",
-        "xAxis": [
-          "Year"
-        ],
-        "yAxis": [
-          "Value"
-        ],
-        "colorBy": "Category",
-        "zAxis": []
-      }
+        "2+ categories ideal for stacking"
+      ]
     },
     {
       "graphType": "Line",
@@ -82,58 +38,34 @@
       "scoring_factors": [
         "colour by category",
         "enough time points"
-      ],
-      "minimal_config": {
-        "graphType": "Line",
-        "xAxis": [
-          "Year"
-        ],
-        "groupingFactors": [
-          "Category"
-        ]
-      }
+      ]
     },
     {
-      "graphType": "Ridgeline",
+      "graphType": "Density",
       "score": 0.85,
       "category": "single_dimensional",
-      "description": "Stacked density plots per group \u2014 compare distributions without overlap.",
-      "clinical_use": "Lab distributions across multiple visits or arms",
-      "next_step": "generate_canvasxpress_config with description='ridgeline plot of <numeric> by <factor>'",
+      "description": "Smooth kernel density estimate \u2014 overlay multiple groups.",
+      "clinical_use": "Overlaid PK distributions across arms",
+      "next_step": "generate_canvasxpress_config with description='density plot of <numeric> grouped by <factor>'",
       "scoring_factors": [
-        "cat + numeric \u2192 stacked densities",
-        "several groups to compare",
-        "4+ groups \u2192 ridgeline avoids overlapping color curves"
-      ],
-      "minimal_config": {
-        "graphType": "Ridgeline",
-        "xAxis": [
-          "Year"
-        ],
-        "ridgeBy": "Category"
-      }
+        "1+ numeric \u2192 density estimate",
+        "overlay groups by category",
+        "enough n for smooth density"
+      ]
+    },
+    {
+      "graphType": "CDF",
+      "score": 0.85,
+      "category": "single_dimensional",
+      "description": "Cumulative distribution function plot.",
+      "clinical_use": "CDF of time-to-event, PK exposure CDF",
+      "next_step": "generate_canvasxpress_config with description='CDF of <numeric>'",
+      "scoring_factors": [
+        "1+ numeric \u2192 CDF",
+        "enough data for smooth CDF",
+        "group overlay \u2192 empirical CDF per group"
+      ]
     }
   ],
-  "generate_hint": "Stacked chart of Year grouped by Category \u2014 columns: Year, Category, Value",
-  "tiebreak": {
-    "used": true,
-    "chosen": "Stacked",
-    "reason": "This chart is ideal for showing the 'Value'"
-  },
-  "valid": true,
-  "warnings": [],
-  "type_source": "inferred",
-  "headers_detected": [
-    "Year",
-    "Category",
-    "Value"
-  ],
-  "target": "",
-  "html": {
-    "content": "<div class=\"cX-Chat-LLM-Response\">\n<h3>Recommended</h3>\n<div class=\"cX-Chat-Select-Top\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Stacked</span><span class=\"cX-Chat-Select-Score\">score: 1.0</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked bars showing part-of-whole within each group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> AE severity breakdown per arm, disposition categories</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>1 cat + numeric \u2014 possible stacked</li><li>few stack levels</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;stacked bar of &lt;metric&gt; by &lt;category&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Stacked&quot;, &quot;xAxis&quot;: [&quot;Year&quot;]}\">Apply Stacked</button>\n</div>\n<p class=\"cX-Chat-Select-Next\"><em>This chart is ideal for showing the &#x27;Value&#x27;</em></p>\n<h3>Alternatives</h3>\n<div class=\"cX-Chat-Select-Grid\">\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Boxplot</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Box-and-whisker showing median, IQR, and outliers per group.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab value distributions by arm/visit, PK endpoints</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 distribution by group</li><li>sufficient n for box stats</li><li>multiple numeric vars</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;boxplot of &lt;numeric&gt; grouped by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Boxplot&quot;, &quot;xAxis&quot;: [&quot;Year&quot;], &quot;groupingFactors&quot;: [&quot;Category&quot;]}\">Apply Boxplot</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Scatter2D</span><span class=\"cX-Chat-Select-Score\">score: 0.9</span></div>\n<p class=\"cX-Chat-Select-Desc\">Points on x/y axes revealing correlation between two numeric variables.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Biomarker vs response, PK/PD, PCA plot by treatment</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>2+ numeric \u2192 x/y scatter</li><li>colour by category</li><li>sufficient points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;scatter plot of &lt;num1&gt; vs &lt;num2&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Scatter2D&quot;, &quot;xAxis&quot;: [&quot;Year&quot;], &quot;yAxis&quot;: [&quot;Value&quot;], &quot;colorBy&quot;: &quot;Category&quot;, &quot;zAxis&quot;: []}\">Apply Scatter2D</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Line</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Connected points showing trends over a continuous or ordinal axis.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab values over visits, PK concentration-time profiles</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>colour by category</li><li>enough time points</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;line chart of &lt;numeric&gt; over &lt;time&gt; colored by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Line&quot;, &quot;xAxis&quot;: [&quot;Year&quot;], &quot;groupingFactors&quot;: [&quot;Category&quot;]}\">Apply Line</button>\n</div>\n<div class=\"cX-Chat-Select-Alt\">\n<div class=\"cX-Chat-Select-Header\"><span class=\"cX-Chat-Select-GT\">Ridgeline</span><span class=\"cX-Chat-Select-Score\">score: 0.85</span></div>\n<p class=\"cX-Chat-Select-Desc\">Stacked density plots per group \u2014 compare distributions without overlap.</p>\n<p class=\"cX-Chat-Select-Clinical\"><strong>Clinical use:</strong> Lab distributions across multiple visits or arms</p>\n<ul class=\"cX-Chat-Select-Factors\"><li>cat + numeric \u2192 stacked densities</li><li>several groups to compare</li><li>4+ groups \u2192 ridgeline avoids overlapping color curves</li></ul>\n<p class=\"cX-Chat-Select-Next\"><em>generate_canvasxpress_config with description=&#x27;ridgeline plot of &lt;numeric&gt; by &lt;factor&gt;&#x27;</em></p>\n<button class=\"cX-Chat-LLM-Apply\" onclick=\"CanvasXpress.applySelectConfig('', JSON.parse(this.dataset.cfg))\" data-cfg=\"{&quot;graphType&quot;: &quot;Ridgeline&quot;, &quot;xAxis&quot;: [&quot;Year&quot;], &quot;ridgeBy&quot;: &quot;Category&quot;}\">Apply Ridgeline</button>\n</div>\n</div>\n<p class=\"cX-Chat-LLM-Links\"><a href=\"https://canvasxpress.org/examples.html\" target=\"_blank\" rel=\"noopener\">Examples</a> &nbsp;|&nbsp; <a href=\"https://canvasxpress.org/parameters.html\" target=\"_blank\" rel=\"noopener\">API reference</a></p>\n</div>"
-  },
-  "success": true,
-  "datetime": "Tue, 21 Apr 2026 03:41:25 GMT",
-  "tool": "select_canvasxpress_chart",
-  "request_id": "6bbc229f-b909-4a71-b60a-5764a15faf5b"
+  "generate_hint": "Streamgraph chart of Value grouped by Year colored by Category \u2014 columns: Year, Category, Value"
 }
