@@ -486,8 +486,6 @@ These are mandatory when the graph type is selected:
                Oceania / Pacific          → "Oceania"
                US / United States (all)   → "USAStates"
                US counties                → "USACounties"
-               Albers USA (explicit only)  → "albersStatesPie"
-                 Use ONLY when "Albers" projection is explicitly requested.
                  Pie overlays work on ANY mapId — do NOT change mapId just because
                  pie charts are requested.
 
@@ -3018,8 +3016,7 @@ def create_map_config(
                             'smps'   (list[str], required) — columns that become pie slices.
                             'colors' (list[str], optional) — one color per slice.
                             'size'   (float, optional)     — size multiplier (default 2.5).
-                          When using pie overlays, set map_id to 'albersStatesPie' or another
-                          pie-capable map ID, and supply topo_json if needed.
+                          When using pie overlays, set map_id and supply topo_json if needed.
                       e.g. {'pie': {'smps': ['Democrat','Republican','Libertarian','Other'],
                                     'colors': ['blue','red','yellow','green'],
                                     'size': 2.5}}
