@@ -262,20 +262,10 @@ _MAP_ID_PATTERNS: list[tuple[str, str]] = [
     ("africa",                    "Africa"),
     ("europe",                    "Europe"),
     ("asia",                      "Asia"),
-    ("all countries",             "Countries"),
-    ("countries",                 "Countries"),
+    ("all countries",             "World"),
+    ("countries",                 "World"),
     ("world",                     "World"),
-    # US Albers projection (explicit request only — pie overlays work on any map)
-    ("albers pie",              "albersStatesPie"),
-    ("albersstatespie",         "albersStatesPie"),
-    ("albers usa",              "albersStatesPie"),
-    ("albers state",            "albersStatesPie"),
     # US sub-regions
-    ("usa congressional district","USADistricts"),
-    ("us congressional district", "USADistricts"),
-    ("congressional district",    "USADistricts"),
-    ("usa district",              "USADistricts"),
-    ("us district",               "USADistricts"),
     ("usa county",                "USACounties"),
     ("us county",                 "USACounties"),
     ("usa state",                 "USAStates"),
@@ -354,7 +344,6 @@ _MAP_ID_COLUMN_HINT: dict[str, str] = {
     "SouthAmerica":   "ISO 3-letter codes for South American countries (e.g. \"ARG\", \"BOL\", \"BRA\", \"CHL\", \"COL\", \"ECU\", \"GUY\", \"PER\", \"PRY\", \"SUR\", \"URY\", \"VEN\")",
     "Oceania":        "ISO 3-letter codes for Oceania countries (e.g. \"AUS\", \"FJI\", \"NZL\", \"PNG\", \"SLB\", \"VUT\")",
     "USAStates":      "2-letter US state/territory codes (e.g. \"AL\", \"AK\", \"AZ\", \"AR\", \"CA\", \"CO\", \"CT\", \"DE\", \"FL\", \"GA\", \"HI\", \"ID\", \"IL\", \"IN\", \"IA\", \"KS\", \"KY\", \"LA\", \"ME\", \"MD\", \"MA\", \"MI\", \"MN\", \"MS\", \"MO\", \"MT\", \"NE\", \"NV\", \"NH\", \"NJ\", \"NM\", \"NY\", \"NC\", \"ND\", \"OH\", \"OK\", \"OR\", \"PA\", \"RI\", \"SC\", \"SD\", \"TN\", \"TX\", \"UT\", \"VT\", \"VA\", \"WA\", \"WV\", \"WI\", \"WY\", \"DC\")",
-    "albersStatesPie":"2-letter US state codes (same as USAStates — used for Albers pie maps)",
     "USACounties":    "5-digit FIPS county codes (e.g. \"01001\" for Autauga AL, \"06037\" for Los Angeles CA, \"48113\" for Dallas TX)",
     # Country sub-region values — use mapPropertyId in config to specify the matching feature property
     "CAN":            "Canadian province/territory names — set mapPropertyId: \"prov_name_en\" in config (e.g. \"Alberta\", \"British Columbia\", \"Manitoba\", \"New Brunswick\", \"Newfoundland and Labrador\", \"Northwest Territories\", \"Nova Scotia\", \"Nunavut\", \"Ontario\", \"Prince Edward Island\", \"Quebec\", \"Saskatchewan\", \"Yukon\")",
@@ -570,6 +559,12 @@ These are mandatory when the graph type is selected:
              For pie overlays: do NOT put slice columns in xAxis —
              they belong only in decorations.pie.smps.
 
+             MAP PROJECTION — set mapProjection when the description mentions a projection:
+               "mercator"      → default flat/rectangular world map (default if not specified)
+               "albers"        → equal-area conic, common for US/North America
+               "orthographic"  → globe/sphere view
+             Only set mapProjection when explicitly requested; omit it otherwise (default is mercator).
+
              MARKER PINS — when the description mentions specific places, landmarks,
              addresses, ZIP codes, or any named locations to mark on the map, output
              a "_markers_to_geocode" key at the top level of the config (NOT inside
@@ -577,7 +572,7 @@ These are mandatory when the graph type is selected:
                {"location": "place name, city, or address", "label": "display label"}
                {"zip": "US ZIP code", "label": "display label"}
              Add optional "color" (default "red") and "shape"
-             ("teardrop"|"circle"|"star"|"square", default "teardrop").
+             ("teardrop"|"circle"|"star"|"square"|"triangle"|"diamond", default "teardrop").
              Use "location" for any named place, city, landmark, or address worldwide.
              Use "zip" for US ZIP codes (5 digits).
              Do NOT guess or fabricate lat/lng coordinates — the server will geocode them.
@@ -2933,7 +2928,8 @@ def _geocode_location(place: str) -> tuple[float, float] | None:
         "Optionally supply markers (lat/lng pins with labels, colors, and shapes) to annotate "
         "specific locations on the map. "
         "Supports pie chart overlays on map regions by passing decorations={'pie': {...}}, "
-        "and proportional sizing of regions/symbols via 'size_by'. "
+        "proportional sizing of regions/symbols via 'size_by', "
+        "and map projection via 'projection' ('mercator', 'albers', 'orthographic'). "
         "Returns a CanvasXpress JSON config ready to pass to new CanvasXpress()."
     )
 )
@@ -2948,6 +2944,7 @@ def create_map_config(
     decorations: dict | None = None,
     topo_json: str | None = None,
     legend_order: dict | None = None,
+    projection: str | None = None,
 ) -> dict:
     """
     Args:
@@ -3031,6 +3028,9 @@ def create_map_config(
         legend_order: Optional dict mapping column names to an ordered list of values
                       controlling legend display order.
                       e.g. {'Winner': ['Republican', 'Democrat']}
+        projection:   Optional map projection. One of 'mercator' (default),
+                      'albers' (equal-area conic, good for US/North America),
+                      'orthographic' (globe/sphere view).
         markers:      Optional list of marker dicts to pin locations on the map.
                       Each marker requires 'lat' and 'lng' (decimal degrees).
                       Optional fields: 'label' (str), 'color' (str, default 'red'),
@@ -3101,6 +3101,17 @@ def create_map_config(
 
     if legend_order and isinstance(legend_order, dict):
         config["legendOrder"] = legend_order
+
+    VALID_PROJECTIONS = {"mercator", "albers", "orthographic"}
+    if projection and projection.strip():
+        proj = projection.strip().lower()
+        if proj not in VALID_PROJECTIONS:
+            warnings.append(
+                f"Unknown mapProjection '{proj}'. "
+                f"Valid options: {', '.join(sorted(VALID_PROJECTIONS))}. Ignored."
+            )
+        else:
+            config["mapProjection"] = proj
 
     # Extract headers from data if provided
     headers_used: list[str] = []
@@ -4619,6 +4630,7 @@ async def rest_map(request: Request) -> Response:
       data          (str)           — optional JSON array of arrays (first row = headers).
       title         (str)           — optional chart title.
       color_scheme  (str)           — optional color palette name.
+      projection    (str)           — optional map projection: 'mercator', 'albers', 'orthographic'.
       callback      (str)           — JSONP callback name.
       target        (str)           — CanvasXpress chart target ID (passed through).
       client_id     (str)           — CanvasXpress client ID (passed through).
@@ -4643,6 +4655,8 @@ async def rest_map(request: Request) -> Response:
         kwargs["title"] = p["title"].strip()
     if p.get("color_scheme", "").strip():
         kwargs["color_scheme"] = p["color_scheme"].strip()
+    if p.get("projection", "").strip():
+        kwargs["projection"] = p["projection"].strip()
 
     raw_data = p.get("data")
     if raw_data:
