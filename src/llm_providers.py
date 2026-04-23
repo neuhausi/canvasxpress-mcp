@@ -589,6 +589,8 @@ def _complete_gateway(
         return text, usage
     else:
         client = _get_gateway_openai()
+        # gpt-5+ models require max_completion_tokens instead of max_tokens
+        token_param = "max_completion_tokens" if "gpt-5" in model else "max_tokens"
         response = client.chat.completions.create(
             model=model,
             max_tokens=max_tokens,
@@ -597,6 +599,7 @@ def _complete_gateway(
                 {"role": "system", "content": system},
                 {"role": "user",   "content": user},
             ],
+            **{token_param: max_tokens},
         )
         text = response.choices[0].message.content or ""
         usage = {
