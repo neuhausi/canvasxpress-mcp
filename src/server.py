@@ -252,10 +252,6 @@ _MAP_ID_PATTERNS: list[tuple[str, str]] = [
     # Regions / multi-country (check before individual countries)
     ("world continent",           "WorldContinents"),
     ("worldcontinent",            "WorldContinents"),
-    ("world medium",              "WorldMedium"),
-    ("worldmedium",               "WorldMedium"),
-    ("world high",                "WorldHigh"),
-    ("worldhigh",                 "WorldHigh"),
     ("north america",             "NorthAmerica"),
     ("south america",             "SouthAmerica"),
     ("oceania",                   "Oceania"),
@@ -333,8 +329,6 @@ def _infer_map_id(description: str) -> Optional[str]:
 # Map mapId → human-readable description of what the first column's ID values should be
 _MAP_ID_COLUMN_HINT: dict[str, str] = {
     "World":          "ISO 3-letter country codes (e.g. \"ALB\", \"ARG\", \"AUS\", \"BRA\", \"CAN\", \"CHN\", \"DEU\", \"ESP\", \"FRA\", \"GBR\", \"IND\", \"ITA\", \"JPN\", \"MEX\", \"RUS\", \"USA\", \"ZAF\")",
-    "WorldMedium":    "ISO 3-letter country codes (same as World — medium resolution)",
-    "WorldHigh":      "ISO 3-letter country codes (same as World — high resolution)",
     "Countries":      "ISO 3-letter country codes (same as World — e.g. \"ALB\", \"ARG\", \"AUS\", \"BRA\", \"CAN\", \"CHN\", \"DEU\", \"ESP\", \"FRA\", \"GBR\", \"IND\", \"ITA\", \"JPN\", \"MEX\", \"RUS\", \"USA\", \"ZAF\")",
     "WorldContinents":"continent names (\"Africa\", \"Asia\", \"Europe\", \"NorthAmerica\", \"Oceania\", \"SouthAmerica\")",
     "Africa":         "ISO 3-letter codes for African countries (e.g. \"DZA\", \"EGY\", \"ETH\", \"GHA\", \"KEN\", \"MAR\", \"MOZ\", \"NGA\", \"ZAF\", \"TZA\", \"UGA\", \"ZMB\")",
