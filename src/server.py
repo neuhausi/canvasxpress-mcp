@@ -949,6 +949,7 @@ def modify_config(
         "- Keep ALL existing parameters unless the instruction explicitly says to remove one.\n"
         "- Add new parameters or change existing values as instructed.\n"
         "- Never remove graphType, xAxis, or other required parameters unless explicitly told to.\n"
+        "- Do NOT modify the 'title' parameter unless the instruction explicitly asks to change the title.\n"
         "- Return ONLY the JSON object. No markdown, no explanation.\n\n"
     )
     system_prompt = modify_preamble + system_prompt
@@ -3702,10 +3703,14 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
         v = p["config"]
         kwargs["config"] = json.loads(v) if isinstance(v, str) else v
 
-    # headers — comma-separated string or JSON array; skip if empty
-    if p.get("headers", "").strip():
-        v = p["headers"].strip()
-        kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",") if h.strip()]
+    # headers — comma-separated string, JSON array string, or native list
+    raw_headers = p.get("headers")
+    if raw_headers is not None:
+        if isinstance(raw_headers, list):
+            kwargs["headers"] = [str(h).strip() for h in raw_headers if str(h).strip()]
+        elif isinstance(raw_headers, str) and raw_headers.strip():
+            v = raw_headers.strip()
+            kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",") if h.strip()]
 
     # data — JSON array of arrays
     if "data" in p:
