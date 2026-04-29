@@ -618,6 +618,8 @@ def _score_stacked_percent(ctx: _Ctx) -> dict:
 def _score_boxplot(ctx: _Ctx) -> dict:
     if ctx.category < 1:
         return {"score": 0.0, "factors": ["no grouping factor — boxplot requires categories"]}
+    if ctx.cat0 and ctx.row_count and ctx.cat0 >= ctx.row_count * 0.9:
+        return {"score": 0.0, "factors": ["each category appears once — data is already aggregated, no distribution to plot"]}
     score = 0.0
     factors = []
     if ctx.numeric >= 1:
@@ -635,6 +637,8 @@ def _score_boxplot(ctx: _Ctx) -> dict:
 def _score_violin(ctx: _Ctx) -> dict:
     if ctx.category < 1:
         return {"score": 0.0, "factors": ["no grouping factor — violin requires categories"]}
+    if ctx.cat0 and ctx.row_count and ctx.cat0 >= ctx.row_count * 0.9:
+        return {"score": 0.0, "factors": ["each category appears once — data is already aggregated, no distribution to plot"]}
     score = 0.0
     factors = []
     if ctx.numeric >= 1:

@@ -593,7 +593,6 @@ def _complete_gateway(
         token_param = "max_completion_tokens" if "gpt-5" in model else "max_tokens"
         response = client.chat.completions.create(
             model=model,
-            max_tokens=max_tokens,
             temperature=temperature,
             messages=[
                 {"role": "system", "content": system},

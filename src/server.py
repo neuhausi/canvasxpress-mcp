@@ -23,7 +23,7 @@ import logging
 import sqlite3
 from pathlib import Path
 from difflib import SequenceMatcher
-from typing import Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")  # load .env before any os.environ.get calls
@@ -949,6 +949,7 @@ def modify_config(
         "- Keep ALL existing parameters unless the instruction explicitly says to remove one.\n"
         "- Add new parameters or change existing values as instructed.\n"
         "- Never remove graphType, xAxis, or other required parameters unless explicitly told to.\n"
+        "- Do NOT modify the 'title' parameter unless the instruction explicitly asks to change the title.\n"
         "- Return ONLY the JSON object. No markdown, no explanation.\n\n"
     )
     system_prompt = modify_preamble + system_prompt
@@ -2029,7 +2030,9 @@ def get_axes_info(graph_type: str) -> dict:
         "(numeric/factor/string/date) and returns a ranked list of graphType candidates "
         "with rationale, clinical use notes, and a ready-made description hint to pass "
         "directly to generate_canvasxpress_config. "
-        "No LLM call — deterministic and instant. "
+        "By default deterministic and instant (no LLM call). "
+        "Set llm_first=true to ask the LLM to freely choose the best chart type from the "
+        "full catalogue before falling back to scoring for alternatives. "
         "intent is optional — omitting it scores purely on column structure and column name patterns. "
         "Examples: column_types={\'SOC\':\'factor\',\'Treatment\':\'factor\',\'AE_Count\':\'numeric\'}; "
         "intent=\'overall survival by arm\' with "
@@ -2042,6 +2045,7 @@ def select_canvasxpress_chart(
     n_samples: Optional[int] = None,
     category_cardinalities: Optional[dict[str, int]] = None,
     max_level_fractions: Optional[dict[str, float]] = None,
+    llm_first: bool = False,
 ) -> dict:
     """
     Args:
@@ -2053,6 +2057,10 @@ def select_canvasxpress_chart(
         n_samples:    Optional total row count. Used to prefer Dotplot over Boxplot for
                       small cohorts (n < 30) and warn about overplotting for large datasets
                       (n > 5000).
+        llm_first:    When True, the LLM is asked to freely choose the best chart type from
+                      the full CanvasXpress catalogue before the deterministic scorer runs.
+                      The LLM's choice becomes the top recommendation; the scorer populates
+                      alternatives. Defaults to False (deterministic only).
 
     Returns:
         Dict with keys:
@@ -2062,19 +2070,54 @@ def select_canvasxpress_chart(
           alternatives       (list) - up to 3 other candidate graphTypes
           generate_hint      (str)  - suggested description string to pass to
                                       generate_canvasxpress_config as the \'description\' argument
+          llm_first          (bool) - echoed back
     """
     log.info(
-        "select_canvasxpress_chart: intent=%r  columns=%s  n_samples=%s",
-        intent, list(column_types.keys()), n_samples,
+        "select_canvasxpress_chart: intent=%r  columns=%s  n_samples=%s  llm_first=%s",
+        intent, list(column_types.keys()), n_samples, llm_first,
     )
     def _llm_text(system: str, user: str) -> str:
         text, usage = llm_complete(system, user, temperature=0.0, max_tokens=300)
         log.debug("tiebreak LLM raw=%r  stop=%s", text[:120] if text else "", usage.get("stop_reason"))
         return text
 
+    # ── LLM-first mode: ask LLM to pick freely from the full catalogue ────────
+    llm_first_choice: str | None = None
+    llm_first_reason: str = ""
+    if llm_first:
+        llm_first_choice, llm_first_reason = _llm_select_chart(
+            intent=intent,
+            column_types=column_types,
+            n_samples=n_samples or 0,
+            llm_complete=_llm_text,
+        )
+        log.info("llm_first choice=%r  reason=%r", llm_first_choice, llm_first_reason)
+
     result = cx_selector.select_chart(intent, column_types, n_samples,
                                        category_cardinalities=category_cardinalities,
                                        llm_complete=_llm_text)
+
+    # If LLM-first produced a valid choice, promote it to the top recommendation
+    if llm_first_choice and llm_first_choice != result["top_recommendation"]["graphType"]:
+        import cx_selector as _cxs
+        info = _cxs.CHART_CATALOGUE.get(llm_first_choice, {})
+        llm_top = {
+            "graphType":       llm_first_choice,
+            "score":           result["top_recommendation"].get("score", 1.0),
+            "category":        info.get("category", ""),
+            "description":     info.get("description", ""),
+            "clinical_use":    info.get("clinical_use", ""),
+            "next_step":       info.get("next_step",
+                                        f"generate_canvasxpress_config with description='{llm_first_choice} chart'"),
+            "scoring_factors": [f"LLM selected: {llm_first_reason}"],
+        }
+        # Move old top into alternatives (dedup)
+        old_top = result["top_recommendation"]
+        existing_gts = {a["graphType"] for a in result["alternatives"]}
+        if old_top["graphType"] not in existing_gts:
+            result["alternatives"] = [old_top] + result["alternatives"]
+        result["alternatives"] = result["alternatives"][:3]
+        result["top_recommendation"] = llm_top
     tb = result.get("tiebreak", {})
     log.info(
         "select_canvasxpress_chart → top=%s  alts=%s  tiebreak_used=%s",
@@ -2112,10 +2155,68 @@ def select_canvasxpress_chart(
         alt_cfg = _build_minimal_config(alt["graphType"], column_types, **_bmc_kwargs)
         alt["minimal_config"] = alt_cfg
 
-    result["valid"]    = len(warnings) == 0
-    result["warnings"] = warnings
+    result["valid"]     = len(warnings) == 0
+    result["warnings"]  = warnings
+    result["llm_first"] = llm_first
 
     return result
+
+
+def _llm_select_chart(
+    intent: str,
+    column_types: dict[str, str],
+    n_samples: int,
+    llm_complete: Any,
+) -> tuple[str | None, str]:
+    """
+    Ask the LLM to freely choose the best CanvasXpress chart type from the full catalogue.
+
+    Returns (graphType, reason) or (None, error_message).
+    """
+    import cx_selector as _cxs
+
+    valid_names = list(_cxs.CHART_CATALOGUE.keys())
+    catalogue_lines = "\n".join(
+        f"  {gt}: {_cxs.CHART_CATALOGUE[gt].get('description', '')}"
+        for gt in valid_names
+    )
+    col_lines = "\n".join(f"  - {col} ({typ})" for col, typ in column_types.items())
+    intent_line = f"Goal: {intent}\n" if intent else ""
+
+    system = (
+        "You are a data visualization expert specializing in CanvasXpress charts. "
+        "Choose the single most appropriate chart type for the given dataset and goal. "
+        "Reply with EXACTLY one chart name from the provided list, a pipe |, and a brief "
+        "one-sentence reason. Example: Scatter2D | Best for showing correlation between two numeric variables."
+    )
+    user = (
+        f"{intent_line}"
+        f"Dataset: {n_samples} rows, columns:\n{col_lines}\n\n"
+        f"Available chart types:\n{catalogue_lines}\n\n"
+        f"Reply with exactly one of these names: {', '.join(valid_names)}"
+    )
+
+    try:
+        raw = llm_complete(system, user).strip()
+        if not raw:
+            return None, "LLM returned empty response"
+        if "|" in raw:
+            chosen, reason = raw.split("|", 1)
+            chosen = chosen.strip()
+            reason = reason.strip()
+        else:
+            parts = raw.split()
+            chosen = parts[0].rstrip(".,:;") if parts else ""
+            reason = ""
+        if chosen in valid_names:
+            return chosen, reason
+        for name in valid_names:
+            if name.lower() == chosen.lower():
+                return name, reason
+        return None, f"LLM returned unrecognised chart type: {chosen!r}"
+    except Exception as exc:
+        return None, f"LLM error: {exc}"
+
 
 @mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
 def list_chart_types() -> dict:
@@ -2651,8 +2752,9 @@ def _build_minimal_config(
     """
     import cx_selector as _cxs
 
-    # Exclude subject/ID columns (e.g. "Id", "PatientId") from numeric candidates
-    # so they don't end up assigned to chart axes.
+    # Exclude subject/ID columns (e.g. "Id", "PatientId") from factor candidates.
+    # Row identifiers are always string/factor typed — never apply this to numeric columns,
+    # since count columns like "subject_count" legitimately contain the word "subject".
     def _is_id_col(name: str) -> bool:
         return _cxs._col_matches(name, "subject") and not _cxs._col_matches(name, "group")
 
@@ -2668,7 +2770,7 @@ def _build_minimal_config(
         return False
 
     num_cols  = [c for c, t in column_types.items()
-                 if t.lower() in _cxs._NUMERIC_ALIASES and not _is_id_col(c)]
+                 if t.lower() in _cxs._NUMERIC_ALIASES]
     fac_cols  = [c for c, t in column_types.items()
                  if t.lower() in _cxs._FACTOR_ALIASES and not _is_id_col(c) and not _is_bad_grouping_col(c)]
     time_cols = [c for c, t in column_types.items() if t.lower() in _cxs._TIME_ALIASES]
@@ -3597,6 +3699,7 @@ def _infer_column_types(data: list[list]) -> tuple[dict[str, str], list[str], in
         r"|^\d{4}$"                            # bare year
     )
     _YEAR_COL_RE = re.compile(r"year|yr|date|time|month|week|day|visit", re.IGNORECASE)
+    _ID_COL_RE = re.compile(r"^id$|[_\-\s]id$|^id[_\-\s]", re.IGNORECASE)
     _BOOL_VALS = {"true", "false", "yes", "no", "1", "0", "t", "f", "y", "n"}
 
     column_types: dict[str, str] = {}
@@ -3607,6 +3710,11 @@ def _infer_column_types(data: list[list]) -> tuple[dict[str, str], list[str], in
                 values.append(row[col_idx])
 
         if not values:
+            column_types[col_name] = "factor"
+            continue
+
+        # ID-like column names are always factors, even if values look numeric
+        if _ID_COL_RE.search(col_name):
             column_types[col_name] = "factor"
             continue
 
@@ -3702,10 +3810,14 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
         v = p["config"]
         kwargs["config"] = json.loads(v) if isinstance(v, str) else v
 
-    # headers — comma-separated string or JSON array; skip if empty
-    if p.get("headers", "").strip():
-        v = p["headers"].strip()
-        kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",") if h.strip()]
+    # headers — comma-separated string, JSON array string, or native list
+    raw_headers = p.get("headers")
+    if raw_headers is not None:
+        if isinstance(raw_headers, list):
+            kwargs["headers"] = [str(h).strip() for h in raw_headers if str(h).strip()]
+        elif isinstance(raw_headers, str) and raw_headers.strip():
+            v = raw_headers.strip()
+            kwargs["headers"] = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",") if h.strip()]
 
     # data — JSON array of arrays
     if "data" in p:
@@ -3876,7 +3988,7 @@ _UI_HTML = r"""<!DOCTYPE html>
 
 <!-- ── SELECT CHART ─────────────────────────────────────────────────── -->
 <div class="panel card" id="panel-select">
-  <p class="hint">Deterministic chart type recommendation — no LLM call. Returns ranked candidates with rationale.<br>Provide <b>data</b>, <b>column_types</b>, or both. Intent is optional — omitting it scores on structure and column names only.</p>
+  <p class="hint">Chart type recommendation. Returns ranked candidates with rationale.<br>Provide <b>data</b>, <b>column_types</b>, or both. Intent is optional — omitting it scores on structure and column names only.</p>
   <div class="section-label">Required — provide at least one of data or column_types</div>
   <label>Data <span>JSON array of arrays — first row is headers; column types are inferred</span>
     <textarea id="sel-data" style="min-height:80px" placeholder='[["Id","padj","Sig","xvals","-log10(yvals)"],["GENE1",0.001,"FC_P",1.5,9.2]]'></textarea>
@@ -3890,6 +4002,12 @@ _UI_HTML = r"""<!DOCTYPE html>
   </label>
   <label style="display:inline-block;width:auto">Number of rows <span style="font-weight:400;color:#888">(overrides row count inferred from data)</span></label>
   <input type="text" id="sel-nsamples" placeholder="e.g. 500" style="width:120px;margin-left:8px">
+  <div style="margin-top:12px">
+    <label style="display:inline-flex;align-items:center;gap:6px;width:auto;font-weight:400">
+      <input type="checkbox" id="sel-llm-first" onchange="buildUrl()">
+      <span>LLM first <span style="color:#888;font-size:.8rem">— ask the LLM to freely choose before scoring</span></span>
+    </label>
+  </div>
 </div>
 
 <!-- ── EXPLAIN ──────────────────────────────────────────────────────── -->
@@ -4020,6 +4138,8 @@ function buildUrl() {
     if(v('sel-types'))    p.set('column_types',v('sel-types'));
     if(v('sel-data'))     p.set('data',        v('sel-data'));
     if(v('sel-nsamples')) p.set('n_samples',   v('sel-nsamples'));
+    var llmCb=document.getElementById('sel-llm-first');
+    if(llmCb&&llmCb.checked) p.set('llm_first','true');
   } else if (activeTab==='explain') {
     url+='explain';
     if(v('ex-prop')) p.set('property',v('ex-prop'));
@@ -4161,6 +4281,7 @@ async function submit(){
     if(val&&el) el.value=val;
   });
   if(p.get('refresh')==='true'){var el=document.getElementById('p-refresh');if(el)el.checked=true;}
+  if(p.get('llm_first')==='true'){var el=document.getElementById('sel-llm-first');if(el)el.checked=true;}
   if(p.get('topic')){['exr-topic','exg-topic'].forEach(function(id){var el=document.getElementById(id);if(el)el.value=p.get('topic');});}
   buildUrl();
 })();
@@ -4498,6 +4619,8 @@ async def rest_select(request: Request) -> Response:
     except (ValueError, TypeError):
         pass
 
+    llm_first = str(p.get("llm_first", "")).lower() in ("1", "true", "yes")
+
     try:
         result = select_canvasxpress_chart(
             intent=intent,
@@ -4505,6 +4628,7 @@ async def rest_select(request: Request) -> Response:
             n_samples=n_samples,
             category_cardinalities=category_cardinalities,
             max_level_fractions=max_level_fractions,
+            llm_first=llm_first,
         )
         # Annotate with provenance for transparency
         result["type_source"] = type_source
