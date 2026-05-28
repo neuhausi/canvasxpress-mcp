@@ -1524,7 +1524,8 @@ _cors_middleware: list = [
         "geographic IDs (ISO-3 country codes for world maps, 2-letter state codes for US maps, etc.) "
         "and remaining columns hold the values to display. "
         "Returns a validated JSON config object ready to pass to new CanvasXpress()."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def generate_canvasxpress_config(
     description: str,
@@ -1736,7 +1737,8 @@ def generate_canvasxpress_config(
         "'remove the legend', 'set the x-axis title to Fold Change', "
         "'add groupingFactors for the Treatment column', 'switch to dark theme'. "
         "Returns the complete modified config ready to pass to new CanvasXpress()."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def modify_canvasxpress_config(
     config: dict,
@@ -1869,7 +1871,8 @@ def modify_canvasxpress_config(
         "and rendered by CanvasXpress itself. "
         "Examples: description='OS curve by treatment arm' with headers=['PatientID','OS_Time','OS_Status','Treatment']; "
         "or config={...} to validate an existing KM config."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def generate_km_config(
     description: str | None = None,
@@ -3058,7 +3061,8 @@ def _geocode_location(place: str) -> tuple[float, float] | None:
         "proportional sizing of regions/symbols via 'size_by', "
         "and map projection via 'projection' ('mercator', 'albers', 'orthographic'). "
         "Returns a CanvasXpress JSON config ready to pass to new CanvasXpress()."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def create_map_config(
     map_id: str,
