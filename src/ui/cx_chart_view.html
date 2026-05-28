@@ -183,6 +183,8 @@
      * Host then sends ui/notifications/tool-input and ui/notifications/tool-result.
      */
     document.addEventListener('DOMContentLoaded', function() {
+      // TODO: act on host capabilities returned in McpUiInitializeResult (e.g. supported display modes, theme).
+      // TODO: handle 'ui/notifications/initialized' notification from host once any feature depends on knowing initialization completed.
       sendRequest('ui/initialize', {
         // Only inline declared: chart resize is handled by ResizeObserver inside the inline iframe; modal/fullscreen would require additional layout logic.
         appCapabilities: {

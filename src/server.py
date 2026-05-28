@@ -1153,6 +1153,15 @@ _META_FOR_CHART = {
     # Per MCP Apps spec §UI Resource Format: mimeType MUST be "text/html;profile=mcp-app"
     mime_type="text/html;profile=mcp-app",
     name="CanvasXpress Chart View",
+    # Per MCP Apps spec (2026-01-26) lines 243-250: _meta.ui.csp.resourceDomains
+    # declares origins for static resources (scripts, images, styles, fonts).
+    meta={
+        "ui": {
+            "csp": {
+                "resourceDomains": ["https://www.canvasxpress.org"],
+            },
+        },
+    },
 )
 def cx_chart_resource() -> str:
     """HTML MCP App iframe for rendering CanvasXpress chart configs inline."""

@@ -178,3 +178,23 @@ def test_non_chart_tool_has_no_ui_meta():
     assert "ui" not in meta, (
         f"Tool '{_NON_CHART_TOOL}' unexpectedly has 'ui' key in MCP-level _meta"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 6: Resource _meta declares CSP resourceDomains
+# ---------------------------------------------------------------------------
+
+def test_resource_has_csp_resource_domains():
+    """Resource _meta.ui.csp.resourceDomains must include the CanvasXpress CDN origin."""
+    r = _get_resource(_RESOURCE_URI)
+    assert r is not None, f"Resource '{_RESOURCE_URI}' not registered"
+    assert r.meta is not None, "Resource has no meta"
+    ui = r.meta.get("ui")
+    assert ui is not None, "Resource meta has no 'ui' key"
+    csp = ui.get("csp")
+    assert csp is not None, "Resource meta.ui has no 'csp' key"
+    domains = csp.get("resourceDomains")
+    assert isinstance(domains, list), "resourceDomains must be a list"
+    assert "https://www.canvasxpress.org" in domains, (
+        f"Expected 'https://www.canvasxpress.org' in resourceDomains, got {domains}"
+    )
