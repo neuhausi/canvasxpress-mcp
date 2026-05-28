@@ -1127,6 +1127,39 @@ mcp = FastMCP(
 )
 
 # ---------------------------------------------------------------------------
+# --- MCP Apps support ---
+# Spec: https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/main/specification/2026-01-26/apps.mdx
+# Spec §UI Resource Format: mimeType MUST be "text/html;profile=mcp-app"
+# Spec §Resource Discovery: tools reference UI resources via _meta.ui.resourceUri
+# ---------------------------------------------------------------------------
+
+_CX_APP_HTML = (Path(__file__).parent / "ui" / "cx_chart_view.html").read_text(encoding="utf-8")
+
+_CX_APP_RESOURCE_URI = "ui://canvasxpress/chart"
+
+# Per MCP Apps spec §Resource Discovery (2026-01-26):
+# Tools reference UI resources via _meta.ui.resourceUri.
+# In FastMCP 3.x, the `meta` kwarg on @mcp.tool() maps to the MCP protocol
+# _meta field via Tool.get_meta() / Tool.to_mcp_tool().
+_META_FOR_CHART = {
+    "ui": {
+        "resourceUri": _CX_APP_RESOURCE_URI,
+    },
+}
+
+
+@mcp.resource(
+    _CX_APP_RESOURCE_URI,
+    # Per MCP Apps spec §UI Resource Format: mimeType MUST be "text/html;profile=mcp-app"
+    mime_type="text/html;profile=mcp-app",
+    name="CanvasXpress Chart View",
+)
+def cx_chart_resource() -> str:
+    """HTML MCP App iframe for rendering CanvasXpress chart configs inline."""
+    return _CX_APP_HTML
+
+
+# ---------------------------------------------------------------------------
 # Call logging + feedback (thumbs up/down)
 # ---------------------------------------------------------------------------
 
