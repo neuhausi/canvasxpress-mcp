@@ -1136,6 +1136,7 @@ mcp = FastMCP(
 _CX_APP_HTML = (Path(__file__).parent / "ui" / "cx_chart_view.html").read_text(encoding="utf-8")
 
 _CX_APP_RESOURCE_URI = "ui://canvasxpress/chart"
+_CX_APP_MIME_TYPE = "text/html;profile=mcp-app"
 
 # Per MCP Apps spec §Resource Discovery (2026-01-26):
 # Tools reference UI resources via _meta.ui.resourceUri.
@@ -1147,25 +1148,47 @@ _META_FOR_CHART = {
     },
 }
 
+# Per MCP Apps spec (2026-01-26) lines 243-250 and example lines 303-314:
+# _meta.ui.csp.resourceDomains declares origins for static resources
+# (scripts, images, styles, fonts). The spec shows this _meta on the
+# resources/read response content; we ALSO declare it on the resource
+# registration so it surfaces in resources/list, since hosts vary in which
+# they read from. (Belt-and-suspenders to maximize host compatibility.)
+_CX_APP_RESOURCE_META = {
+    "ui": {
+        "csp": {
+            "resourceDomains": ["https://www.canvasxpress.org"],
+        },
+    },
+}
+
+from fastmcp.resources import ResourceContent, ResourceResult  # noqa: E402
+
 
 @mcp.resource(
     _CX_APP_RESOURCE_URI,
     # Per MCP Apps spec §UI Resource Format: mimeType MUST be "text/html;profile=mcp-app"
-    mime_type="text/html;profile=mcp-app",
+    mime_type=_CX_APP_MIME_TYPE,
     name="CanvasXpress Chart View",
-    # Per MCP Apps spec (2026-01-26) lines 243-250: _meta.ui.csp.resourceDomains
-    # declares origins for static resources (scripts, images, styles, fonts).
-    meta={
-        "ui": {
-            "csp": {
-                "resourceDomains": ["https://www.canvasxpress.org"],
-            },
-        },
-    },
+    # CSP on the registered Resource (surfaces via resources/list).
+    meta=_CX_APP_RESOURCE_META,
 )
-def cx_chart_resource() -> str:
-    """HTML MCP App iframe for rendering CanvasXpress chart configs inline."""
-    return _CX_APP_HTML
+def cx_chart_resource() -> ResourceResult:
+    """HTML MCP App iframe for rendering CanvasXpress chart configs inline.
+
+    Returns a ResourceResult so the CSP _meta is also attached to the
+    resources/read response content per spec lines 243-250 / 303-314.
+    """
+    return ResourceResult(
+        contents=[
+            ResourceContent(
+                _CX_APP_HTML,
+                mime_type=_CX_APP_MIME_TYPE,
+                meta=_CX_APP_RESOURCE_META,
+            ),
+        ],
+        meta=_CX_APP_RESOURCE_META,
+    )
 
 
 # ---------------------------------------------------------------------------

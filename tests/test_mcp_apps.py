@@ -194,7 +194,8 @@ def test_non_chart_tool_has_no_ui_meta():
 # ---------------------------------------------------------------------------
 
 def test_resource_has_csp_resource_domains():
-    """Resource _meta.ui.csp.resourceDomains must include the CanvasXpress CDN origin."""
+    """Resource _meta.ui.csp.resourceDomains must include the CanvasXpress CDN origin
+    on the resources/list registration (Resource.meta)."""
     r = _get_resource(_RESOURCE_URI)
     assert r is not None, f"Resource '{_RESOURCE_URI}' not registered"
     assert r.meta is not None, "Resource has no meta"
@@ -206,4 +207,27 @@ def test_resource_has_csp_resource_domains():
     assert isinstance(domains, list), "resourceDomains must be a list"
     assert "https://www.canvasxpress.org" in domains, (
         f"Expected 'https://www.canvasxpress.org' in resourceDomains, got {domains}"
+    )
+
+
+def test_resource_read_response_has_csp_resource_domains():
+    """Per MCP Apps spec lines 243-250 / 303-314, _meta.ui.csp belongs on the
+    resources/read response content. Verify it is present on the content item
+    returned by FastMCP's read pipeline (not just on the resources/list entry)."""
+    resource_obj = _get_resource(_RESOURCE_URI)
+    assert resource_obj is not None
+    # _read_resource_mcp returns the wire-format mcp.types.ReadResourceResult,
+    # which is what hosts receive over the protocol.
+    result = _run(_mcp._read_resource_mcp(_RESOURCE_URI))
+    assert result.contents, "resources/read returned no contents"
+    first = result.contents[0]
+    meta = getattr(first, "meta", None)
+    assert meta is not None, (
+        "resources/read content[0] has no _meta — hosts that read CSP from the "
+        "read response (per spec lines 243-250) will not see resourceDomains"
+    )
+    domains = meta.get("ui", {}).get("csp", {}).get("resourceDomains")
+    assert isinstance(domains, list) and "https://www.canvasxpress.org" in domains, (
+        f"Expected _meta.ui.csp.resourceDomains to include CDN origin in read response, "
+        f"got {meta!r}"
     )
