@@ -27,9 +27,18 @@ import server as _server_module
 
 _mcp = _server_module.mcp
 
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 # Pre-fetch tools and resources synchronously (called once at module import)
-_tools_list = asyncio.get_event_loop().run_until_complete(_mcp.list_tools())
-_resources_list = asyncio.get_event_loop().run_until_complete(_mcp.list_resources())
+_tools_list = _run(_mcp.list_tools())
+_resources_list = _run(_mcp.list_resources())
 
 # Constants from server
 _RESOURCE_URI = _server_module._CX_APP_RESOURCE_URI  # "ui://canvasxpress/chart"
@@ -103,7 +112,7 @@ def test_resource_mime_type():
 
 def test_resource_body_contains_cx_chart_div():
     """Resource HTML must contain <canvas id=\"cx-chart\"> (the CanvasXpress target)."""
-    result = asyncio.get_event_loop().run_until_complete(
+    result = _run(
         _mcp.read_resource(_RESOURCE_URI)
     )
     body = result.contents[0].content
@@ -114,7 +123,7 @@ def test_resource_body_contains_cx_chart_div():
 
 def test_resource_body_contains_canvasxpress_constructor():
     """Resource HTML must reference 'new CanvasXpress' to instantiate the chart."""
-    result = asyncio.get_event_loop().run_until_complete(
+    result = _run(
         _mcp.read_resource(_RESOURCE_URI)
     )
     body = result.contents[0].content

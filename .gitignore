@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtualenvs
+.venv/
+venv/
+
+# Local environment
+.env
+
+# Local data (sqlite caches, vector index, etc. — built locally, not committed)
+data/*.db
+data/kb_cache/
+
+# Server logs
+/tmp/cx-server.log
