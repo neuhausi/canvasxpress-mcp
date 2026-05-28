@@ -84,10 +84,13 @@
     }
 
     /**
-     * Render a CanvasXpress chart from a config dict.
-     * The tool result content[0].text contains the JSON config.
+     * Render a CanvasXpress chart from a config dict and (optionally) a raw data array.
+     * Uses the object-form constructor so we can pass `data` alongside `config`:
+     *   new CanvasXpress({renderTo, config, data})
+     * `data` is the same flat [[headers],[row,...], ...] array the caller passed to the
+     * tool — CanvasXpress accepts it directly (mirrors buildCxData() in the REST UI).
      */
-    function renderChart(config) {
+    function renderChart(config, data) {
       try {
         // Destroy existing chart instance before creating a new one
         if (chart) {
@@ -95,8 +98,11 @@
           chart = null;
         }
 
-        // Create chart — CanvasXpress(targetId, config) replaces canvas in-place
-        chart = new CanvasXpress('cx-chart', config);
+        const initObj = { renderTo: 'cx-chart', config: config };
+        if (data && Array.isArray(data) && data.length >= 2) {
+          initObj.data = data;
+        }
+        chart = new CanvasXpress(initObj);
 
         // ResizeObserver: call chart.resize() when container changes size
         if (resizeObserver) {
@@ -139,14 +145,31 @@
           showError('No text content block in tool result');
           return;
         }
-        let config;
+        let payload;
         try {
-          config = JSON.parse(textBlock.text);
+          payload = JSON.parse(textBlock.text);
         } catch (e) {
-          showError('Failed to parse chart config JSON: ' + e.message);
+          showError('Failed to parse tool result JSON: ' + e.message);
           return;
         }
-        renderChart(config);
+        // Tool returns a wrapper dict: { config, data, valid, warnings, ... }
+        // Be tolerant of older shapes where the whole payload IS the config.
+        const config = (payload && payload.config && payload.config.graphType)
+          ? payload.config
+          : (payload && payload.graphType ? payload : null);
+        if (!config) {
+          showError('Tool result has no usable config (missing graphType).');
+          return;
+        }
+        const data = payload && payload.data ? payload.data : null;
+        if (!data) {
+          showError(
+            'No data found in tool result. MCP Apps inline rendering requires ' +
+            'the `data` argument to be populated when calling the tool.'
+          );
+          return;
+        }
+        renderChart(config, data);
       } catch (err) {
         showError(err.message || String(err));
       }

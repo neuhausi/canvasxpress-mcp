@@ -231,3 +231,44 @@ def test_resource_read_response_has_csp_resource_domains():
         f"Expected _meta.ui.csp.resourceDomains to include CDN origin in read response, "
         f"got {meta!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Chart tools must echo `data` in their return dicts so the MCP App iframe
+# can render the chart from the tool result alone (per CanvasXpress object-form
+# constructor: new CanvasXpress({renderTo, config, data}).
+# ---------------------------------------------------------------------------
+
+# Use create_map_config — no LLM, fully deterministic.
+_create_map_config = _server_module.create_map_config
+
+
+def test_chart_tool_result_includes_data_when_provided():
+    """When `data` is passed in, the tool result must echo it back so the
+    iframe can render via `new CanvasXpress({renderTo, config, data})`."""
+    data = [
+        ["Country", "GDP"],
+        ["USA", 21000],
+        ["CAN",  1800],
+        ["MEX",  1200],
+    ]
+    result = _create_map_config(map_id="World", data=data, title="GDP")
+    assert "data" in result, (
+        "Chart tool result missing 'data' key — MCP App iframe cannot render "
+        "without it. See src/ui/cx_chart_view.html handleToolResult()."
+    )
+    assert result["data"] == data, (
+        f"Expected echoed data to equal input, got {result['data']!r}"
+    )
+    assert result["config"].get("graphType"), "Result missing config.graphType"
+
+
+def test_chart_tool_result_data_is_none_when_omitted():
+    """When `data` is NOT passed, the tool result must explicitly carry
+    `data: None` so the iframe can surface a friendly 'data required' message
+    instead of silently rendering an empty chart."""
+    result = _create_map_config(map_id="World", title="Empty map")
+    assert "data" in result, "Result must always include the 'data' key"
+    assert result["data"] is None, (
+        f"Expected data to be None when omitted, got {result['data']!r}"
+    )

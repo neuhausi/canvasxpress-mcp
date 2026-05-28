@@ -1748,6 +1748,7 @@ def generate_canvasxpress_config(
 
     return {
         "config":         config,
+        "data":           data,
         "valid":          validation["valid"],
         "warnings":       validation["warnings"] + _geocode_warnings,
         "invalid_refs":   validation["invalid_refs"],
@@ -1881,6 +1882,7 @@ def modify_canvasxpress_config(
 
     return {
         "config":         modified,
+        "data":           data,
         "prompt":         instruction,
         "valid":          validation["valid"],
         "warnings":       validation["warnings"],
@@ -1945,6 +1947,7 @@ def generate_km_config(
     if not any([description, headers, data, config]):
         return {
             "config":           {"graphType": "KaplanMeier"},
+            "data":             None,
             "valid":            False,
             "errors":           ["At least one of description, headers, data, or config must be provided."],
             "warnings":         [],
@@ -1952,7 +1955,7 @@ def generate_km_config(
             "column_detection": None,
         }
 
-    return cx_survival.handle_generate_km(
+    result = cx_survival.handle_generate_km(
         description     = description,
         headers         = headers,
         data            = data,
@@ -1960,6 +1963,9 @@ def generate_km_config(
         temperature     = temperature,
         llm_complete_fn = llm_complete,
     )
+    if isinstance(result, dict):
+        result.setdefault("data", data)
+    return result
 
 
 @mcp.tool(
@@ -3369,6 +3375,7 @@ def create_map_config(
              map_id, headers_used, len(markers) if markers else 0)
     return {
         "config":       config,
+        "data":         data,
         "valid":        len(warnings) == 0,
         "warnings":     warnings,
         "map_id":       map_id,
