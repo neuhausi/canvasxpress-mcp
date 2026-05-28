@@ -1238,3 +1238,7 @@ asyncio.run(main())
 ```
 
 All existing REST endpoints (`/generate`, `/modify`, `/select`, `/km`, etc.) and any MCP clients that do not support MCP Apps are completely unaffected — the `_meta.ui.resourceUri` annotation is silently ignored by non-supporting hosts.
+
+### CDN versioning note
+
+The HTML view loads CanvasXpress from `https://www.canvasxpress.org/dist/canvasXpress.min.js`. No versioned CDN URL is offered by CanvasXpress upstream (verified 2026-05-28). Users who require reproducibility should self-host a pinned copy of `canvasXpress.min.js` and update the `<script src>` in `src/ui/cx_chart_view.html`.

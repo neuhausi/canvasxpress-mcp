@@ -170,13 +170,24 @@ REST endpoint `/generate` returns the same result as before the changes. All exi
 
 ---
 
-## 9. Deferred Work
+## 9. Shipped in Fix Pass
+
+The following items were addressed in a follow-up fix pass (commits on `feat/mcp-apps-support` after `20c9e65`):
+
+- **CSP `resourceDomains` declaration:** Resource registration now includes `_meta.ui.csp.resourceDomains = ["https://www.canvasxpress.org"]` via FastMCP's `meta` kwarg on `@mcp.resource()`. Hosts that enforce CSP will allow the CanvasXpress CDN script.
+- **Bug 1 — ResizeObserver leak:** Observer is now hoisted to module scope and `disconnect()`ed before re-creation on each render.
+- **Bug 2 — Operator precedence in error string:** Wrapped the fallback chain in parens so `|| 'unknown'` applies correctly.
+- **Bug 3 — Canvas rebuild brittleness:** Removed the manual canvas rebuild entirely (Option A). `new CanvasXpress('cx-chart', config)` manages its own canvas element in-place.
+- **asyncio deprecation:** Replaced all `asyncio.get_event_loop().run_until_complete()` calls with a `_run()` helper using `asyncio.new_event_loop()`.
+- **Tracked pycache cleanup:** Untracked `tests/__pycache__/` and added `.gitignore`.
+
+## 10. Deferred Work
 
 - **Real-host verification:** The implementation has not been tested inside a live MCP Apps-supporting host (Claude Desktop, ChatGPT, Goose). Testing requires a host with MCP Apps extension support enabled.
 - **Playwright/E2E tests:** End-to-end tests verifying the iframe lifecycle (`ui/initialize` → `ui/notifications/tool-result` → `new CanvasXpress()`) require a browser automation framework.
 - **Versioned CDN URL:** Pin CanvasXpress to a specific version once a versioned URL is available.
-- **CSP declaration on resource:** The `cx_chart_view.html` loads CanvasXpress from `https://www.canvasxpress.org`. The resource registration could add `_meta.ui.csp.resourceDomains = ["https://www.canvasxpress.org"]` to inform hosts. Currently omitted to keep the first-pass implementation minimal.
-- **Event loop deprecation warning in tests:** The tests use `asyncio.get_event_loop().run_until_complete()` at module level, which triggers a Python 3.12 `DeprecationWarning`. This can be fixed by using a `pytest-asyncio` fixture or `asyncio.run()` pattern.
+- **Dataset-too-large handling:** If the tool result JSON is very large the iframe may struggle. No size gating is implemented.
+- **Dark/light theme via `useHostStyles`:** The chart view does not read host theme preferences. Future work could use `ui/initialize` result to apply a matching theme.
 
 ---
 
