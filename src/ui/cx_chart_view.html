@@ -47,6 +47,7 @@
     // ---------------------------------------------------------------------------
 
     let chart = null;
+    let resizeObserver = null;
     let nextId = 1;
 
     /** Show a visible error div (not just console.error). */
@@ -94,27 +95,20 @@
           chart = null;
         }
 
-        // Rebuild canvas element (CanvasXpress replaces it in-place)
-        const container = document.getElementById('cx-chart').parentNode;
-        const old = document.getElementById('cx-chart');
-        if (old) old.remove();
-        const canvas = document.createElement('canvas');
-        canvas.id = 'cx-chart';
-        canvas.style.width = '100vw';
-        canvas.style.height = '100vh';
-        container.appendChild(canvas);
-
-        // Create chart — CanvasXpress(targetId, config)
+        // Create chart — CanvasXpress(targetId, config) replaces canvas in-place
         chart = new CanvasXpress('cx-chart', config);
 
         // ResizeObserver: call chart.resize() when container changes size
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+        }
         if (typeof ResizeObserver !== 'undefined') {
-          const ro = new ResizeObserver(() => {
+          resizeObserver = new ResizeObserver(() => {
             if (chart && typeof chart.resize === 'function') {
               try { chart.resize(); } catch (e) { /* ignore */ }
             }
           });
-          ro.observe(document.getElementById('cx-chart'));
+          resizeObserver.observe(document.getElementById('cx-chart'));
         }
       } catch (err) {
         showError(err.message || String(err));
@@ -132,7 +126,7 @@
         const result = params;  // params IS the CallToolResult
         if (result.isError) {
           showError('Tool returned an error: ' +
-            (result.content && result.content[0] && result.content[0].text) || 'unknown');
+            ((result.content && result.content[0] && result.content[0].text) || 'unknown'));
           return;
         }
         if (!result.content || !result.content.length) {
@@ -190,6 +184,7 @@
      */
     document.addEventListener('DOMContentLoaded', function() {
       sendRequest('ui/initialize', {
+        // Only inline declared: chart resize is handled by ResizeObserver inside the inline iframe; modal/fullscreen would require additional layout logic.
         appCapabilities: {
           availableDisplayModes: ['inline'],
         },
