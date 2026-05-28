@@ -1192,3 +1192,49 @@ apachectl configtest && service httpd restart
 
 > See the [Apache proxy configuration](#apache-proxy-configuration) section above
 > for the complete current config to overwrite the file from scratch if needed.
+
+## MCP Apps support
+
+MCP Apps ([SEP-1865](https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/main/specification/2026-01-26/apps.mdx)) is an MCP extension that lets hosts embed a server-supplied iframe directly inside the conversation UI, enabling inline interactive chart rendering.
+
+### Which tools declare a UI resource
+
+Four chart-producing tools carry `_meta.ui.resourceUri = "ui://canvasxpress/chart"`:
+
+| Tool | Purpose |
+|------|---------|
+| `generate_canvasxpress_config` | Generate a new chart config from plain English |
+| `modify_canvasxpress_config` | Modify an existing chart config |
+| `generate_km_config` | Generate a Kaplan-Meier survival plot config |
+| `create_map_config` | Generate a choropleth / map config |
+
+When a supporting host calls any of these tools it will load the `ui://canvasxpress/chart` resource, render it in a sandboxed iframe, and post the tool result to the iframe via the `ui/notifications/tool-result` postMessage notification. The iframe parses the JSON config and calls `new CanvasXpress()` to display the chart inline.
+
+### Known supporting hosts
+
+- Claude Desktop (Anthropic)
+- ChatGPT / OpenAI Apps SDK
+- VS Code (with MCP Apps extension)
+- Goose (Block)
+
+### Testing locally
+
+```bash
+# 1. Import check
+.venv/bin/python -c "import sys; sys.path.insert(0, 'src'); import server; print('OK')"
+
+# 2. Unit tests (offline, no LLM calls, < 10 s)
+.venv/bin/python -m pytest tests/ -x -q
+
+# 3. Verify resource content in-process
+.venv/bin/python -c "
+import sys, asyncio; sys.path.insert(0, 'src')
+import server
+async def main():
+    r = await server.mcp.read_resource('ui://canvasxpress/chart')
+    print(r.contents[0].mime_type, len(r.contents[0].content), 'bytes')
+asyncio.run(main())
+"
+```
+
+All existing REST endpoints (`/generate`, `/modify`, `/select`, `/km`, etc.) and any MCP clients that do not support MCP Apps are completely unaffected — the `_meta.ui.resourceUri` annotation is silently ignored by non-supporting hosts.
