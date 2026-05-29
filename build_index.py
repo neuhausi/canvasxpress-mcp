@@ -21,6 +21,37 @@ import numpy as np
 import sqlite_vec
 from sentence_transformers import SentenceTransformer
 
+
+def _connect_with_sqlite_vec(path: str):
+    """Open a connection with sqlite_vec loaded.
+
+    Tries the standard sqlite3 path first (works on Linux).  Falls back to
+    apsw on macOS / Python builds where enable_load_extension is unavailable.
+    """
+    try:
+        db = sqlite3.connect(path)
+        db.enable_load_extension(True)
+        sqlite_vec.load(db)
+        db.enable_load_extension(False)
+        return db
+    except AttributeError:
+        db.close()
+
+    import apsw as _apsw
+    raw = _apsw.Connection(path)
+    raw.enableloadextension(True)
+    raw.loadextension(sqlite_vec.loadable_path())
+    raw.enableloadextension(False)
+
+    class _Compat:
+        """Thin sqlite3-compatible wrapper around an apsw.Connection."""
+        def __init__(self, conn):   self._c = conn
+        def execute(self, sql, params=()):  return self._c.execute(sql, params)
+        def commit(self):           pass    # apsw autocommits
+        def close(self):            self._c.close()
+
+    return _Compat(raw)
+
 BASE_DIR = Path(__file__).parent
 EXAMPLES_FILE = BASE_DIR / "data" / "few_shot_examples.json"
 DB_FILE = BASE_DIR / "data" / "embeddings.db"
@@ -54,10 +85,7 @@ def main():
     if DB_FILE.exists():
         DB_FILE.unlink()
 
-    db = sqlite3.connect(str(DB_FILE))
-    db.enable_load_extension(True)
-    sqlite_vec.load(db)
-    db.enable_load_extension(False)
+    db = _connect_with_sqlite_vec(str(DB_FILE))
 
     # Metadata table — stores the full example data
     db.execute("""

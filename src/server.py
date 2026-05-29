@@ -140,15 +140,35 @@ def _load_vector_index() -> bool:
         return False
 
 
+def _connect_with_sqlite_vec(path: str):
+    """Open a connection with sqlite_vec loaded.
+
+    Tries the standard sqlite3 path first (works on Linux).  Falls back to
+    apsw on macOS / Python builds where enable_load_extension is unavailable.
+    """
+    try:
+        db = sqlite3.connect(path)
+        db.enable_load_extension(True)
+        sqlite_vec.load(db)
+        db.enable_load_extension(False)
+        return db
+    except AttributeError:
+        db.close()
+
+    import apsw as _apsw
+    raw = _apsw.Connection(path)
+    raw.enableloadextension(True)
+    raw.loadextension(sqlite_vec.loadable_path())
+    raw.enableloadextension(False)
+    return raw
+
+
 def _vector_retrieve(query: str, top_k: int) -> list[dict]:
     """Retrieve top-k examples using sqlite-vec cosine similarity."""
     query_emb = _embed_model.encode([query], normalize_embeddings=True)[0]
     query_bytes = _serialize(query_emb.tolist())
 
-    db = sqlite3.connect(str(DB_FILE))
-    db.enable_load_extension(True)
-    sqlite_vec.load(db)
-    db.enable_load_extension(False)
+    db = _connect_with_sqlite_vec(str(DB_FILE))
 
     rows = db.execute(
         """
@@ -1030,6 +1050,220 @@ def modify_config(
 
 
 # ---------------------------------------------------------------------------
+# Action generation — Direction B
+# ---------------------------------------------------------------------------
+
+# Action types the LLM may produce. Descriptions are injected into the prompt.
+_ACTION_TYPES: dict[str, str] = {
+    "UPDATE_CONFIG":     "Merge a partial config object into raw.config. payload: { config: {...} }",
+    "UPDATE_FILTER":     "Replace the filters array. payload: { filters: [...] }",
+    "UPDATE_GROUPING":   "Replace the grouping array. payload: { grouping: [...] }",
+    "UPDATE_TRANSFORMS": "Replace the transforms array. payload: { transforms: [...] }",
+    "UPDATE_PIVOT":      "Replace the pivot descriptor. payload: { by, active, transposed }",
+    "UPDATE_CLUSTERING": "Replace the clustering array. payload: { clustering: [...] }",
+    "UPDATE_SORT":       "Replace the sort array. payload: { sort: [...] }",
+    "UPDATE_FACETS":     "Replace facets. payload: { samples: [...], variables: [...] }",
+    "UPDATE_COORDS":     "Merge into coords (graphOrientation, rotationX/Y, etc). payload: partial coords object",
+}
+
+_ACTION_TYPE_NAMES = list(_ACTION_TYPES.keys())
+
+_ACTION_SYSTEM = (
+    "You are a CanvasXpress chart action generator. "
+    "The user will describe a change they want to make to a chart. "
+    "You must return EXACTLY ONE JSON object — either a single action or an array of actions — "
+    "using only the supported action types listed below.\n\n"
+    "Supported action types:\n"
+    + "\n".join(f"  {t}: {desc}" for t, desc in _ACTION_TYPES.items())
+    + "\n\n"
+    "Rules:\n"
+    "- Return ONLY JSON. No explanation, no markdown fences.\n"
+    "- A single action: { \"type\": \"...\", \"payload\": {...} }\n"
+    "- Multiple actions: [ { \"type\": \"...\", \"payload\": {...} }, ... ]\n"
+    "- Use UPDATE_CONFIG for visual config changes (colors, titles, axes, graph type, etc.).\n"
+    "- Use UPDATE_SORT to change sort order. payload.sort is an array of sort descriptors.\n"
+    "- Use UPDATE_FILTER to add or remove data filters.\n"
+    "- Use UPDATE_GROUPING to change grouping factors.\n"
+    "- Use UPDATE_FACETS to change segregation (samples or variables).\n"
+    "- Do NOT invent action types that are not in the list above.\n"
+    "- Do NOT return a full CanvasXpress config. Only return action descriptors.\n"
+)
+
+
+def action_config(
+    gog_state: dict,
+    instruction: str,
+    headers: list[str] | None = None,
+    column_types: dict[str, str] | None = None,
+    temperature: float = 0.0,
+) -> dict | list:
+    """
+    Ask the LLM to produce a structured action descriptor for a CanvasXpress chart.
+
+    Returns either a single action dict { type, payload } or a list of them.
+    Raises ValueError if the LLM response cannot be parsed as an action.
+    """
+    # ── Build context from gog_state ─────────────────────────────────────────
+    state_parts: list[str] = []
+
+    raw_config = (gog_state.get("raw") or {}).get("config") or {}
+    if raw_config:
+        state_parts.append("CURRENT CONFIG:\n" + json.dumps(raw_config, indent=2))
+
+    for key in ("filters", "grouping", "transforms", "clustering", "sort"):
+        val = gog_state.get(key)
+        if val:
+            state_parts.append(f"CURRENT {key.upper()}:\n" + json.dumps(val))
+
+    pivot = gog_state.get("pivot") or {}
+    if pivot.get("active"):
+        state_parts.append("CURRENT PIVOT:\n" + json.dumps(pivot))
+
+    facets = gog_state.get("facets") or {}
+    if facets.get("samples") or facets.get("variables"):
+        state_parts.append("CURRENT FACETS:\n" + json.dumps(facets))
+
+    if headers:
+        if column_types:
+            col_desc = ", ".join(
+                col + " (" + column_types.get(col, "unknown") + ")" for col in headers
+            )
+            state_parts.append("DATASET COLUMNS (with types): " + col_desc)
+        else:
+            state_parts.append("DATASET COLUMNS: " + ", ".join(headers))
+
+    state_context = "\n\n".join(state_parts)
+
+    user_prompt = (
+        (state_context + "\n\n" if state_context else "")
+        + "USER INSTRUCTION: \"" + instruction + "\"\n\n"
+        "Return the action or actions needed to carry out this instruction."
+    )
+
+    if DEBUG:
+        bar = "─" * 64
+        print(f"\n{bar}\n  ACTION REQUEST\n{bar}", file=sys.stderr)
+        print(f"  Instruction : {instruction}", file=sys.stderr)
+        if raw_config:
+            print(f"  Config keys : {list(raw_config.keys())}", file=sys.stderr)
+        print(f"  Provider : {PROVIDER}", file=sys.stderr)
+        print(f"  Model    : {MODEL}", file=sys.stderr)
+
+    raw_text, _usage = llm_complete(
+        system=_ACTION_SYSTEM,
+        user=user_prompt,
+        temperature=temperature,
+        max_tokens=800,
+    )
+    raw = raw_text.strip()
+
+    if DEBUG:
+        print(f"\n{bar}\n  ACTION RAW RESPONSE\n{bar}", file=sys.stderr)
+        print(f"  {raw[:400]}", file=sys.stderr)
+
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.rsplit("```", 1)[0].strip()
+
+    if not raw:
+        raise ValueError("LLM returned empty response for action request")
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned non-JSON for action request: {e}") from e
+
+    # Validate: must be a dict with "type" or a list of such dicts
+    def _is_action(obj) -> bool:
+        return isinstance(obj, dict) and "type" in obj and obj["type"] in _ACTION_TYPE_NAMES
+
+    if isinstance(parsed, list):
+        bad = [a for a in parsed if not _is_action(a)]
+        if bad:
+            raise ValueError(f"LLM returned invalid action entries: {bad}")
+        return parsed
+
+    if _is_action(parsed):
+        return parsed
+
+    # LLM may have wrapped the action in an outer key
+    for k in ("action", "actions"):
+        if k in parsed:
+            inner = parsed[k]
+            if isinstance(inner, list) and all(_is_action(a) for a in inner):
+                return inner
+            if _is_action(inner):
+                return inner
+
+    raise ValueError(f"LLM response is not a valid action: {raw[:200]}")
+
+
+def action_canvasxpress_config(
+    instruction: str,
+    gog_state: dict | None = None,
+    gog_history: list | None = None,
+    headers: list[str] | None = None,
+    column_types: dict[str, str] | None = None,
+    temperature: float = 0.0,
+) -> dict:
+    """
+    Args:
+        instruction:  Plain English description of the chart change to apply.
+        gog_state:    Current EGoG state snapshot (raw.config, filters, sorts, etc.).
+        gog_history:  Last N action type+timestamp pairs from the client action log.
+        headers:      Optional column names for validation context.
+        column_types: Optional map of column name → type.
+        temperature:  LLM creativity 0.0–1.0 (default 0.0).
+
+    Returns:
+        Dict with keys:
+          action   (dict)        — single action descriptor { type, payload }
+                                   OR absent when actions is present
+          actions  (list)        — list of action descriptors (when multiple needed)
+          valid    (bool)        — True when at least one valid action was returned
+          warnings (list)        — any validation or parse warnings
+    """
+    if not instruction:
+        return {
+            "valid": False,
+            "warnings": ["'instruction' is required"],
+        }
+
+    gog_state = gog_state or {}
+
+    VALID_TYPES = {"string", "numeric", "factor", "date"}
+    if column_types:
+        bad = {k: v for k, v in column_types.items() if v not in VALID_TYPES}
+        if bad:
+            log.warning("Unknown column types ignored: %s", bad)
+            column_types = {k: v for k, v in column_types.items() if v in VALID_TYPES}
+
+    log.info("Action request — instruction: %s", instruction)
+
+    try:
+        result = action_config(gog_state, instruction, headers, column_types, temperature)
+    except ValueError as exc:
+        log.warning("action_config failed: %s", exc)
+        return {
+            "valid": False,
+            "warnings": [str(exc)],
+        }
+    except Exception as exc:
+        log.exception("Unexpected error in action_config")
+        return {
+            "valid": False,
+            "warnings": ["Unexpected error: " + str(exc)],
+        }
+
+    if isinstance(result, list):
+        return {"actions": result, "valid": True, "warnings": []}
+    return {"action": result, "valid": True, "warnings": []}
+
+
+# ---------------------------------------------------------------------------
 # Header validation
 # ---------------------------------------------------------------------------
 
@@ -1331,6 +1565,7 @@ def _require_admin_key(request: "Request") -> "JSONResponse | None":
 _PATH_TO_TOOL: dict[str, str] = {
     "/generate":       "generate_canvasxpress_config",
     "/modify":         "modify_canvasxpress_config",
+    "/action":         "action_canvasxpress_config",
     "/km":             "generate_km_config",
     "/params":         "get_chart_parameters",
     "/axes":           "suggest_axes",
@@ -3625,6 +3860,21 @@ def _result_to_html(result: dict, tool: str) -> str:
             _link("https://canvasxpress.org/parameters.html", "API reference"),
         ))
 
+    # ── action ───────────────────────────────────────────────────────────────
+    elif tool == "action":
+        for w in result.get("warnings", []):
+            parts.append(f'<p class="cX-Chat-LLM-Error">{esc(w)}</p>')
+        actions = result.get("actions") or ([result["action"]] if result.get("action") else [])
+        if actions:
+            parts.append("<p><strong>Actions applied:</strong></p><ul>")
+            for a in actions:
+                atype   = esc(a.get("type", "?"))
+                payload = esc(_json.dumps(a.get("payload", {})))
+                parts.append(f"<li><code>{atype}</code> — <code>{payload}</code></li>")
+            parts.append("</ul>")
+        else:
+            parts.append("<p>No actions were generated.</p>")
+
     # ── map ──────────────────────────────────────────────────────────────────
     elif tool == "map":
         map_id = result.get("map_id", "")
@@ -3851,7 +4101,7 @@ async def _kwargs_from_request(request: Request, require_description: bool = Tru
 
 
 # ---------------------------------------------------------------------------
-# REST endpoints — /generate  /modify  /ui
+# REST endpoints — /generate  /modify  /action  /ui
 # ---------------------------------------------------------------------------
 
 _UI_HTML = r"""<!DOCTYPE html>
@@ -3908,6 +4158,7 @@ _UI_HTML = r"""<!DOCTYPE html>
 <div class="tab-bar">
   <div class="tab active" data-tab="generate">Generate</div>
   <div class="tab" data-tab="modify">Modify</div>
+  <div class="tab" data-tab="action">Action</div>
   <div class="tab" data-tab="km">Kaplan-Meier</div>
   <div class="tab" data-tab="params">Params</div>
   <div class="tab" data-tab="axes">Axes</div>
@@ -3950,6 +4201,21 @@ _UI_HTML = r"""<!DOCTYPE html>
     <div><label>Column types<input type="text" id="m-types" placeholder="Gene=string,Sample1=numeric"></label></div>
   </div>
   <label>Data<textarea id="m-data" placeholder='[["Gene","S1"],["BRCA1",1.2]]'></textarea></label>
+</div>
+
+<!-- ── ACTION ─────────────────────────────────────────────────────── -->
+<div class="panel card" id="panel-action">
+  <p class="hint">Returns a structured action descriptor dispatched through gogDispatchActions() — chart updates in place and undo/redo is preserved.</p>
+  <div class="section-label">Required</div>
+  <label>Instruction<input type="text" id="a-instr" placeholder="sort descending, group by treatment, change colorScheme to Tableau"></label>
+  <div class="section-label">Optional</div>
+  <label>Current gog_state <span>JSON — raw.config, filters, sort, grouping, etc.</span>
+    <textarea id="a-state" style="min-height:100px" placeholder='{"raw":{"config":{"graphType":"Bar"}},"sort":[],"filters":[]}'></textarea>
+  </label>
+  <div class="row">
+    <div><label>Headers<input type="text" id="a-headers" placeholder="Gene, Sample1, Treatment"></label></div>
+    <div><label>Column types<input type="text" id="a-types" placeholder="Gene=string,Sample1=numeric"></label></div>
+  </div>
 </div>
 
 <!-- ── KAPLAN-MEIER ─────────────────────────────────────────────────── -->
@@ -4117,6 +4383,12 @@ function buildUrl() {
     if(v('m-headers')) p.set('headers',     v('m-headers'));
     if(v('m-types'))   p.set('column_types',v('m-types'));
     if(v('m-data'))    p.set('data',        v('m-data'));
+  } else if (activeTab==='action') {
+    url+='action';
+    if(v('a-instr'))   p.set('instruction', v('a-instr'));
+    if(v('a-state'))   p.set('gog_state',   v('a-state'));
+    if(v('a-headers')) p.set('headers',     v('a-headers'));
+    if(v('a-types'))   p.set('column_types',v('a-types'));
   } else if (activeTab==='km') {
     url+='km';
     if(v('km-desc'))   p.set('description',v('km-desc'));
@@ -4166,6 +4438,7 @@ function buildUrl() {
 
 ['g-desc','g-headers','g-types','g-data','g-temp',
  'm-config','m-instr','m-headers','m-types','m-data',
+ 'a-instr','a-state','a-headers','a-types',
  'km-desc','km-headers','km-data','km-config','km-temp',
  'p-graph','p-param','ax-graph',
  'sel-intent','sel-types','sel-data','sel-nsamples',
@@ -4192,9 +4465,9 @@ function copyUrl(){
 }
 
 var TITLE_MAP={
-  'generate':'Generated Config','modify':'Modified Config','km':'KM Config',
-  'params':'Parameter Schema','axes':'Axis Info','select':'Chart Recommendation',
-  'explain':'Property Explanation','explain-r':'R Guide',
+  'generate':'Generated Config','modify':'Modified Config','action':'Action Descriptor',
+  'km':'KM Config','params':'Parameter Schema','axes':'Axis Info',
+  'select':'Chart Recommendation','explain':'Property Explanation','explain-r':'R Guide',
   'explain-ggplot':'ggplot2 Guide','minimal-params':'Minimal Parameters',
   'map':'Map Config'
 };
@@ -4216,7 +4489,15 @@ async function submit(){
       metaEl.innerHTML='<span class="badge invalid">Error '+resp.status+'</span>';
       preEl.textContent=data.error; return;
     }
-    if(['generate','modify','km','map'].indexOf(activeTab)!==-1){
+    if(activeTab==='action'){
+      var valid=data.valid, warns=data.warnings||[];
+      var badge=valid?'<span class="badge valid">✓ valid</span>':'<span class="badge invalid">✗ failed</span>';
+      var actions=data.actions||(data.action?[data.action]:[]);
+      metaEl.innerHTML=badge+' &nbsp; actions: <b>'+actions.length+'</b>';
+      if(warns.length) metaEl.innerHTML+='<br><span class="badge warn">⚠ '+warns.join(' | ')+'</span>';
+      if(actions.length) metaEl.innerHTML+='<br>types: <b>'+actions.map(function(a){return a.type;}).join(', ')+'</b>';
+      preEl.textContent=JSON.stringify(data.actions||data.action||data,null,2);
+    } else if(['generate','modify','km','map'].indexOf(activeTab)!==-1){
       var cfg=data.config||{}, valid=data.valid, warns=data.warnings||[], errs=data.errors||[];
       var badge=(valid&&!errs.length)?'<span class="badge valid">\u2713 valid</span>':'<span class="badge invalid">\u2717 issues</span>';
       var gt=cfg.graphType||'?', hdr=(data.headers_used||[]).join(', ')||'\u2014';
@@ -4452,6 +4733,103 @@ async def rest_modify(request: Request) -> Response:
         }, cx, 200)
     return _cx_response(result, cx)
 
+
+@mcp.custom_route("/action", methods=["GET", "POST"])
+async def rest_action(request: Request) -> Response:
+    """
+    REST / JSONP endpoint for action_canvasxpress_config (Direction B).
+
+    GET  /action?instruction=sort+descending&gog_state={...}
+    POST /action   (JSON body with same keys)
+
+    Query / body parameters:
+      instruction   (str, required)  — plain English description of the change.
+      gog_state     (str|obj)        — current EGoG state snapshot from the chart.
+      gog_history   (str|arr)        — last N { type, timestamp } pairs from the action log.
+      headers       (str)            — optional comma-separated column names.
+      column_types  (str)            — optional "Col=type,…" or JSON object.
+      temperature   (float)          — 0.0–1.0, default 0.
+      callback      (str)            — JSONP callback name.
+      target        (str)            — CanvasXpress chart target ID (passed through).
+      client_id     (str)            — CanvasXpress client ID (passed through).
+
+    Returns a JSON (or JSONP) object with:
+      action    (dict)   — single action descriptor { type, payload }
+      actions   (list)   — list of action descriptors (when multiple are needed)
+      valid     (bool)   — True when at least one valid action was produced
+      warnings  (list)   — any parse/validation warnings
+    """
+    if request.method == "GET":
+        p = dict(request.query_params)
+    else:
+        ct = request.headers.get("content-type", "")
+        p = await request.json() if "application/json" in ct else dict(await request.form())
+
+    cx: dict = {}
+    if p.get("target",    "").strip(): cx["target"]   = p["target"].strip()
+    if p.get("client_id", "").strip(): cx["client"]   = p["client_id"].strip()
+    if p.get("callback",  "").strip(): cx["callback"] = p["callback"].strip()
+
+    instruction = (p.get("instruction") or "").strip()
+    if not instruction:
+        return _cx_response({"error": "'instruction' is required", "success": False, "valid": False}, cx, 400)
+
+    # gog_state — JSON string or object
+    gog_state: dict = {}
+    raw_gs = p.get("gog_state")
+    if raw_gs:
+        try:
+            gog_state = json.loads(raw_gs) if isinstance(raw_gs, str) else raw_gs
+        except (json.JSONDecodeError, TypeError):
+            log.warning("REST /action: could not parse gog_state — proceeding without it")
+
+    # gog_history — JSON string or list
+    gog_history: list = []
+    raw_gh = p.get("gog_history")
+    if raw_gh:
+        try:
+            gog_history = json.loads(raw_gh) if isinstance(raw_gh, str) else raw_gh
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # headers
+    headers: list[str] | None = None
+    raw_headers = p.get("headers")
+    if raw_headers and isinstance(raw_headers, str) and raw_headers.strip():
+        v = raw_headers.strip()
+        headers = json.loads(v) if v.startswith("[") else [h.strip() for h in v.split(",") if h.strip()]
+
+    # column_types
+    column_types: dict | None = None
+    for key in ("column_types", "types"):
+        if p.get(key, "").strip():
+            column_types = _parse_col_types(p[key]) or None
+            break
+
+    # temperature
+    temperature = 0.0
+    if "temperature" in p:
+        try:
+            temperature = float(p["temperature"])
+        except (ValueError, TypeError):
+            pass
+
+    try:
+        result = action_canvasxpress_config(
+            instruction=instruction,
+            gog_state=gog_state,
+            gog_history=gog_history,
+            headers=headers,
+            column_types=column_types,
+            temperature=temperature,
+        )
+    except Exception as exc:
+        log.exception("REST /action error")
+        return _cx_response({"valid": False, "success": False,
+                              "warnings": ["Could not generate action: " + str(exc)]}, cx, 200)
+
+    result["html"] = _result_to_html(result, "action")
+    return _cx_response(result, cx)
 
 
 @mcp.custom_route("/km", methods=["GET", "POST"])
