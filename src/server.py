@@ -1893,6 +1893,13 @@ def generate_canvasxpress_config(
                 config["colorBy"] = detection["color_cols"][0]
                 log.info("KM: auto-assigned colorBy=%s from column detection", config["colorBy"])
 
+    # ── Auto-correct loess mis-routing ──────────────────────────────────────
+    # LLMs sometimes set regressionType="loess" — loess is a separate param.
+    if config.get("regressionType") == "loess":
+        config.pop("regressionType")
+        config.setdefault("showLoessFit", True)
+        log.info("Auto-corrected regressionType=loess → showLoessFit=true")
+
     # ── Validate column references ───────────────────────────────────────────
     if resolved_headers and config:
         validation = validate_config_headers(config, resolved_headers)
@@ -2033,6 +2040,12 @@ def modify_canvasxpress_config(
         "Modification complete — added: %s  removed: %s  changed: %s",
         changes["added"], changes["removed"], changes["changed"],
     )
+
+    # ── Auto-correct loess mis-routing ──────────────────────────────────────
+    if modified.get("regressionType") == "loess":
+        modified.pop("regressionType")
+        modified.setdefault("showLoessFit", True)
+        log.info("Auto-corrected regressionType=loess → showLoessFit=true")
 
     # ── Validate column references ───────────────────────────────────────────
     if resolved_headers and modified:
@@ -2554,8 +2567,8 @@ def explain_config_property(property: str) -> str:
         "legendPosition": "Legend position: topRight, right, bottomRight, bottom, bottomLeft, left, topLeft, top.",
         "graphOrientation": "Bar/chart direction: 'horizontal' or 'vertical'.",
         "showRegressionFit": "Show regression line on scatter plots. Boolean.",
-        "regressionType": "Regression type: linear, exponential, logarithmic, power, polynomial.",
-        "showLoessFit": "Show LOESS/lowess smooth fit on scatter plots. Boolean.",
+        "regressionType": "Regression type for showRegressionFit. Valid values: linear, exponential, logarithmic, power, polynomial. Do NOT use 'loess' here — use showLoessFit instead.",
+        "showLoessFit": "Show LOESS/lowess smooth curve on scatter plots (separate from regressionType). Boolean or variable annotation name.",
         "showConfidenceIntervals": "Show confidence bands. Boolean.",
         "transformData": "Data transformation: log2, log10, -log2, -log10, exp2, exp10, sqrt, percentile, zscore.",
         "xAxisTransform": "X-axis transform: log2, log10, -log2, -log10, etc.",
