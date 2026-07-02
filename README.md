@@ -40,7 +40,7 @@ canvasxpress-mcp/
 │   ├── llm_providers.py    — Unified LLM backend (Anthropic, Bedrock, Ollama, OpenAI)
 │   ├── cx_knowledge.py     — Parameter knowledge skill (fetch, parse, validate, inject)
 │   ├── cx_survival.py      — Kaplan-Meier skill (generate, detect columns, validate, annotate)
-│   └── cx_selector.py      — Chart type selection skill (deterministic, no LLM)
+│   └── cx_selector.py      — Chart type selection skill (deterministic scorer + optional LLM tiebreaker)
 │
 ├── data/
 │   ├── few_shot_examples.json  — RAG examples (add more to improve accuracy)
@@ -123,7 +123,7 @@ for direct integration with CanvasXpress's `askLLM()` function.
 | `GET /km` | Kaplan-Meier config | at least one of: `description`, `headers`, `data`, `config` |
 | `GET /params` | Query parameter schema | none (optional: `graph_type`, `param_name`, `refresh`) |
 | `GET /axes` | Axis assignment rules | `graph_type` |
-| `GET /select` | Recommend a chart type | `intent`, `column_types` |
+| `GET /select` | Recommend a chart type (deterministic + LLM) | `intent`, `column_types` (optional: `llm_first`) |
 | `GET /explain` | Explain a config property | `property` |
 | `GET /explain-r` | CanvasXpress in R | none (optional: `topic`) |
 | `GET /explain-ggplot` | CanvasXpress ggplot2 bridge | none (optional: `topic`) |
@@ -174,10 +174,15 @@ curl -s "http://localhost:8100/params?param_name=colorScheme"
 # Axis assignment rules for a chart type
 curl -s "http://localhost:8100/axes?graph_type=Scatter2D"
 
-# Recommend a chart type
+# Recommend a chart type (deterministic scorer + automatic LLM tiebreaker)
 curl -s "http://localhost:8100/select?\
 intent=show+expression+distribution+by+cell+type\
 &column_types=Expression=numeric,CellType=factor"
+
+# Let the LLM pick the chart type from the full catalogue first (llm_first)
+curl -s "http://localhost:8100/select?\
+intent=show+expression+distribution+by+cell+type\
+&column_types=Expression=numeric,CellType=factor&llm_first=true"
 
 # Explain a config property
 curl -s "http://localhost:8100/explain?property=groupingFactors"
@@ -647,15 +652,35 @@ which are forbidden, and which axis title parameter to use.
 
 ### `select_canvasxpress_chart`
 
-Recommend the most appropriate chart type given column metadata and a plain
-English intent. Deterministic — no LLM call. Returns a ranked list of candidates
-with rationale and a ready-made description hint to pass to `generate_canvasxpress_config`.
+The **chart-type recommender** ("wizard" / Tufte mode). Given column metadata and a
+plain English intent, it recommends the most appropriate chart type, returns a ranked
+list of candidates with rationale, attaches a ready-to-use `minimal_config` to each,
+and emits a `generate_hint` you can pipe straight into `generate_canvasxpress_config`.
+
+The recommendation blends three tiers, fastest first:
+
+1. **Deterministic scorer** *(no LLM, no API key)* — a structured first pass over the
+   53-chart catalogue, scoring each candidate on (a) column-type counts + row count +
+   cardinality, (b) semantic regex over the column *names*, and (c) keyword boosts
+   derived from the `intent` string. This always runs and is the default result.
+2. **LLM tiebreaker** *(automatic)* — when the top two candidates score within `0.15`
+   of each other, the configured LLM disambiguates among the top three and its choice
+   is promoted to the top. The one-sentence rationale is returned in the `tiebreak`
+   field. If the LLM is unavailable or errors, the deterministic ranking stands.
+3. **LLM-first mode** *(opt-in via `llm_first=true`)* — the LLM freely chooses the best
+   chart type from the full catalogue (with descriptions) given the columns, intent,
+   and row count; its pick becomes `top_recommendation` and the deterministic scorer
+   fills the `alternatives`.
+
+No raw data is required — just column names, types, an optional row count, and the
+intent string.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `intent` | string | ✅ | Plain English description of what you want to show |
 | `column_types` | object | ✅ | Map of column name → type (`string`/`numeric`/`factor`/`date`) |
 | `n_samples` | integer | ❌ | Optional number of rows — used to refine recommendations |
+| `llm_first` | boolean | ❌ | When `true`, the LLM chooses the top chart from the full catalogue before the scorer runs (default `false`) |
 
 **Response:**
 
@@ -683,8 +708,10 @@ with rationale and a ready-made description hint to pass to `generate_canvasxpre
     }
   ],
   "generate_hint": "Violin chart of Expression grouped by CellType — columns: Expression, CellType",
+  "tiebreak":       { "used": false, "chosen": null, "reason": "" },
   "valid":          true,
   "warnings":       [],
+  "llm_first":      false,
   "type_source":    "explicit",
   "tool":           "select_canvasxpress_chart",
   "datetime":       "Fri, 10 Apr 2026 19:00:00 GMT",
@@ -695,9 +722,11 @@ with rationale and a ready-made description hint to pass to `generate_canvasxpre
 | Field | Description |
 |-------|-------------|
 | `top_recommendation` | Best chart type with score, rationale, and `minimal_config` |
-| `alternatives` | Up to 4 other ranked candidates, each also with `minimal_config` |
+| `alternatives` | Up to 4 other ranked candidates, each also with `minimal_config` (up to 3 in `llm_first` mode) |
 | `generate_hint` | Ready-made description to pass to `generate_canvasxpress_config` |
 | `minimal_config` | Minimal axis config ready to use — attach to the `generate` call |
+| `tiebreak` | Present when the LLM tiebreaker ran: `{ used, chosen, reason }` |
+| `llm_first` | Echoes whether LLM-first mode was requested |
 | `type_source` | How column types were resolved: `explicit`, `inferred`, or `merged` |
 
 ---
