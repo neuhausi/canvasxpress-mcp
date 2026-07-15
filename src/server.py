@@ -62,11 +62,23 @@ DATA_DIR = BASE_DIR / "data"
 EXAMPLES_FILE = DATA_DIR / "few_shot_examples.json"
 DB_FILE = DATA_DIR / "embeddings.db"
 
+# Writable state directory - separated from the read-only bundle so the server
+# runs unchanged under Posit Connect where the bundle mount is
+# read-only.  Defaults to DATA_DIR for local/dev use.
+STATE_DIR = Path(os.environ.get("CX_STATE_DIR", str(DATA_DIR)))
+try:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    import tempfile as _tempfile
+    STATE_DIR = Path(_tempfile.gettempdir()) / "cx-mcp-state"
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 EMBEDDING_DIM = 384  # all-MiniLM-L6-v2; change to 768 for all-mpnet-base-v2
 
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
-PORT = int(os.environ.get("MCP_PORT", "8100"))
+# Prefer PORT (Posit Connect) then MCP_PORT (legacy env var).
+PORT = int(os.environ.get("PORT") or os.environ.get("MCP_PORT", "8100"))
 CORS_ORIGINS = [
     o.strip()
     for o in os.environ.get("CORS_ORIGINS", "*").split(",")
@@ -1364,7 +1376,7 @@ mcp = FastMCP(
 # Call logging + feedback (thumbs up/down)
 # ---------------------------------------------------------------------------
 
-CALL_LOG_DB = DATA_DIR / "call_log.db"
+CALL_LOG_DB = STATE_DIR / "call_log.db"
 
 import sqlite3 as _sqlite3
 import threading as _threading
@@ -4364,7 +4376,7 @@ _UI_HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-const BASE = window.location.origin;
+const BASE = window.location.origin + window.location.pathname.replace(/\/ui\/?$/, '');
 let activeTab = 'generate';
 
 document.querySelectorAll('.tab').forEach(function(t) {
@@ -5328,6 +5340,13 @@ async def rest_favicon(request: Request) -> Response:
         media_type="image/png",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+# ---------------------------------------------------------------------------
+# ASGI application — module-level so external ASGI hosts can import it as `src.server:app`.
+# Uvicorn-based local dev still uses the __main__ block below.
+# ---------------------------------------------------------------------------
+app = mcp.http_app(transport="http", middleware=_cors_middleware)
 
 
 # ---------------------------------------------------------------------------

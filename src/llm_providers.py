@@ -282,6 +282,41 @@ def _is_anthropic_model(model: str) -> bool:
     return model.lower().startswith(_ANTHROPIC_MODEL_PREFIXES)
 
 
+# Reasoning models accept ONLY the default sampling temperature and reject any
+# explicit temperature != 1 with "Only the default (1) value is supported".
+# The gpt-5 family and the o-series are reasoning models.
+_NO_TEMPERATURE_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _supports_temperature(model: str) -> bool:
+    """Return False for reasoning models that only allow the default temperature."""
+    return not model.lower().startswith(_NO_TEMPERATURE_PREFIXES)
+
+
+def _openai_chat_create(client, model, messages, temperature, **extra):
+    """
+    Call an OpenAI-compatible chat.completions endpoint, forwarding temperature
+    only to models that support tuning it.  Reasoning models (gpt-5, o-series)
+    reject any explicit temperature != 1, so it is omitted for them. 
+    Clients can send any value (including 0.0) safely.
+
+    For models the prefix list does not yet know about, a temperature-related 
+    400 is retried once without temperature.
+    """
+    from openai import BadRequestError
+
+    kwargs = {"model": model, "messages": messages, **extra}
+    if temperature is not None and _supports_temperature(model):
+        kwargs["temperature"] = temperature
+    try:
+        return client.chat.completions.create(**kwargs)
+    except BadRequestError as e:
+        if "temperature" in kwargs and "temperature" in str(e).lower():
+            kwargs.pop("temperature")
+            return client.chat.completions.create(**kwargs)
+        raise
+
+
 def _get_gateway_url_and_key() -> tuple[str, str]:
     """Resolve gateway URL and API key from environment."""
     gateway_url = os.environ.get("GATEWAY_URL", "").rstrip("/")
@@ -505,14 +540,15 @@ def _complete_openai(
     """Call the OpenAI API directly (api.openai.com)."""
     client = _get_openai()
 
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        messages=[
+    response = _openai_chat_create(
+        client,
+        model,
+        [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
+        temperature,
+        max_tokens=max_tokens,
     )
 
     text  = response.choices[0].message.content or ""
@@ -539,14 +575,15 @@ def _complete_openai_corporate(
     """
     client = _get_openai_corporate()
 
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        messages=[
+    response = _openai_chat_create(
+        client,
+        model,
+        [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
+        temperature,
+        max_tokens=max_tokens,
     )
 
     text  = response.choices[0].message.content or ""
@@ -591,13 +628,14 @@ def _complete_gateway(
         client = _get_gateway_openai()
         # gpt-5+ models require max_completion_tokens instead of max_tokens
         token_param = "max_completion_tokens" if "gpt-5" in model else "max_tokens"
-        response = client.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            messages=[
+        response = _openai_chat_create(
+            client,
+            model,
+            [
                 {"role": "system", "content": system},
                 {"role": "user",   "content": user},
             ],
+            temperature,
             **{token_param: max_tokens},
         )
         text = response.choices[0].message.content or ""
