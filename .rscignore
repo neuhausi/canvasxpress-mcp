@@ -1,0 +1,36 @@
+# Files excluded from the Posit Connect deployment bundle.
+# rsconnect-python respects this file the same way Git respects .gitignore.
+
+# Local virtualenvs
+.venv/
+venv/
+env/
+
+# Local secrets — set these in the Connect UI (Vars tab) instead
+.env
+.env.local
+*.pem
+
+# Python / test artefacts
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime state (recreated on the Connect host at $CX_STATE_DIR)
+server.pid
+server.log
+data/call_log.db
+data/call_log.db-wal
+data/call_log.db-shm
+
+# Test clients — not needed on the server
+test_client.py
+test_client.pl
+test_client.mjs
+
+# Editor / OS junk
+.DS_Store
+.idea/
+.vscode/
