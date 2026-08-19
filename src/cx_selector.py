@@ -1260,6 +1260,15 @@ def _score_map(ctx: _Ctx) -> dict:
     return {"score": 0.0, "factors": []}
 
 
+def _score_oncoprint(ctx: _Ctx) -> dict:
+    # An oncoprint (gene x sample alteration matrix) has no distinctive structural
+    # signature from column types alone -- it looks like many categorical/sample
+    # columns, indistinguishable from a Heatmap or a wide factor table. Score is
+    # kept near-zero so Oncoprint only surfaces when the user explicitly requests
+    # it via intent keywords (Layer 3), mirroring Map.
+    return {"score": 0.0, "factors": []}
+
+
 # ---------------------------------------------------------------------------
 # Scorers registry
 # ---------------------------------------------------------------------------
@@ -1318,6 +1327,7 @@ _SCORERS: list[dict] = [
     {"name": "TreeBracket",         "graphType": "TreeBracket",         "fn": _score_tree_bracket},
     {"name": "Upset",               "graphType": "Upset",               "fn": _score_upset},
     {"name": "Map",                 "graphType": "Map",                 "fn": _score_map},
+    {"name": "Oncoprint",           "graphType": "Oncoprint",           "fn": _score_oncoprint},
 ]
 
 
@@ -1739,6 +1749,12 @@ _INTENT_BOOSTS: list[dict] = [
     # explicit geographic terms in intent
     {"kws": ["latitude", "longitude"],
      "boosts": {"Map": 0.8}},
+    # oncoprint / gene alteration matrix — specialized genomics chart, surfaces
+    # only on explicit intent (mirrors Map's near-zero base score)
+    {"kws": ["oncoprint", "onco print", "alteration matrix", "gene alteration",
+             "mutation matrix", "somatic mutation", "copy number alteration",
+             "cbioportal", "cancer genomics", "mutation landscape"],
+     "boosts": {"Oncoprint": 1.0}},
 ]
 
 

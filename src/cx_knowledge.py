@@ -74,7 +74,7 @@ _BUNDLED_SCHEMA: dict[str, dict] = {
             "Bubble","Bullet","Bump","CDF","Chord","Circular","Cleveland","Contour",
             "Correlation","Density","Distribution","Donut","DotLine","Dotplot",
             "Dumbbell","Gantt","Heatmap","Hex","Hexplot","Histogram","KaplanMeier",
-            "Line","Lollipop","Map","Meter","Network","ParallelCoordinates","Pareto",
+            "Line","Lollipop","Map","Meter","Network","Oncoprint","ParallelCoordinates","Pareto",
             "Pie","QQ","Quantile","Radar","Ribbon","Ridgeline","Sankey","Scatter2D",
             "Scatter3D","ScatterBubble2D","Spaghetti","Stacked","StackedLine",
             "StackedPercent","StackedPercentLine","Streamgraph","Sunburst","TagCloud",

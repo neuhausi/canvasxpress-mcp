@@ -114759,5 +114759,800 @@
       "citationScaleFontFactor": 0.7,
       "citationFontStyle": "bold italic"
     }
+  },
+  {
+    "id": 3745,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the color scheme Stata2. Hide the legend. Divide the legend in two columns. Use the style void0. Put the legend on the left.",
+    "config": {
+      "graphType": "Oncoprint",
+      "colorScheme": "Stata2",
+      "showLegend": false,
+      "legendColumns": 2,
+      "theme": "void0",
+      "legendPosition": "left"
+    }
+  },
+  {
+    "id": 3746,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style economist. Scale the data point size 82. Set the title for the graph to My Chart. Show the legend. Increase the font size of the graph title considerably.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "economist",
+      "dataPointSizeScaleFactor": 82,
+      "title": "My Chart",
+      "showLegend": true,
+      "titleScaleFontFactor": 1.3
+    }
+  },
+  {
+    "id": 3747,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Show the legend. Use the style void0. Set the subtitle for the graph to Sample text.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": true,
+      "theme": "void0",
+      "subtitle": "Sample text"
+    }
+  },
+  {
+    "id": 3748,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the title for the graph to Data View. Increase the font size of the graph title moderately. Scale the data point size 47.",
+    "config": {
+      "graphType": "Oncoprint",
+      "title": "Data View",
+      "titleScaleFontFactor": 1.2,
+      "dataPointSizeScaleFactor": 47
+    }
+  },
+  {
+    "id": 3749,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Scale the data point size 3. Set the subtitle for the graph to Sample text.",
+    "config": {
+      "graphType": "Oncoprint",
+      "dataPointSizeScaleFactor": 3,
+      "subtitle": "Sample text"
+    }
+  },
+  {
+    "id": 3750,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the title for the graph to My Chart. Set the font style of the graph title to bold italic. Scale the data point size 77. Increase the font size of the graph title considerably. Show the legend. Set the citation for the graph to Sample text.",
+    "config": {
+      "graphType": "Oncoprint",
+      "title": "My Chart",
+      "titleFontStyle": "bold italic",
+      "dataPointSizeScaleFactor": 77,
+      "titleScaleFontFactor": 1.3,
+      "showLegend": true,
+      "citation": "Sample text"
+    }
+  },
+  {
+    "id": 3751,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the title for the graph to Data View.",
+    "config": {
+      "graphType": "Oncoprint",
+      "title": "Data View"
+    }
+  },
+  {
+    "id": 3752,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Scale the data point size 7. Set the title for the graph to My Chart. Increase the font size of the graph title slightly. Set the font style of the graph title to italic. Use the style void0. Set the subtitle for the graph to Sample text. Show the legend. Increase the font size of the graph subtitle slightly.",
+    "config": {
+      "graphType": "Oncoprint",
+      "dataPointSizeScaleFactor": 7,
+      "title": "My Chart",
+      "titleScaleFontFactor": 1.1,
+      "titleFontStyle": "italic",
+      "theme": "void0",
+      "subtitle": "Sample text",
+      "showLegend": true,
+      "subtitleScaleFontFactor": 1.1
+    }
+  },
+  {
+    "id": 3753,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix.",
+    "config": {
+      "graphType": "Oncoprint"
+    }
+  },
+  {
+    "id": 3754,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Show the legend. Scale the data point size 9. Put the legend on the top. Use the color scheme BMSGreen.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": true,
+      "dataPointSizeScaleFactor": 9,
+      "legendPosition": "top",
+      "colorScheme": "BMSGreen"
+    }
+  },
+  {
+    "id": 3755,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style linedraw. Set the title for the graph to Sample text. Set the citation for the graph to Sample text. Show the legend. Divide the legend in two columns. Set the font style of the graph citation to bold. Set the color of the graph citation to blue. Increase the font size of the graph title slightly.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "linedraw",
+      "title": "Sample text",
+      "citation": "Sample text",
+      "showLegend": true,
+      "legendColumns": 2,
+      "citationFontStyle": "bold",
+      "citationColor": "blue",
+      "titleScaleFontFactor": 1.1
+    }
+  },
+  {
+    "id": 3756,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Show the legend. Divide the legend in two columns. Use the style ggblanket. Scale the data point size 4. Set the citation for the graph to Data View. Set the title for the graph to Data View.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": true,
+      "legendColumns": 2,
+      "theme": "ggblanket",
+      "dataPointSizeScaleFactor": 4,
+      "citation": "Data View",
+      "title": "Data View"
+    }
+  },
+  {
+    "id": 3757,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style tableau.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "tableau"
+    }
+  },
+  {
+    "id": 3758,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Show the legend. Use the style light. Set the subtitle for the graph to My Chart. Set the font style of the graph subtitle to bold italic. Set the citation for the graph to Sample text. Decrease the font size of the graph subtitle moderately.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": true,
+      "theme": "light",
+      "subtitle": "My Chart",
+      "subtitleFontStyle": "bold italic",
+      "citation": "Sample text",
+      "subtitleScaleFontFactor": 0.8
+    }
+  },
+  {
+    "id": 3759,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Hide the legend. Set the subtitle for the graph to Sample text. Divide the legend in two columns. Increase the font size of the graph subtitle slightly. Put the legend on the bottom. Set the title for the graph to My Chart. Use the color scheme Complementary. Set the color of the graph title to green.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": false,
+      "subtitle": "Sample text",
+      "legendColumns": 2,
+      "subtitleScaleFontFactor": 1.1,
+      "legendPosition": "bottom",
+      "title": "My Chart",
+      "colorScheme": "Complementary",
+      "titleColor": "green"
+    }
+  },
+  {
+    "id": 3760,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style highcharts. Set the title for the graph to Data View. Increase the font size of the graph title slightly. Set the citation for the graph to Sample text. Use the color scheme Lancet. Set the font style of the graph title to bold. Hide the legend.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "highcharts",
+      "title": "Data View",
+      "titleScaleFontFactor": 1.1,
+      "citation": "Sample text",
+      "colorScheme": "Lancet",
+      "titleFontStyle": "bold",
+      "showLegend": false
+    }
+  },
+  {
+    "id": 3761,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix.",
+    "config": {
+      "graphType": "Oncoprint"
+    }
+  },
+  {
+    "id": 3762,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the title for the graph to Data View. Use the color scheme Excel3. Set the citation for the graph to My Chart. Decrease the font size of the graph citation considerably. Hide the legend. Set the color of the graph title to green. Increase the font size of the graph title moderately. Set the font style of the graph citation to italic.",
+    "config": {
+      "graphType": "Oncoprint",
+      "title": "Data View",
+      "colorScheme": "Excel3",
+      "citation": "My Chart",
+      "citationScaleFontFactor": 0.7,
+      "showLegend": false,
+      "titleColor": "green",
+      "titleScaleFontFactor": 1.2,
+      "citationFontStyle": "italic"
+    }
+  },
+  {
+    "id": 3763,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Hide the legend. Set the title for the graph to Sample text. Increase the font size of the graph title considerably. Set the citation for the graph to Data View.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": false,
+      "title": "Sample text",
+      "titleScaleFontFactor": 1.3,
+      "citation": "Data View"
+    }
+  },
+  {
+    "id": 3764,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Show the legend. Divide the legend in two columns. Scale the data point size 99. Set the citation for the graph to Data View. Decrease the font size of the graph citation considerably. Set the subtitle for the graph to Sample text. Set the title for the graph to My Chart.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": true,
+      "legendColumns": 2,
+      "dataPointSizeScaleFactor": 99,
+      "citation": "Data View",
+      "citationScaleFontFactor": 0.7,
+      "subtitle": "Sample text",
+      "title": "My Chart"
+    }
+  },
+  {
+    "id": 3765,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style wsj. Show the legend. Set the subtitle for the graph to Sample text. Scale the data point size 40. Set the citation for the graph to Sample text. Set the color of the graph citation to green. Set the color of the graph subtitle to green.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "wsj",
+      "showLegend": true,
+      "subtitle": "Sample text",
+      "dataPointSizeScaleFactor": 40,
+      "citation": "Sample text",
+      "citationColor": "green",
+      "subtitleColor": "green"
+    }
+  },
+  {
+    "id": 3766,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Hide the legend. Use the color scheme Cividis. Scale the data point size 30.",
+    "config": {
+      "graphType": "Oncoprint",
+      "showLegend": false,
+      "colorScheme": "Cividis",
+      "dataPointSizeScaleFactor": 30
+    }
+  },
+  {
+    "id": 3767,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style cxdark. Show the legend. Set the subtitle for the graph to Sample text. Put the legend on the left. Set the font style of the graph subtitle to italic. Set the title for the graph to Data View. Scale the data point size 90.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "cxdark",
+      "showLegend": true,
+      "subtitle": "Sample text",
+      "legendPosition": "left",
+      "subtitleFontStyle": "italic",
+      "title": "Data View",
+      "dataPointSizeScaleFactor": 90
+    }
+  },
+  {
+    "id": 3768,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Scale the data point size 4. Set the citation for the graph to Sample text. Hide the legend. Set the color of the graph citation to red. Put the legend on the left.",
+    "config": {
+      "graphType": "Oncoprint",
+      "dataPointSizeScaleFactor": 4,
+      "citation": "Sample text",
+      "showLegend": false,
+      "citationColor": "red",
+      "legendPosition": "left"
+    }
+  },
+  {
+    "id": 3769,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the color scheme RdPu.",
+    "config": {
+      "graphType": "Oncoprint",
+      "colorScheme": "RdPu"
+    }
+  },
+  {
+    "id": 3770,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the subtitle for the graph to My Chart. Scale the data point size 91. Use the color scheme Paired.",
+    "config": {
+      "graphType": "Oncoprint",
+      "subtitle": "My Chart",
+      "dataPointSizeScaleFactor": 91,
+      "colorScheme": "Paired"
+    }
+  },
+  {
+    "id": 3771,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the title for the graph to Data View. Set the citation for the graph to My Chart.",
+    "config": {
+      "graphType": "Oncoprint",
+      "title": "Data View",
+      "citation": "My Chart"
+    }
+  },
+  {
+    "id": 3772,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Set the title for the graph to My Chart. Set the subtitle for the graph to Data View. Set the color of the graph subtitle to red. Increase the font size of the graph title slightly. Scale the data point size 67. Set the font style of the graph subtitle to bold italic. Set the font style of the graph title to bold italic. Set the color of the graph title to blue.",
+    "config": {
+      "graphType": "Oncoprint",
+      "title": "My Chart",
+      "subtitle": "Data View",
+      "subtitleColor": "red",
+      "titleScaleFontFactor": 1.1,
+      "dataPointSizeScaleFactor": 67,
+      "subtitleFontStyle": "bold italic",
+      "titleFontStyle": "bold italic",
+      "titleColor": "blue"
+    }
+  },
+  {
+    "id": 3773,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Use the style light. Scale the data point size 47. Use the color scheme Stata. Set the citation for the graph to Sample text. Hide the legend. Decrease the font size of the graph citation moderately.",
+    "config": {
+      "graphType": "Oncoprint",
+      "theme": "light",
+      "dataPointSizeScaleFactor": 47,
+      "colorScheme": "Stata",
+      "citation": "Sample text",
+      "showLegend": false,
+      "citationScaleFontFactor": 0.8
+    }
+  },
+  {
+    "id": 3774,
+    "data": "oncoprint",
+    "header": [
+      "EGFR",
+      "TP53",
+      "BRCA1",
+      "BRCA2",
+      "PIK3CA",
+      "MTOR",
+      "ZNF140",
+      "CCND1",
+      "ZNF171",
+      "ZNF096",
+      "ZNF108",
+      "ZNF051"
+    ],
+    "description": "Create a Oncoprint plot of a gene alteration matrix. Scale the data point size 84.",
+    "config": {
+      "graphType": "Oncoprint",
+      "dataPointSizeScaleFactor": 84
+    }
   }
 ]
