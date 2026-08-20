@@ -347,11 +347,64 @@ EOF
       const data   = TOOL_PAYLOAD && TOOL_PAYLOAD.data;
       if (!config || !config.graphType) { showError('payload.config.graphType missing'); return; }
       if (!data) { showError('payload.data missing — MCP Apps inline rendering requires data'); return; }
-      try {
-        new CanvasXpress({ renderTo: 'cx-chart', config: config, data: data });
-      } catch (e) {
-        showError('Render failed: ' + (e.message || String(e)));
+
+      // Size the canvas in pixels before constructing, then resize the live chart
+      // with setDimensions() — mirrors src/ui/cx_chart_view.html. CanvasXpress
+      // writes its own inline width/height style onto the canvas, so the CSS rule
+      // above cannot size it; and setDimensions() (not resize(), which is an event
+      // handler) is the supported way to re-fit without tearing the chart down and
+      // losing zoom/sort/filter state.
+      var HEADER_PX = 38;
+      var timer = null;
+      var lastW = 0, lastH = 0;
+      var chart = null;
+
+      function ensureCanvas() {
+        var el = document.getElementById('cx-chart');
+        if (!el) {
+          el = document.createElement('canvas');
+          el.id = 'cx-chart';
+          document.body.appendChild(el);
+        }
+        return el;
       }
+
+      function draw() {
+        var w = Math.max(1, window.innerWidth);
+        var h = Math.max(1, window.innerHeight - HEADER_PX);
+        if (chart) { try { chart.destroy(); } catch (e) { /* ignore */ } chart = null; }
+        var el = ensureCanvas();
+        el.width = w;
+        el.height = h;
+        var cfg = Object.assign({}, config);
+        if (cfg.width == null) cfg.width = w;
+        if (cfg.height == null) cfg.height = h;
+        try {
+          chart = new CanvasXpress({ renderTo: 'cx-chart', config: cfg, data: data });
+          lastW = w; lastH = h;
+        } catch (e) {
+          showError('Render failed: ' + (e.message || String(e)));
+        }
+      }
+
+      function refit() {
+        var w = Math.max(1, window.innerWidth);
+        var h = Math.max(1, window.innerHeight - HEADER_PX);
+        if (w === lastW && h === lastH) return;
+        if (chart && typeof chart.setDimensions === 'function') {
+          try { chart.setDimensions(w, h); } catch (e) { /* fall through to redraw */ }
+          var el = document.getElementById('cx-chart');
+          if (el && el.width === w && el.height === h) { lastW = w; lastH = h; return; }
+        }
+        draw();
+      }
+
+      window.addEventListener('resize', function () {
+        if (timer !== null) clearTimeout(timer);
+        timer = setTimeout(function () { timer = null; refit(); }, 120);
+      });
+
+      draw();
     });
   </script>
 </body>
