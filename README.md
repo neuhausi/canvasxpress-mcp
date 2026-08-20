@@ -134,6 +134,21 @@ for direct integration with CanvasXpress's `askLLM()` function.
 | `GET /feedback/export` | Export call log | — (optional: `tool`, `rated_only`, `limit`) |
 | `POST /feedback/purge` | Delete call log rows (**admin key required**) | — (optional: `tool`, `rated_only`) |
 | `GET /ui` | Browser form UI | — |
+| `POST /embed` | Embed text(s) into vectors | `texts` (array) or `text` |
+| `POST /ask` | Answer a question from supplied sources with `[n]` citations | `question`, `sources` |
+
+### Site-search endpoints (`/embed`, `/ask`)
+
+These power the internal search on canvasxpress.org (they are **not** MCP tools — plain REST):
+
+- **`POST /embed`** — returns L2-normalized sentence-transformer vectors (`all-MiniLM-L6-v2`, 384-dim)
+  for a batch of texts, reusing the already-loaded embedding model:
+  `{"texts": ["..."]}` → `{"model": "...", "dim": 384, "vectors": [[...], ...]}`. Used to build the
+  search index and to embed queries for semantic ranking.
+- **`POST /ask`** — answers a question **using only the provided sources**, with inline `[n]` citations,
+  via the shared LLM provider: `{"question": "...", "sources": [{"title": "...", "url": "...", "text": "..."}]}`
+  → `{"answer": "... [1] ...", "model": "..."}`. Retrieval happens in the caller; this only generates
+  the cited answer.
 
 ### Common parameters (all LLM endpoints)
 

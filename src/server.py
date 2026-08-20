@@ -62,11 +62,23 @@ DATA_DIR = BASE_DIR / "data"
 EXAMPLES_FILE = DATA_DIR / "few_shot_examples.json"
 DB_FILE = DATA_DIR / "embeddings.db"
 
+# Writable state directory - separated from the read-only bundle so the server
+# runs unchanged under Posit Connect where the bundle mount is
+# read-only.  Defaults to DATA_DIR for local/dev use.
+STATE_DIR = Path(os.environ.get("CX_STATE_DIR", str(DATA_DIR)))
+try:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    import tempfile as _tempfile
+    STATE_DIR = Path(_tempfile.gettempdir()) / "cx-mcp-state"
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 EMBEDDING_DIM = 384  # all-MiniLM-L6-v2; change to 768 for all-mpnet-base-v2
 
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
-PORT = int(os.environ.get("MCP_PORT", "8100"))
+# Prefer PORT (Posit Connect) then MCP_PORT (legacy env var).
+PORT = int(os.environ.get("PORT") or os.environ.get("MCP_PORT", "8100"))
 CORS_ORIGINS = [
     o.strip()
     for o in os.environ.get("CORS_ORIGINS", "*").split(",")
@@ -1429,7 +1441,7 @@ def cx_chart_resource() -> ResourceResult:
 # Call logging + feedback (thumbs up/down)
 # ---------------------------------------------------------------------------
 
-CALL_LOG_DB = DATA_DIR / "call_log.db"
+CALL_LOG_DB = STATE_DIR / "call_log.db"
 
 import sqlite3 as _sqlite3
 import threading as _threading
@@ -4440,7 +4452,7 @@ _UI_HTML = r"""<!DOCTYPE html>
 </div>
 
 <script>
-const BASE = window.location.origin;
+const BASE = window.location.origin + window.location.pathname.replace(/\/ui\/?$/, '');
 let activeTab = 'generate';
 
 document.querySelectorAll('.tab').forEach(function(t) {
@@ -4971,6 +4983,75 @@ async def rest_params(request: Request) -> Response:
     return _cx_response(result, cx)
 
 
+def _ensure_embed_model() -> SentenceTransformer:
+    """Load the shared sentence-transformers model on demand (warm after first call)."""
+    global _embed_model
+    if _embed_model is None:
+        log.info("Loading embedding model: %s", EMBEDDING_MODEL)
+        _embed_model = SentenceTransformer(EMBEDDING_MODEL)
+    return _embed_model
+
+
+@mcp.custom_route("/embed", methods=["GET", "POST"])
+async def rest_embed(request: Request) -> Response:
+    """Embed text(s) with the shared model — used by the site-search index/query.
+
+    GET  /embed?text=<one>        POST /embed  {"texts": ["a", "b", ...]}
+    -> {"model": "...", "dim": N, "vectors": [[...], ...]}  (L2-normalized)
+    """
+    if request.method == "GET":
+        p = dict(request.query_params)
+        texts = [p["text"]] if p.get("text") else []
+    else:
+        ct = request.headers.get("content-type", "")
+        body = await request.json() if "application/json" in ct else dict(await request.form())
+        texts = body.get("texts") or ([body["text"]] if body.get("text") else [])
+    texts = [t for t in texts if isinstance(t, str) and t.strip()]
+    if not texts:
+        return JSONResponse({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "vectors": []})
+    try:
+        model = _ensure_embed_model()
+        vectors = model.encode(texts, normalize_embeddings=True).tolist()
+        return JSONResponse({"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "vectors": vectors})
+    except Exception as exc:
+        log.exception("REST /embed error")
+        return JSONResponse({"error": str(exc), "vectors": []}, status_code=500)
+
+
+@mcp.custom_route("/ask", methods=["POST"])
+async def rest_ask(request: Request) -> Response:
+    """Answer a documentation question from retrieved sources, via the shared LLM provider.
+
+    The site-search endpoint does the retrieval (it owns the index) and POSTs the top hits here:
+      POST /ask  {"question": "...", "sources": [{"title": "...", "url": "...", "text": "..."}]}
+      -> {"answer": "... [1] ...", "model": "..."}
+    Answers strictly from the numbered sources with inline [n] citations.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"answer": None, "error": "invalid JSON body"}, status_code=400)
+    question = (body.get("question") or "").strip()
+    sources = body.get("sources") or []
+    if not question or not sources:
+        return JSONResponse({"answer": None})
+    context = "\n\n".join(
+        f"[{i + 1}] {s.get('title', '')} — {s.get('url', '')}\n{(s.get('text') or '')[:600]}"
+        for i, s in enumerate(sources)
+    )
+    system = ("You are a CanvasXpress documentation assistant. Answer the question using ONLY the "
+              "numbered sources below. Cite sources inline as [n]. If the answer is not in the "
+              "sources, say you are not sure. Reply in plain prose — 2-3 sentences, no markdown "
+              "headings, bold, or bullet lists.")
+    user = f"Question: {question}\n\nSources:\n{context}"
+    try:
+        text, _usage = llm_complete(system, user, temperature=0.0, max_tokens=400)
+        return JSONResponse({"answer": text.strip(), "model": MODEL})
+    except Exception as exc:
+        log.exception("REST /ask error")
+        return JSONResponse({"answer": None, "error": str(exc)}, status_code=500)
+
+
 @mcp.custom_route("/axes", methods=["GET", "POST"])
 async def rest_axes(request: Request) -> Response:
     """REST endpoint for get_axes_info."""
@@ -5404,6 +5485,13 @@ async def rest_favicon(request: Request) -> Response:
         media_type="image/png",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+# ---------------------------------------------------------------------------
+# ASGI application — module-level so external ASGI hosts can import it as `src.server:app`.
+# Uvicorn-based local dev still uses the __main__ block below.
+# ---------------------------------------------------------------------------
+app = mcp.http_app(transport="http", middleware=_cors_middleware)
 
 
 # ---------------------------------------------------------------------------
