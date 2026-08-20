@@ -7,7 +7,10 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; }
-    #cx-chart { width: 100vw; height: 100vh; }
+    /* Pre-paint sizing only. CanvasXpress sets an inline width/height style on the
+       canvas at construction, and inline styles win over this rule — so the real
+       sizing is done in JS (sizeToViewport / applyViewportSize below). */
+    #cx-chart { display: block; width: 100vw; height: 100vh; }
     #cx-error {
       display: none;
       position: fixed;
@@ -48,7 +51,138 @@
 
     let chart = null;
     let resizeObserver = null;
+    let resizeTimer = null;
+    let resizeBound = false;
+    let lastConfig = null;
+    let lastData = null;
+    let lastDims = { w: 0, h: 0 };
+    let refitRetried = false;
     let nextId = 1;
+
+    /**
+     * Current iframe viewport size, floored at 1px so a zero-height host panel
+     * can't produce a degenerate canvas.
+     */
+    function viewportSize() {
+      return {
+        w: Math.max(1, window.innerWidth || document.documentElement.clientWidth),
+        h: Math.max(1, window.innerHeight || document.documentElement.clientHeight),
+      };
+    }
+
+    /**
+     * Get the chart canvas, re-creating it if necessary.
+     * chart.destroy() removes the canvas (and the wrapper CanvasXpress puts
+     * around it) from the DOM, so anything that re-renders has to put a fresh
+     * canvas back first.
+     */
+    function ensureCanvas() {
+      let el = document.getElementById('cx-chart');
+      if (!el) {
+        el = document.createElement('canvas');
+        el.id = 'cx-chart';
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    /**
+     * Size the canvas element to the viewport BEFORE constructing the chart.
+     * CanvasXpress needs pixel dimensions; it will not honour the CSS
+     * width:100vw/height:100vh rule, because it writes an inline style of its
+     * own onto the canvas as part of construction.
+     */
+    function sizeToViewport() {
+      const dims = viewportSize();
+      const el = ensureCanvas();
+      el.width = dims.w;
+      el.height = dims.h;
+      return dims;
+    }
+
+    /**
+     * Ask the live chart to re-lay itself out at the given size.
+     *
+     * setDimensions(width, height) is the library's supported resize entry point
+     * and it applies synchronously. Note that chart.resize() is NOT a resize API
+     * despite the name — it is bound to the internal event dispatcher and expects
+     * an Event, so calling it with numbers throws inside the library.
+     *
+     * Returns true only if the canvas actually took the new size: setDimensions()
+     * returns silently without doing anything when a transition is mid-animation
+     * or when the chart was configured with resizable/resizableX/resizableY off.
+     */
+    function applyDimensions(dims) {
+      try {
+        chart.setDimensions(dims.w, dims.h);
+      } catch (e) {
+        return false;
+      }
+      const el = document.getElementById('cx-chart');
+      return !!el && el.width === dims.w && el.height === dims.h;
+    }
+
+    /**
+     * Re-fit the chart to the current viewport when the host resizes the panel.
+     *
+     * Resizes the existing instance rather than rebuilding it, so whatever the
+     * user has done to the chart — zoom, sort, data filters, selections — is
+     * preserved across a panel resize. Rebuilding is kept only as a last resort
+     * for the case where the library declines to resize, and it does lose that
+     * state.
+     *
+     * No-ops when the viewport has not actually changed, which also stops the
+     * ResizeObserver below from feeding itself.
+     */
+    function refitToViewport() {
+      const dims = viewportSize();
+      if (dims.w === lastDims.w && dims.h === lastDims.h) return;
+
+      if (chart && typeof chart.setDimensions === 'function') {
+        if (applyDimensions(dims)) {
+          lastDims = dims;
+          refitRetried = false;
+          return;
+        }
+        // Most likely a transition was animating. Give it one more go before
+        // resorting to a rebuild.
+        if (!refitRetried) {
+          refitRetried = true;
+          setTimeout(refitToViewport, 350);
+          return;
+        }
+      }
+
+      refitRetried = false;
+      if (lastConfig) renderChart(lastConfig, lastData);
+    }
+
+    /**
+     * Keep the chart filling the iframe as the host resizes the panel.
+     * Observes document.body (whose box tracks the viewport) and also listens for
+     * window resize, since a host may resize the iframe without a body reflow the
+     * observer would catch. Debounced to avoid redraw thrash. Bound once — the
+     * guard matters because renderChart() calls this again on the rebuild path.
+     */
+    function initResizeHandling() {
+      if (resizeBound) return;
+      resizeBound = true;
+
+      function schedule() {
+        if (resizeTimer !== null) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+          resizeTimer = null;
+          refitToViewport();
+        }, 120);
+      }
+
+      window.addEventListener('resize', schedule);
+
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(schedule);
+        resizeObserver.observe(document.body);
+      }
+    }
 
     /** Show a visible error div (not just console.error). */
     function showError(msg) {
@@ -98,24 +232,27 @@
           chart = null;
         }
 
-        const initObj = { renderTo: 'cx-chart', config: config };
+        // Size the canvas to the iframe first, then tell CanvasXpress the same
+        // dimensions, so the chart fills the host panel instead of falling back
+        // to the library's small default. A width/height already present in the
+        // tool's config is treated as deliberate and left alone.
+        const dims = sizeToViewport();
+        const sizedConfig = Object.assign({}, config);
+        if (sizedConfig.width == null) sizedConfig.width = dims.w;
+        if (sizedConfig.height == null) sizedConfig.height = dims.h;
+
+        const initObj = { renderTo: 'cx-chart', config: sizedConfig };
         if (data && Array.isArray(data) && data.length >= 2) {
           initObj.data = data;
         }
         chart = new CanvasXpress(initObj);
 
-        // ResizeObserver: call chart.resize() when container changes size
-        if (resizeObserver) {
-          resizeObserver.disconnect();
-        }
-        if (typeof ResizeObserver !== 'undefined') {
-          resizeObserver = new ResizeObserver(() => {
-            if (chart && typeof chart.resize === 'function') {
-              try { chart.resize(); } catch (e) { /* ignore */ }
-            }
-          });
-          resizeObserver.observe(document.getElementById('cx-chart'));
-        }
+        // Remember what was drawn, so a host panel resize can re-fit it.
+        lastConfig = config;
+        lastData = data;
+        lastDims = dims;
+
+        initResizeHandling();
       } catch (err) {
         showError(err.message || String(err));
       }
@@ -209,7 +346,7 @@
       // TODO: act on host capabilities returned in McpUiInitializeResult (e.g. supported display modes, theme).
       // TODO: handle 'ui/notifications/initialized' notification from host once any feature depends on knowing initialization completed.
       sendRequest('ui/initialize', {
-        // Only inline declared: chart resize is handled by ResizeObserver inside the inline iframe; modal/fullscreen would require additional layout logic.
+        // Only inline declared: the chart is sized to the iframe viewport and kept in sync on resize (see initResizeHandling); modal/fullscreen would require additional layout logic.
         appCapabilities: {
           availableDisplayModes: ['inline'],
         },
