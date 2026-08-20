@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CanvasXpress Chart View</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #cx-chart { width: 100vw; height: 100vh; }
+    #cx-error {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #fee2e2;
+      color: #b91c1c;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #fca5a5;
+      z-index: 9999;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+  <!--
+    CanvasXpress CDN — unversioned "min" build (2026.4.5.1935 or later).
+    A versioned URL was not available at implementation time.
+    Per MCP Apps spec §UI Resource Format: resourceDomains must include
+    "https://www.canvasxpress.org" if the host enforces CSP.
+  -->
+  <script src="https://www.canvasxpress.org/dist/canvasXpress.min.js"></script>
+</head>
+<body>
+  <div id="cx-error"></div>
+  <canvas id="cx-chart"></canvas>
+
+  <script>
+    // ---------------------------------------------------------------------------
+    // MCP Apps protocol implementation
+    // Per MCP Apps spec §Communication Protocol (2026-01-26):
+    //   - View sends ui/initialize request to window.parent via postMessage
+    //   - Host sends ui/notifications/tool-result notification with CallToolResult
+    //   - Spec §Transport Layer: postMessage target origin is '*'
+    //     (The spec example uses '*' explicitly; origin checking is the host's
+    //     responsibility via sandbox isolation — see spec §Sandbox proxy)
+    // ---------------------------------------------------------------------------
+
+    let chart = null;
+    let resizeObserver = null;
+    let nextId = 1;
+
+    /** Show a visible error div (not just console.error). */
+    function showError(msg) {
+      const el = document.getElementById('cx-error');
+      el.textContent = 'CanvasXpress error: ' + msg;
+      el.style.display = 'block';
+      console.error('[cx-chart-view]', msg);
+    }
+
+    /**
+     * Send a JSON-RPC request to the host via postMessage.
+     * Per spec §Transport Layer: use '*' as target origin.
+     */
+    function sendRequest(method, params) {
+      const id = nextId++;
+      window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+      return new Promise((resolve, reject) => {
+        function listener(event) {
+          const msg = event.data;
+          if (msg && msg.id === id) {
+            window.removeEventListener('message', listener);
+            if (msg.result !== undefined) {
+              resolve(msg.result);
+            } else if (msg.error) {
+              reject(new Error(JSON.stringify(msg.error)));
+            } else {
+              reject(new Error('Unexpected response: ' + JSON.stringify(msg)));
+            }
+          }
+        }
+        window.addEventListener('message', listener);
+      });
+    }
+
+    /**
+     * Render a CanvasXpress chart from a config dict and (optionally) a raw data array.
+     * Uses the object-form constructor so we can pass `data` alongside `config`:
+     *   new CanvasXpress({renderTo, config, data})
+     * `data` is the same flat [[headers],[row,...], ...] array the caller passed to the
+     * tool — CanvasXpress accepts it directly (mirrors buildCxData() in the REST UI).
+     */
+    function renderChart(config, data) {
+      try {
+        // Destroy existing chart instance before creating a new one
+        if (chart) {
+          try { chart.destroy(); } catch (e) { /* ignore */ }
+          chart = null;
+        }
+
+        const initObj = { renderTo: 'cx-chart', config: config };
+        if (data && Array.isArray(data) && data.length >= 2) {
+          initObj.data = data;
+        }
+        chart = new CanvasXpress(initObj);
+
+        // ResizeObserver: call chart.resize() when container changes size
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+        }
+        if (typeof ResizeObserver !== 'undefined') {
+          resizeObserver = new ResizeObserver(() => {
+            if (chart && typeof chart.resize === 'function') {
+              try { chart.resize(); } catch (e) { /* ignore */ }
+            }
+          });
+          resizeObserver.observe(document.getElementById('cx-chart'));
+        }
+      } catch (err) {
+        showError(err.message || String(err));
+      }
+    }
+
+    /**
+     * Parse tool result and extract the CanvasXpress config.
+     * Per spec §Notifications (Host → View):
+     *   ui/notifications/tool-result params is CallToolResult:
+     *   { content: Array<{ type: string, text?: string }>, isError?: boolean }
+     */
+    function handleToolResult(params) {
+      try {
+        const result = params;  // params IS the CallToolResult
+        if (result.isError) {
+          showError('Tool returned an error: ' +
+            ((result.content && result.content[0] && result.content[0].text) || 'unknown'));
+          return;
+        }
+        if (!result.content || !result.content.length) {
+          showError('Tool result has no content');
+          return;
+        }
+        // Find first text content block
+        const textBlock = result.content.find(c => c.type === 'text' && c.text);
+        if (!textBlock) {
+          showError('No text content block in tool result');
+          return;
+        }
+        let payload;
+        try {
+          payload = JSON.parse(textBlock.text);
+        } catch (e) {
+          showError('Failed to parse tool result JSON: ' + e.message);
+          return;
+        }
+        // Tool returns a wrapper dict: { config, data, valid, warnings, ... }
+        // Be tolerant of older shapes where the whole payload IS the config.
+        const config = (payload && payload.config && payload.config.graphType)
+          ? payload.config
+          : (payload && payload.graphType ? payload : null);
+        if (!config) {
+          showError('Tool result has no usable config (missing graphType).');
+          return;
+        }
+        const data = payload && payload.data ? payload.data : null;
+        if (!data) {
+          showError(
+            'No data found in tool result. MCP Apps inline rendering requires ' +
+            'the `data` argument to be populated when calling the tool.'
+          );
+          return;
+        }
+        renderChart(config, data);
+      } catch (err) {
+        showError(err.message || String(err));
+      }
+    }
+
+    /**
+     * Listen for messages from the host.
+     * Per spec §Notifications (Host → View):
+     *   - ui/notifications/tool-result  → render the chart
+     *   - ui/notifications/tool-input   → optional: could show loading state
+     */
+    window.addEventListener('message', function(event) {
+      // Per spec §Transport Layer: '*' target; origin validation is host's job
+      // via sandbox isolation. We accept any origin here as spec prescribes.
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+
+      if (msg.method === 'ui/notifications/tool-result') {
+        handleToolResult(msg.params);
+      } else if (msg.method === 'ui/notifications/tool-input') {
+        // Optional: could show a loading skeleton here
+        // For now, just hide any previous error
+        document.getElementById('cx-error').style.display = 'none';
+      }
+      // Other messages (initialize response, etc.) handled by sendRequest()
+    });
+
+    /**
+     * On load: send ui/initialize request to host.
+     * Per spec §Lifecycle §App Capabilities in ui/initialize:
+     *   method: "ui/initialize"
+     *   params: { appCapabilities: { availableDisplayModes: ["inline"] }, clientInfo, protocolVersion }
+     * Host responds with McpUiInitializeResult then sends ui/notifications/initialized.
+     * Host then sends ui/notifications/tool-input and ui/notifications/tool-result.
+     */
+    document.addEventListener('DOMContentLoaded', function() {
+      // TODO: act on host capabilities returned in McpUiInitializeResult (e.g. supported display modes, theme).
+      // TODO: handle 'ui/notifications/initialized' notification from host once any feature depends on knowing initialization completed.
+      sendRequest('ui/initialize', {
+        // Only inline declared: chart resize is handled by ResizeObserver inside the inline iframe; modal/fullscreen would require additional layout logic.
+        appCapabilities: {
+          availableDisplayModes: ['inline'],
+        },
+        clientInfo: { name: 'canvasxpress-chart-view', version: '1.0.0' },
+        protocolVersion: '2026-01-26',
+      }).catch(function(err) {
+        // If host doesn't support MCP Apps, this will fail silently.
+        // Chart will still render if tool-result postMessage arrives.
+        console.warn('[cx-chart-view] ui/initialize failed (host may not support MCP Apps):', err);
+      });
+    });
+  </script>
+</body>
+</html>

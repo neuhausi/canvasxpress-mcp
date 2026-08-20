@@ -1373,6 +1373,71 @@ mcp = FastMCP(
 )
 
 # ---------------------------------------------------------------------------
+# --- MCP Apps support ---
+# Spec: https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/main/specification/2026-01-26/apps.mdx
+# Spec §UI Resource Format: mimeType MUST be "text/html;profile=mcp-app"
+# Spec §Resource Discovery: tools reference UI resources via _meta.ui.resourceUri
+# ---------------------------------------------------------------------------
+
+_CX_APP_HTML = (Path(__file__).parent / "ui" / "cx_chart_view.html").read_text(encoding="utf-8")
+
+_CX_APP_RESOURCE_URI = "ui://canvasxpress/chart"
+_CX_APP_MIME_TYPE = "text/html;profile=mcp-app"
+
+# Per MCP Apps spec §Resource Discovery (2026-01-26):
+# Tools reference UI resources via _meta.ui.resourceUri.
+# In FastMCP 3.x, the `meta` kwarg on @mcp.tool() maps to the MCP protocol
+# _meta field via Tool.get_meta() / Tool.to_mcp_tool().
+_META_FOR_CHART = {
+    "ui": {
+        "resourceUri": _CX_APP_RESOURCE_URI,
+    },
+}
+
+# Per MCP Apps spec (2026-01-26) lines 243-250 and example lines 303-314:
+# _meta.ui.csp.resourceDomains declares origins for static resources
+# (scripts, images, styles, fonts). The spec shows this _meta on the
+# resources/read response content; we ALSO declare it on the resource
+# registration so it surfaces in resources/list, since hosts vary in which
+# they read from. (Belt-and-suspenders to maximize host compatibility.)
+_CX_APP_RESOURCE_META = {
+    "ui": {
+        "csp": {
+            "resourceDomains": ["https://www.canvasxpress.org"],
+        },
+    },
+}
+
+from fastmcp.resources import ResourceContent, ResourceResult  # noqa: E402
+
+
+@mcp.resource(
+    _CX_APP_RESOURCE_URI,
+    # Per MCP Apps spec §UI Resource Format: mimeType MUST be "text/html;profile=mcp-app"
+    mime_type=_CX_APP_MIME_TYPE,
+    name="CanvasXpress Chart View",
+    # CSP on the registered Resource (surfaces via resources/list).
+    meta=_CX_APP_RESOURCE_META,
+)
+def cx_chart_resource() -> ResourceResult:
+    """HTML MCP App iframe for rendering CanvasXpress chart configs inline.
+
+    Returns a ResourceResult so the CSP _meta is also attached to the
+    resources/read response content per spec lines 243-250 / 303-314.
+    """
+    return ResourceResult(
+        contents=[
+            ResourceContent(
+                _CX_APP_HTML,
+                mime_type=_CX_APP_MIME_TYPE,
+                meta=_CX_APP_RESOURCE_META,
+            ),
+        ],
+        meta=_CX_APP_RESOURCE_META,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Call logging + feedback (thumbs up/down)
 # ---------------------------------------------------------------------------
 
@@ -1738,7 +1803,8 @@ _cors_middleware: list = [
         "geographic IDs (ISO-3 country codes for world maps, 2-letter state codes for US maps, etc.) "
         "and remaining columns hold the values to display. "
         "Returns a validated JSON config object ready to pass to new CanvasXpress()."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def generate_canvasxpress_config(
     description: str,
@@ -1936,6 +2002,7 @@ def generate_canvasxpress_config(
 
     return {
         "config":         config,
+        "data":           data,
         "valid":          validation["valid"],
         "warnings":       validation["warnings"] + _geocode_warnings,
         "invalid_refs":   validation["invalid_refs"],
@@ -1957,7 +2024,8 @@ def generate_canvasxpress_config(
         "'remove the legend', 'set the x-axis title to Fold Change', "
         "'add groupingFactors for the Treatment column', 'switch to dark theme'. "
         "Returns the complete modified config ready to pass to new CanvasXpress()."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def modify_canvasxpress_config(
     config: dict,
@@ -2074,6 +2142,7 @@ def modify_canvasxpress_config(
 
     return {
         "config":         modified,
+        "data":           data,
         "prompt":         instruction,
         "valid":          validation["valid"],
         "warnings":       validation["warnings"],
@@ -2096,7 +2165,8 @@ def modify_canvasxpress_config(
         "and rendered by CanvasXpress itself. "
         "Examples: description='OS curve by treatment arm' with headers=['PatientID','OS_Time','OS_Status','Treatment']; "
         "or config={...} to validate an existing KM config."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def generate_km_config(
     description: str | None = None,
@@ -2137,6 +2207,7 @@ def generate_km_config(
     if not any([description, headers, data, config]):
         return {
             "config":           {"graphType": "KaplanMeier"},
+            "data":             None,
             "valid":            False,
             "errors":           ["At least one of description, headers, data, or config must be provided."],
             "warnings":         [],
@@ -2144,7 +2215,7 @@ def generate_km_config(
             "column_detection": None,
         }
 
-    return cx_survival.handle_generate_km(
+    result = cx_survival.handle_generate_km(
         description     = description,
         headers         = headers,
         data            = data,
@@ -2152,6 +2223,9 @@ def generate_km_config(
         temperature     = temperature,
         llm_complete_fn = llm_complete,
     )
+    if isinstance(result, dict):
+        result.setdefault("data", data)
+    return result
 
 
 @mcp.tool(
@@ -3285,7 +3359,8 @@ def _geocode_location(place: str) -> tuple[float, float] | None:
         "proportional sizing of regions/symbols via 'size_by', "
         "and map projection via 'projection' ('mercator', 'albers', 'orthographic'). "
         "Returns a CanvasXpress JSON config ready to pass to new CanvasXpress()."
-    )
+    ),
+    meta=_META_FOR_CHART,
 )
 def create_map_config(
     map_id: str,
@@ -3560,6 +3635,7 @@ def create_map_config(
              map_id, headers_used, len(markers) if markers else 0)
     return {
         "config":       config,
+        "data":         data,
         "valid":        len(warnings) == 0,
         "warnings":     warnings,
         "map_id":       map_id,
