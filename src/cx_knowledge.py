@@ -329,9 +329,15 @@ _BUNDLED_SCHEMA: dict[str, dict] = {
     "heatmapIndicatorHeight":         {"description":"Height of the heatmap color-scale indicator in pixels.",     "type":"numeric","graph_types":["Heatmap","Correlation"],"valid_values":[]},
     "heatmapIndicatorWidth":          {"description":"Width of the heatmap color-scale indicator in pixels.",      "type":"numeric","graph_types":["Heatmap","Correlation"],"valid_values":[]},
     "dendrogramSpace":{"description":"Pixels reserved for dendrograms on heatmaps.",  "type":"numeric","graph_types":["Heatmap","Correlation"],"valid_values":[]},
-    # Bullet
-    "bulletTargetVarName": {"description":"Column name containing the target value for bullet charts.", "type":"string","graph_types":["Bullet"],"valid_values":[]},
-    "rangeStack":          {"description":"Columns defining the qualitative range band stack for bullet charts.", "type":"array","graph_types":["Bullet"],"valid_values":[]},
+    # Meter / Bullet indicators (shared range/target model)
+    "meterType":              {"description":"Meter mark: gauge/speedometer/digital dials, ring, number/card KPI, state light, or horizontal/vertical bar.", "type":"string","graph_types":["Meter"],"valid_values":["gauge","speedometer","vertical","horizontal","state","digital","number","card","ring"]},
+    "meterCard":              {"description":"Frame each meter/indicator tile as a dashboard card; on a Bullet with groupingFactors it renders an aggregated card-tile grid.", "type":"boolean","graph_types":["Meter","Bullet"],"valid_values":[]},
+    "meterRingTitlePosition": {"description":"Title placement for a ring meter: centered above the circle (top) or the card's top-left corner (topLeft).", "type":"string","graph_types":["Meter"],"valid_values":["top","topLeft"]},
+    "bulletTargetVarName":    {"description":"Column name containing the target/reference value for bullet AND meter indicators; on a meter it draws a reference tick on the radial marks (gauge/speedometer/digital).", "type":"string","graph_types":["Bullet","Meter"],"valid_values":[]},
+    "bulletTargetType":       {"description":"Shape of the bullet target marker.", "type":"string","graph_types":["Bullet"],"valid_values":["line","circle","openCircle","star","openStar"]},
+    "rangeSegments":          {"description":"Numeric top values for the qualitative range segments of a meter indicator (scale tops).", "type":"array","graph_types":["Meter","Bullet"],"valid_values":[]},
+    "rangeStack":             {"description":"Columns defining the qualitative range band stack for bullet indicators (data-driven bands).", "type":"array","graph_types":["Bullet"],"valid_values":[]},
+    "rangeColors":            {"description":"Colors for the qualitative background ranges in bullet and meter indicators.", "type":"array","graph_types":["Bullet","Meter"],"valid_values":[]},
     # Circular
     "rAxis":           {"description":"Column mapped to the radial axis of circular charts.",          "type":"string", "graph_types":["Circular"],"valid_values":[]},
     "circularTrackName":{"description":"Display names for each track in circular charts.",             "type":"string", "graph_types":["Circular"],"valid_values":[]},
@@ -909,7 +915,8 @@ def filter_unknown_params(config: dict) -> tuple[dict, list[str]]:
         "variablesClustered", "samplesClustered",
         "heatmapIndicator", "heatmapIndicatorHistogram", "heatmapIndicatorHistogramColor",
         "heatmapIndicatorPosition", "heatmapIndicatorHeight", "heatmapIndicatorWidth", "dendrogramSpace",
-        "bulletTargetVarName", "rangeStack",
+        "bulletTargetVarName", "bulletTargetType", "rangeStack", "rangeSegments", "rangeColors",
+        "meterType", "meterCard", "meterRingTitlePosition", "meterVar", "meterThickness", "summaryType",
         "rAxis", "circularTrackName", "circularType", "circularRotate",
         "vennGroups",
         # Kaplan-Meier
