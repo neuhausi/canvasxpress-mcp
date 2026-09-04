@@ -40,6 +40,7 @@ from llm_providers import complete as llm_complete, provider_info, PROVIDER, MOD
 import cx_knowledge
 import cx_survival
 import cx_selector
+import asyncio
 import cx_validate
 import cx_render
 from sentence_transformers import SentenceTransformer
@@ -1543,7 +1544,10 @@ async def rest_render(request: Request) -> Response:
     except Exception:  # noqa: BLE001
         return JSONResponse({"error": "invalid JSON body"}, status_code=400)
     try:
-        png = cx_render.render_png(
+        # Playwright's sync API cannot run inside the server's asyncio loop, so run
+        # the render in a worker thread.
+        png = await asyncio.to_thread(
+            cx_render.render_png,
             body.get("data", {}), body.get("config", {}),
             int(body.get("width", 800)), int(body.get("height", 600)),
         )
