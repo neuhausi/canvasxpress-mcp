@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://www.canvasxpress.org/schema/cxfigure-1.0.schema.json",
   "title": "CanvasXpress portable figure spec",
-  "description": "JSON Schema for the persisted, portable CanvasXpress figure — the {data, config} object emitted by getConfig()/\"Save as JSON\" and embedded in the self-describing PNG. This is the primary contract users serialize and the surface the CI round-trip guarantee (the round-trip reproducibility guarantee) covers. Versioned 1.0 under the published compatibility policy: additive keys are MINOR and a reader ignores unknown keys, so this schema pins the STRUCTURE and the load-bearing keys and stays open (additionalProperties:true) for the long tail rather than freezing every parameter — strict name validation would break the forward-render guarantee (a 2031 key must not fail a 2026 validator). config carries the full parameter vocabulary (hundreds of keys documented in the parameter reference).",
+  "description": "JSON Schema for the persisted, portable CanvasXpress figure — the {data, config} object emitted by getConfig()/\"Save as JSON\" and embedded in the self-describing PNG. This is the primary contract users serialize and the surface the round-trip reproducibility guarantee covers. Versioned 1.0 under the published compatibility policy: additive keys are MINOR and a reader ignores unknown keys, so this schema pins the STRUCTURE and the load-bearing keys and stays open (additionalProperties:true) for the long tail rather than freezing every parameter — strict name validation would break the forward-render guarantee (a 2031 key must not fail a 2026 validator). config carries the full parameter vocabulary (hundreds of keys documented in the parameter reference).",
   "type": "object",
   "required": [
     "data",
@@ -15,7 +15,7 @@
       "description": "Semver MAJOR.MINOR of the figure contract. NEW field ; absent in specs written before it is introduced — readers must treat a missing value as the pre-1.0 baseline."
     },
     "data": {
-      "description": "The chart data, accepted in three shapes. (1) Object form: the wide-matrix { y, x, z } spec — this is what getConfig()/\"Save as JSON\" emits and the canonical persisted shape. (2) Array form: a tabular 2D array (data frame) whose first row is the column header and each subsequent row is a record — the engine converts it to the matrix form internally (arrayToCX). (3) String form: either a JSON string of the object/array form (parsed first), or a URL/path to a remote data file that is fetched and parsed by extension — .json (and .pl CGI), .csv/.tsv/.txt/.tab (delimited), .parquet, .png (self-describing PNG), .svg, .gexf/*ml/ml.bz2 (network/XML), and .zip/.tar/.tgz/.tar.gz/.gz archives; a DOM id of an HTML <table class=\"CanvasXpress\"> is also accepted. Non-matrix graph types (network, genome, venn, map) carry their own data shapes under the object form. A serialized figure normally stores the resolved object form, not a URL or string.",
+      "description": "The chart data, accepted in three shapes. (1) Object form: the wide-matrix { y, x, z } spec — this is what getConfig()/\"Save as JSON\" emits and the canonical persisted shape. (2) Array form: a tabular 2D array (data frame) whose first row is the column header and each subsequent row is a record — the engine converts it to the matrix form internally. (3) String form: either a JSON string of the object/array form (parsed first), or a URL/path to a remote data file that is fetched and parsed by extension — .json (and .pl CGI), .csv/.tsv/.txt/.tab (delimited), .parquet, .png (self-describing PNG), .svg, .gexf/*ml/ml.bz2 (network/XML), and .zip/.tar/.tgz/.tar.gz/.gz archives; a DOM id of an HTML <table class=\"CanvasXpress\"> is also accepted. Non-matrix graph types (network, genome, venn, map) carry their own data shapes under the object form. A serialized figure normally stores the resolved object form, not a URL or string.",
       "oneOf": [
         {
           "type": "object",
@@ -64,7 +64,7 @@
         },
         {
           "type": "array",
-          "description": "Tabular data-frame form: a 2D array of rows. The first row is the column header; each subsequent row is a record. Converted to the matrix form by arrayToCX.",
+          "description": "Tabular data-frame form: a 2D array of rows. The first row is the column header; each subsequent row is a record. Converted to the matrix form internally.",
           "items": {
             "type": "array"
           }

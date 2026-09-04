@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://www.canvasxpress.org/schema/cxplot-1.0.schema.json",
   "title": "CanvasXpress cxplot grammar snapshot",
-  "description": "JSON Schema (DRAFT) for the materialized meta.cxplot grammar-of-graphics snapshot — the plain-value form produced by expandToSpec/normalizeSpec (materialized:true). The LIVE meta.cxplot is accessor-shaped (each slot is a function) and is not itself serializable; this schema targets its materialized projection. Grounded in the CanvasXpress engine/canvasXpress.utilsDimension.js makePlotSpec() (top-level slots) and makeCoord()/makeFacet() (nested shapes). NOTE: schemaVersion and materialized are the contract fields; the seven grammar slots mirror the engine. Lenient (additionalProperties allowed) where runtime detail is engine-internal.",
+  "description": "JSON Schema for the materialized cxplot grammar-of-graphics snapshot — the plain-value form of a figure's grammar (layers, scales, coordinates, facets). The live cxplot read-model is accessor-shaped (each slot is a function) and is not itself serializable; this schema targets its materialized projection. schemaVersion and materialized are the contract fields; the grammar slots mirror the figure's grammar. Lenient (additionalProperties allowed) where runtime detail is engine-internal.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -18,7 +18,7 @@
     },
     "materialized": {
       "const": true,
-      "description": "Marks a plain-value snapshot (as opposed to the live accessor-shaped meta.cxplot). Set by expandToSpec/normalizeSpec."
+      "description": "Marks a plain-value snapshot (as opposed to the live accessor-shaped meta.cxplot)."
     },
     "data": {
       "type": "array",
@@ -174,7 +174,7 @@
     },
     "coord": {
       "type": "object",
-      "description": "Coordinate system descriptor from makeCoord()/makeCoordPolar().",
+      "description": "Coordinate system descriptor.",
       "properties": {
         "type": {
           "type": "string",
@@ -192,7 +192,7 @@
     },
     "facet": {
       "type": "object",
-      "description": "Small-multiples read-model from makeFacet().",
+      "description": "Small-multiples read-model.",
       "properties": {
         "type": {
           "type": "string",
