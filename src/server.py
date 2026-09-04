@@ -40,6 +40,8 @@ from llm_providers import complete as llm_complete, provider_info, PROVIDER, MOD
 import cx_knowledge
 import cx_survival
 import cx_selector
+import cx_validate
+import cx_render
 from sentence_transformers import SentenceTransformer
 
 # ---------------------------------------------------------------------------
@@ -1435,6 +1437,119 @@ def cx_chart_resource() -> ResourceResult:
         ],
         meta=_CX_APP_RESOURCE_META,
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent-native: spec schemas, validation/lint, headless render, audit resource
+# (best-in-class roadmap #09). Additive — no existing tool is changed.
+# ---------------------------------------------------------------------------
+
+_SCHEMA_DIR = Path(__file__).parent.parent / "data" / "schema"
+
+
+def _read_schema(name: str) -> str:
+    """Return the text of a published JSON Schema, or '{}' if absent."""
+    safe = name.replace("..", "").lstrip("/")
+    path = _SCHEMA_DIR / safe
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return "{}"
+
+
+@mcp.resource("schema://cxfigure")
+def cxfigure_schema_resource() -> str:
+    """The CanvasXpress portable figure JSON Schema ({data, config}) — agents can fetch it to
+    emit and self-validate valid specs."""
+    return _read_schema("cxfigure-1.0.schema.json")
+
+
+@mcp.resource("schema://cxplot")
+def cxplot_schema_resource() -> str:
+    """The CanvasXpress materialized grammar (cxplot) JSON Schema."""
+    return _read_schema("cxplot-1.0.schema.json")
+
+
+@mcp.resource("audit://calls/{limit}")
+def audit_calls_resource(limit: str = "50") -> str:
+    """Recent tool-call audit records (metadata only: id, tool, status, timestamp, rating).
+    Read-only; lets an agent explain what was generated and when. Request/response bodies are
+    intentionally not exposed here."""
+    try:
+        n = max(1, min(int(limit or "50"), 500))
+    except (TypeError, ValueError):
+        n = 50
+    try:
+        con = sqlite3.connect(str(CALL_LOG_DB))
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT id, tool, status, ts, rating FROM tool_calls ORDER BY ts DESC LIMIT ?",
+            (n,),
+        ).fetchall()
+        con.close()
+        return json.dumps([dict(r) for r in rows], indent=2)
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)})
+
+
+@mcp.tool(
+    description="Lint a CanvasXpress figure against the published JSON Schema and the parameter "
+                "vocabulary. Returns schema_errors (hard, structural) and param_warnings (soft, "
+                "value-level) so a spec can be fixed before rendering."
+)
+def validate_canvasxpress_config(data: dict, config: dict) -> dict:
+    return cx_validate.lint_figure({"data": data, "config": config})
+
+
+@mcp.tool(
+    description="Render a CanvasXpress figure server-side to a PNG (base64) using the real "
+                "engine in headless Chromium, so an agent can see the chart it generated without "
+                "a browser. Requires Playwright on the server."
+)
+def render_canvasxpress_config(data: dict, config: dict,
+                               width: int = 800, height: int = 600) -> dict:
+    try:
+        b64 = cx_render.render_png_b64(data, config, width=width, height=height)
+        return {"success": True, "mimeType": "image/png", "base64": b64}
+    except Exception as exc:  # noqa: BLE001
+        return {"success": False, "error": str(exc)}
+
+
+@mcp.custom_route("/schema/{name}", methods=["GET"])
+async def rest_schema(request: Request) -> Response:
+    """Serve a published JSON Schema by filename (e.g. cxfigure-1.0.schema.json)."""
+    name = request.path_params.get("name", "")
+    text = _read_schema(name)
+    if text == "{}":
+        return JSONResponse({"error": "schema not found"}, status_code=404)
+    return Response(text, media_type="application/schema+json")
+
+
+@mcp.custom_route("/validate", methods=["POST"])
+async def rest_validate(request: Request) -> Response:
+    """Lint a figure ({data, config}) against the schema + parameter vocabulary."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON body", "success": False}, status_code=400)
+    figure = {"data": body.get("data", {}), "config": body.get("config", body)}
+    return JSONResponse(cx_validate.lint_figure(figure))
+
+
+@mcp.custom_route("/render", methods=["POST"])
+async def rest_render(request: Request) -> Response:
+    """Render a figure ({data, config, width?, height?}) to a PNG."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    try:
+        png = cx_render.render_png(
+            body.get("data", {}), body.get("config", {}),
+            int(body.get("width", 800)), int(body.get("height", 600)),
+        )
+        return Response(png, media_type="image/png")
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
