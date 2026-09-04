@@ -50,7 +50,9 @@ def render_png(data: dict, config: dict, width: int = 800, height: int = 600,
         browser = pw.chromium.launch()
         try:
             page = browser.new_page(viewport={"width": int(width), "height": int(height)})
-            page.set_content(html, wait_until="networkidle")
+            # "load" (script + css finished) is enough; "networkidle" stalls ~30s on the
+            # full engine bundle. The actual render is awaited via __cxDone below.
+            page.set_content(html, wait_until="load")
             try:
                 page.wait_for_function("window.__cxDone === true", timeout=timeout_ms)
             except Exception:  # noqa: BLE001 - best-effort settle; still screenshot what drew
