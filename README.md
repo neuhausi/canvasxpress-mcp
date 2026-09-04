@@ -1286,3 +1286,9 @@ All existing REST endpoints (`/generate`, `/modify`, `/select`, `/km`, etc.) and
 ### CDN versioning note
 
 The HTML view loads CanvasXpress from `https://www.canvasxpress.org/dist/canvasXpress.min.js`. No versioned CDN URL is offered by CanvasXpress upstream (verified 2026-05-28). Users who require reproducibility should self-host a pinned copy of `canvasXpress.min.js` and update the `<script src>` in `src/ui/cx_chart_view.html`.
+
+## License
+
+MIT — see [LICENSE](LICENSE). The MCP server code is MIT-licensed; it generates and validates
+configurations for the CanvasXpress JavaScript library, which is distributed separately under the
+CanvasXpress Community License (see https://www.canvasxpress.org/license.html).
