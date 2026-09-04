@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.canvasxpress.org/schema/cxfigure-1.0.schema.json",
+  "title": "CanvasXpress portable figure spec",
+  "description": "JSON Schema (DRAFT) for the persisted, portable CanvasXpress figure — the {data, config} object emitted by getConfig()/\"Save as JSON\" and embedded in the self-describing PNG. This is the primary contract users serialize and the surface the CI round-trip guarantee (roadmap #06 6d) must cover. config carries the full parameter vocabulary (hundreds of keys documented in the parameter reference); this schema pins the STRUCTURE and the load-bearing keys, and stays open (additionalProperties) for the long tail rather than freezing every parameter.",
+  "type": "object",
+  "required": ["data", "config"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Semver MAJOR.MINOR of the figure contract. NEW field (roadmap #06 6a); absent in specs written before it is introduced — readers must treat a missing value as the pre-1.0 baseline."
+    },
+    "data": {
+      "type": "object",
+      "description": "The wide-matrix data. y is the primary numeric matrix; x annotates samples (columns), z annotates variables (rows). Non-matrix graph types (network, genome, venn, map) carry their own data shapes under this key.",
+      "properties": {
+        "y": {
+          "type": "object",
+          "description": "Primary data matrix.",
+          "properties": {
+            "vars": { "type": "array", "description": "Row identifiers (variables).", "items": {} },
+            "smps": { "type": "array", "description": "Column identifiers (samples).", "items": {} },
+            "data": { "type": "array", "description": "Row-major values: data[i][j] for vars[i] x smps[j].", "items": { "type": "array" } }
+          },
+          "additionalProperties": true
+        },
+        "x": {
+          "type": "object",
+          "description": "Per-sample (column) annotations: annotation name -> array parallel to y.smps.",
+          "additionalProperties": { "type": "array" }
+        },
+        "z": {
+          "type": "object",
+          "description": "Per-variable (row) annotations: annotation name -> array parallel to y.vars.",
+          "additionalProperties": { "type": "array" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "config": {
+      "type": "object",
+      "description": "Rendering configuration. graphType selects the geometry; the remaining keys are the parameter vocabulary (see https://www.canvasxpress.org/parameters.html). Open by design — unknown keys within a MAJOR line are ignored, not fatal.",
+      "properties": {
+        "graphType": {
+          "type": "string",
+          "description": "The chart type, e.g. Scatter2D, Bar, Line, Heatmap, Boxplot, Violin, Network, Genome, Circular, Venn, Treemap, Meter, OptionsWall."
+        },
+        "title":      { "type": ["string", "array"] },
+        "xAxisTitle": { "type": "string" },
+        "yAxisTitle": { "type": "string" },
+        "colorBy":    { "type": "string" },
+        "sizeBy":     { "type": "string" },
+        "shapeBy":    { "type": "string" },
+        "segregateSamplesBy":   { "type": "array", "items": { "type": "string" } },
+        "segregateVariablesBy": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["graphType"],
+      "additionalProperties": true
+    },
+    "events":    { "type": ["object", "null"], "description": "Optional event handlers (function bodies serialized by name)." },
+    "info":      { "type": ["object", "null"], "description": "Optional info/metadata block." },
+    "afterRender": { "type": ["array", "null"], "description": "Optional replayable post-render operation list (the audit-trail seed)." }
+  },
+  "additionalProperties": true
+}
