@@ -2,65 +2,208 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://www.canvasxpress.org/schema/cxfigure-1.0.schema.json",
   "title": "CanvasXpress portable figure spec",
-  "description": "JSON Schema (DRAFT) for the persisted, portable CanvasXpress figure — the {data, config} object emitted by getConfig()/\"Save as JSON\" and embedded in the self-describing PNG. This is the primary contract users serialize and the surface the CI round-trip guarantee (roadmap #06 6d) must cover. config carries the full parameter vocabulary (hundreds of keys documented in the parameter reference); this schema pins the STRUCTURE and the load-bearing keys, and stays open (additionalProperties) for the long tail rather than freezing every parameter.",
+  "description": "JSON Schema for the persisted, portable CanvasXpress figure — the {data, config} object emitted by getConfig()/\"Save as JSON\" and embedded in the self-describing PNG. This is the primary contract users serialize and the surface the CI round-trip guarantee (the round-trip reproducibility guarantee) covers. Versioned 1.0 under the published compatibility policy: additive keys are MINOR and a reader ignores unknown keys, so this schema pins the STRUCTURE and the load-bearing keys and stays open (additionalProperties:true) for the long tail rather than freezing every parameter — strict name validation would break the forward-render guarantee (a 2031 key must not fail a 2026 validator). config carries the full parameter vocabulary (hundreds of keys documented in the parameter reference).",
   "type": "object",
-  "required": ["data", "config"],
+  "required": [
+    "data",
+    "config"
+  ],
   "properties": {
     "schemaVersion": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+$",
-      "description": "Semver MAJOR.MINOR of the figure contract. NEW field (roadmap #06 6a); absent in specs written before it is introduced — readers must treat a missing value as the pre-1.0 baseline."
+      "description": "Semver MAJOR.MINOR of the figure contract. NEW field ; absent in specs written before it is introduced — readers must treat a missing value as the pre-1.0 baseline."
     },
     "data": {
-      "type": "object",
-      "description": "The wide-matrix data. y is the primary numeric matrix; x annotates samples (columns), z annotates variables (rows). Non-matrix graph types (network, genome, venn, map) carry their own data shapes under this key.",
-      "properties": {
-        "y": {
+      "description": "The chart data, accepted in three shapes. (1) Object form: the wide-matrix { y, x, z } spec — this is what getConfig()/\"Save as JSON\" emits and the canonical persisted shape. (2) Array form: a tabular 2D array (data frame) whose first row is the column header and each subsequent row is a record — the engine converts it to the matrix form internally (arrayToCX). (3) String form: either a JSON string of the object/array form (parsed first), or a URL/path to a remote data file that is fetched and parsed by extension — .json (and .pl CGI), .csv/.tsv/.txt/.tab (delimited), .parquet, .png (self-describing PNG), .svg, .gexf/*ml/ml.bz2 (network/XML), and .zip/.tar/.tgz/.tar.gz/.gz archives; a DOM id of an HTML <table class=\"CanvasXpress\"> is also accepted. Non-matrix graph types (network, genome, venn, map) carry their own data shapes under the object form. A serialized figure normally stores the resolved object form, not a URL or string.",
+      "oneOf": [
+        {
           "type": "object",
-          "description": "Primary data matrix.",
+          "description": "Wide-matrix object form. y is the primary numeric matrix; x annotates samples (columns), z annotates variables (rows).",
           "properties": {
-            "vars": { "type": "array", "description": "Row identifiers (variables).", "items": {} },
-            "smps": { "type": "array", "description": "Column identifiers (samples).", "items": {} },
-            "data": { "type": "array", "description": "Row-major values: data[i][j] for vars[i] x smps[j].", "items": { "type": "array" } }
+            "y": {
+              "type": "object",
+              "description": "Primary data matrix.",
+              "properties": {
+                "vars": {
+                  "type": "array",
+                  "description": "Row identifiers (variables).",
+                  "items": {}
+                },
+                "smps": {
+                  "type": "array",
+                  "description": "Column identifiers (samples).",
+                  "items": {}
+                },
+                "data": {
+                  "type": "array",
+                  "description": "Row-major values: data[i][j] for vars[i] x smps[j].",
+                  "items": {
+                    "type": "array"
+                  }
+                }
+              },
+              "additionalProperties": true
+            },
+            "x": {
+              "type": "object",
+              "description": "Per-sample (column) annotations: annotation name -> array parallel to y.smps.",
+              "additionalProperties": {
+                "type": "array"
+              }
+            },
+            "z": {
+              "type": "object",
+              "description": "Per-variable (row) annotations: annotation name -> array parallel to y.vars.",
+              "additionalProperties": {
+                "type": "array"
+              }
+            }
           },
           "additionalProperties": true
         },
-        "x": {
-          "type": "object",
-          "description": "Per-sample (column) annotations: annotation name -> array parallel to y.smps.",
-          "additionalProperties": { "type": "array" }
+        {
+          "type": "array",
+          "description": "Tabular data-frame form: a 2D array of rows. The first row is the column header; each subsequent row is a record. Converted to the matrix form by arrayToCX.",
+          "items": {
+            "type": "array"
+          }
         },
-        "z": {
-          "type": "object",
-          "description": "Per-variable (row) annotations: annotation name -> array parallel to y.vars.",
-          "additionalProperties": { "type": "array" }
+        {
+          "type": "string",
+          "description": "String form: a JSON string of the object/array data, OR a URL/path to a remote data file fetched at load time and parsed by extension (.json/.pl, .csv/.tsv/.txt/.tab, .parquet, .png, .svg, .gexf/*ml/ml.bz2, .zip/.tar/.tgz/.tar.gz/.gz), OR the DOM id of an HTML <table class=\"CanvasXpress\">. Resolved to the object form before rendering."
         }
-      },
-      "additionalProperties": true
+      ]
     },
     "config": {
       "type": "object",
-      "description": "Rendering configuration. graphType selects the geometry; the remaining keys are the parameter vocabulary (see https://www.canvasxpress.org/parameters.html). Open by design — unknown keys within a MAJOR line are ignored, not fatal.",
+      "description": "Rendering configuration. graphType selects the geometry; the remaining keys are the parameter vocabulary (see https://www.canvasxpress.org/parameters.html). Open by design (additionalProperties:true, as the forward-render guarantee requires) — unknown keys within a MAJOR line are ignored, not fatal.",
       "properties": {
         "graphType": {
           "type": "string",
           "description": "The chart type, e.g. Scatter2D, Bar, Line, Heatmap, Boxplot, Violin, Network, Genome, Circular, Venn, Treemap, Meter, OptionsWall."
         },
-        "title":      { "type": ["string", "array"] },
-        "xAxisTitle": { "type": "string" },
-        "yAxisTitle": { "type": "string" },
-        "colorBy":    { "type": "string" },
-        "sizeBy":     { "type": "string" },
-        "shapeBy":    { "type": "string" },
-        "segregateSamplesBy":   { "type": "array", "items": { "type": "string" } },
-        "segregateVariablesBy": { "type": "array", "items": { "type": "string" } }
+        "title": {
+          "type": [
+            "string",
+            "array"
+          ]
+        },
+        "xAxisTitle": {
+          "type": "string"
+        },
+        "yAxisTitle": {
+          "type": "string"
+        },
+        "colorBy": {
+          "type": "string"
+        },
+        "sizeBy": {
+          "type": "string"
+        },
+        "shapeBy": {
+          "type": "string"
+        },
+        "segregateSamplesBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "segregateVariablesBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subtitle": {
+          "type": [
+            "string",
+            "array"
+          ]
+        },
+        "smpTitle": {
+          "type": "string"
+        },
+        "varTitle": {
+          "type": "string"
+        },
+        "showLegend": {
+          "type": "boolean"
+        },
+        "legendPosition": {
+          "type": "string"
+        },
+        "legendInside": {
+          "type": "boolean"
+        },
+        "colorScheme": {
+          "type": "string"
+        },
+        "theme": {
+          "type": "string"
+        },
+        "background": {
+          "type": "string"
+        },
+        "graphOrientation": {
+          "type": "string",
+          "description": "e.g. vertical or horizontal."
+        },
+        "showTransition": {
+          "type": "boolean"
+        },
+        "objectColorTransparency": {
+          "type": "number"
+        },
+        "xAxis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "yAxis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decimals": {
+          "type": "integer"
+        },
+        "widthFactor": {
+          "type": "number"
+        },
+        "fontName": {
+          "type": "string"
+        }
       },
-      "required": ["graphType"],
+      "required": [
+        "graphType"
+      ],
       "additionalProperties": true
     },
-    "events":    { "type": ["object", "null"], "description": "Optional event handlers (function bodies serialized by name)." },
-    "info":      { "type": ["object", "null"], "description": "Optional info/metadata block." },
-    "afterRender": { "type": ["array", "null"], "description": "Optional replayable post-render operation list (the audit-trail seed)." }
+    "events": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Optional event handlers (function bodies serialized by name)."
+    },
+    "info": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Optional info/metadata block."
+    },
+    "afterRender": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Optional replayable post-render operation list (the audit-trail seed)."
+    }
   },
   "additionalProperties": true
 }

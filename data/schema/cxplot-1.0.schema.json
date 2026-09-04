@@ -2,14 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://www.canvasxpress.org/schema/cxplot-1.0.schema.json",
   "title": "CanvasXpress cxplot grammar snapshot",
-  "description": "JSON Schema (DRAFT) for the materialized meta.cxplot grammar-of-graphics snapshot — the plain-value form produced by expandToSpec/normalizeSpec (materialized:true). The LIVE meta.cxplot is accessor-shaped (each slot is a function) and is not itself serializable; this schema targets its materialized projection. Grounded in build/js/canvasXpress.utilsDimension.js makePlotSpec() (top-level slots) and makeCoord()/makeFacet() (nested shapes). NOTE: schemaVersion and materialized are the contract fields; the seven grammar slots mirror the engine. Lenient (additionalProperties allowed) where runtime detail is engine-internal.",
+  "description": "JSON Schema (DRAFT) for the materialized meta.cxplot grammar-of-graphics snapshot — the plain-value form produced by expandToSpec/normalizeSpec (materialized:true). The LIVE meta.cxplot is accessor-shaped (each slot is a function) and is not itself serializable; this schema targets its materialized projection. Grounded in the CanvasXpress engine/canvasXpress.utilsDimension.js makePlotSpec() (top-level slots) and makeCoord()/makeFacet() (nested shapes). NOTE: schemaVersion and materialized are the contract fields; the seven grammar slots mirror the engine. Lenient (additionalProperties allowed) where runtime detail is engine-internal.",
   "type": "object",
-  "required": ["schemaVersion", "materialized", "mapping", "layers"],
+  "required": [
+    "schemaVersion",
+    "materialized",
+    "mapping",
+    "layers"
+  ],
   "properties": {
     "schemaVersion": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+$",
-      "description": "Semver MAJOR.MINOR of this grammar contract. NEW field (does not exist in the engine yet — added by roadmap #06 6a). Readers ignore unknown keys within a MAJOR line; a MAJOR bump ships a migration."
+      "description": "Semver MAJOR.MINOR of this grammar contract. NEW field (does not exist in the engine yet — added by ). Readers ignore unknown keys within a MAJOR line; a MAJOR bump ships a migration."
     },
     "materialized": {
       "const": true,
@@ -18,7 +23,9 @@
     "data": {
       "type": "array",
       "description": "The post-wrangle data frame as an array of row objects (cx.getWrangled()).",
-      "items": { "type": "object" }
+      "items": {
+        "type": "object"
+      }
     },
     "dataPipeline": {
       "type": "array",
@@ -26,9 +33,14 @@
       "items": {
         "type": "object",
         "properties": {
-          "op": { "type": "string", "description": "Verb name, e.g. group, segregate, transform, cluster." }
+          "op": {
+            "type": "string",
+            "description": "Verb name, e.g. group, segregate, transform, cluster."
+          }
         },
-        "required": ["op"],
+        "required": [
+          "op"
+        ],
         "additionalProperties": true
       }
     },
@@ -36,15 +48,72 @@
       "type": "object",
       "description": "Aesthetic bindings: aesthetic -> data column name (or null when unbound).",
       "properties": {
-        "x":        { "type": ["string", "array", "null"], "items": { "type": "string" } },
-        "y":        { "type": ["string", "array", "null"], "items": { "type": "string" } },
-        "z":        { "type": ["string", "array", "null"], "items": { "type": "string" } },
-        "color":    { "type": ["string", "null"] },
-        "size":     { "type": ["string", "null"] },
-        "shape":    { "type": ["string", "null"] },
-        "pattern":  { "type": ["string", "null"] },
-        "line":     { "type": ["string", "null"] },
-        "linetype": { "type": ["string", "null"] }
+        "x": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "y": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "z": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shape": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pattern": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linetype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
       "additionalProperties": true
     },
@@ -54,11 +123,25 @@
       "items": {
         "type": "object",
         "properties": {
-          "geom": { "type": "string", "description": "Geometry name, e.g. point, line, bar, area, boxplot, tile." },
-          "stat": { "type": "string", "description": "Statistical transform, e.g. identity, count, bin, density, smooth." },
-          "when": { "type": ["string", "null"], "description": "Optional gating condition for the layer." }
+          "geom": {
+            "type": "string",
+            "description": "Geometry name, e.g. point, line, bar, area, boxplot, tile."
+          },
+          "stat": {
+            "type": "string",
+            "description": "Statistical transform, e.g. identity, count, bin, density, smooth."
+          },
+          "when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional gating condition for the layer."
+          }
         },
-        "required": ["geom"],
+        "required": [
+          "geom"
+        ],
         "additionalProperties": true
       }
     },
@@ -66,15 +149,25 @@
       "type": "object",
       "description": "Positional + aesthetic scales. Positional binders x/y/smp/var/size; aesthetic palette refs colors/shapes/sizes/patterns/linePatterns. In the LIVE object these carry methods (map/mapValue/toPixel); in the materialized form they are descriptors.",
       "properties": {
-        "x":            { "type": "object" },
-        "y":            { "type": "object" },
-        "smp":          { "type": "object" },
-        "var":          { "type": "object" },
-        "size":         { "type": "object" },
-        "colors":       {},
-        "shapes":       {},
-        "sizes":        {},
-        "patterns":     {},
+        "x": {
+          "type": "object"
+        },
+        "y": {
+          "type": "object"
+        },
+        "smp": {
+          "type": "object"
+        },
+        "var": {
+          "type": "object"
+        },
+        "size": {
+          "type": "object"
+        },
+        "colors": {},
+        "shapes": {},
+        "sizes": {},
+        "patterns": {},
         "linePatterns": {}
       },
       "additionalProperties": true
@@ -83,8 +176,17 @@
       "type": "object",
       "description": "Coordinate system descriptor from makeCoord()/makeCoordPolar().",
       "properties": {
-        "type":   { "type": "string", "enum": ["cartesian", "flip", "polar"] },
-        "invert": { "type": "boolean" }
+        "type": {
+          "type": "string",
+          "enum": [
+            "cartesian",
+            "flip",
+            "polar"
+          ]
+        },
+        "invert": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": true
     },
@@ -92,14 +194,42 @@
       "type": "object",
       "description": "Small-multiples read-model from makeFacet().",
       "properties": {
-        "type":        { "type": "string", "enum": ["none", "grid", "wrap"] },
-        "active":      { "type": "boolean" },
-        "bySamples":   { "type": "array", "items": { "type": "string" } },
-        "byVariables": { "type": "array", "items": { "type": "string" } },
-        "rows":        { "type": "integer" },
-        "cols":        { "type": "integer" },
-        "topology":    { "type": "string", "description": "\"RxC\" grid string." },
-        "freeScales":  { "type": "boolean" }
+        "type": {
+          "type": "string",
+          "enum": [
+            "none",
+            "grid",
+            "wrap"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "bySamples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "byVariables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "cols": {
+          "type": "integer"
+        },
+        "topology": {
+          "type": "string",
+          "description": "\"RxC\" grid string."
+        },
+        "freeScales": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": true
     }
