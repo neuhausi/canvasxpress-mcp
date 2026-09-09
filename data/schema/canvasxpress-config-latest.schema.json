@@ -520,7 +520,7 @@
       "type": "string",
       "description": "Color Blindness",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "protanopia",
         "deuteranopia",
@@ -933,7 +933,7 @@
       "type": "string",
       "description": "Variable name identifying the target/reference in bullet AND meter graphs. In a Meter it draws a reference tick on the radial marks (gauge/speedometer/digital), summarized on the same basis as the value",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Bullet Graphs",
@@ -1360,7 +1360,7 @@
       "type": "string",
       "description": "Name of a variable annotation or a sample name or the string variable to color the variables",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -1392,7 +1392,7 @@
       "type": "string",
       "description": "Name of the variable annotation to color the labels in Scatter2D plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -1570,7 +1570,7 @@
       "type": "string",
       "description": "Name of metadata annotation to color the sample (row) dendrogram",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Dendrograms",
@@ -1630,7 +1630,7 @@
       "type": "string",
       "description": "Name of metadata annotation to color the variable (column) dendrogram",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Dendrograms",
@@ -1664,7 +1664,7 @@
       "type": "string",
       "description": "Name of a variable annotation to color the confidence intervals",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -1683,7 +1683,7 @@
       "type": "string",
       "description": "Type of coordination to color fit line, confidence intervals and data points. Full is the same color for all elements. Line is the same color for confidence intervals and line fit only",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         "full",
         "line",
         false
@@ -1709,7 +1709,7 @@
       "type": "string",
       "description": "Name of a variable annotation to connect the variables",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -3694,7 +3694,7 @@
       "type": "string",
       "description": "Name of a sample annotation to dodge the samples of each variable in Bar graphs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -3767,7 +3767,7 @@
       "type": "string",
       "description": "Utility to create error ellipses in Scatter plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -4381,7 +4381,7 @@
       "type": "string",
       "description": "Variable annotation in the x object to use in Gantt plots as completion percentage. Must be a value between 0 and 1",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Gantt Charts",
@@ -4398,7 +4398,7 @@
       "type": "string",
       "description": "Variable annotation in the x object to use in Gantt plots as dependency. Must be a valid sample / group name",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Gantt Charts",
@@ -4416,7 +4416,7 @@
       "type": "string",
       "description": "Variable annotation for the type of ending for the dependency line. Options are arrow, square or round",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Gantt Charts",
@@ -4433,7 +4433,7 @@
       "type": "string",
       "description": "Variable to use in Gantt plots as end date. Defaults to the second variable in the data set",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Gantt Charts",
@@ -4443,7 +4443,7 @@
       "type": "string",
       "description": "Variable to use in Gantt plots as start date. Defaults to the first variable in the data set",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Gantt Charts",
@@ -5152,7 +5152,7 @@
       "type": "string",
       "description": "Name of a variable / sample annotation to filter the data with an external HTML widget. Changes are not reflected when the customizer is open",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "HTML Widgets",
@@ -5594,7 +5594,7 @@
       "type": "string",
       "description": "Name of the variable annotation to use labels in Scatter2D plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -6139,7 +6139,7 @@
       "type": "string",
       "description": "Name of a sample annotation to stack the samples of each variable in Line graphs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -6149,7 +6149,7 @@
       "type": "string",
       "description": "Lines decorations in the line graphs",
       "default": "symbol",
-      "enum": [
+      "x-cx-options": [
         false,
         "dot",
         "symbol",
@@ -6358,7 +6358,7 @@
       "type": "string",
       "description": "Loess degree. 0 : Constant, 1 : Linear, 2 : Quadratic",
       "default": 2,
-      "enum": [
+      "x-cx-options": [
         0,
         1,
         2
@@ -6424,7 +6424,7 @@
       "type": "string",
       "description": "Sample name included in the data.y.smps object used to map to the copy number value",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Manhattan Plots",
@@ -6458,7 +6458,7 @@
       "type": "string",
       "description": "Sample name included in the data.y.smps object used to map to the negative log 10 p value",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Manhattan Plots",
@@ -6468,7 +6468,7 @@
       "type": "string",
       "description": "Sample name included in the data.y.smps object used to map to the position in base pairs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Manhattan Plots",
@@ -6478,7 +6478,7 @@
       "type": "string",
       "description": "Sample name included in the data.y.smps object used to map the end position",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Manhattan Plots",
@@ -6495,7 +6495,7 @@
       "type": "string",
       "description": "Sample name included in the data.y.smps object used to map the start position",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Manhattan Plots",
@@ -6677,7 +6677,7 @@
       "type": "string",
       "description": "Utility to create dynamic markers in Map. It must have a latitude and longitude metadata too",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -6982,7 +6982,7 @@
       "type": "string",
       "description": "Causes constraints to be generated such that directed graphs are laid out either from left-to-right or top-to-bottom. A separation constraint is generated in the selected axis for each edge that is not involved in a cycle",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "x",
         "y"
@@ -7443,7 +7443,7 @@
       "type": "string",
       "description": "Cadence word for the price-panel title (e.g. daily/weekly/monthly); auto-inferred from the date spacing when unset",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "OptionsWall Charts",
@@ -7474,7 +7474,7 @@
       "type": "string",
       "description": "Option chain object for one expiry: {strikes, expiry, call:{premium,iv,volume}, put:{premium,iv,volume}}",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "OptionsWall Charts",
@@ -7484,7 +7484,7 @@
       "type": "string",
       "description": "Expiry label shown in the flank panel titles (e.g. \"2026-10-17\")",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "OptionsWall Charts",
@@ -7792,7 +7792,7 @@
       "type": "string",
       "description": "Name of a variable annotation or a sample name or the string variable to pattern the variables. When patternByData is specified patternBy is used for the title in the legend",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -7890,7 +7890,7 @@
       "type": "string",
       "description": "Utility to create pie with a sample annotation",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -7961,7 +7961,7 @@
       "type": "string",
       "description": "Utility to pivot data with a sample annotation",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -8571,7 +8571,7 @@
       "type": "string",
       "description": "Type of transformation for values in R axis",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "log2",
         "log10",
@@ -8656,7 +8656,7 @@
       "type": "string",
       "description": "Name of the group used in ratio transformation. Almost private parameters used within the different CanvasXpress UIs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Ratio Reference",
@@ -8680,7 +8680,7 @@
       "type": "string",
       "description": "Name of the sample used in ratio transformation. Almost private parameters used within the different CanvasXpress UIs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Ratio Reference",
@@ -8771,7 +8771,7 @@
       "type": "string",
       "description": "Name of a sample annotation(s) to create a ribbon of each variable in scatter plots. If a single annotation is passed then it will be used as a standard deviation. If two annotations are passed then, it will be used as upper and lower confidence intervals. Alternatively it could be a pair of arrays witht the actual data. Works in coordination with the lineBy parameter",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -8792,7 +8792,7 @@
       "type": "string",
       "description": "Utility to create ridgelines in Scatter2D plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -9052,7 +9052,7 @@
       "type": "string",
       "description": "Name of a sample annotation to use as source in the sankey diagrams",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Sankey Diagrams",
@@ -9062,7 +9062,7 @@
       "type": "string",
       "description": "Name of a sample annotation to use as target in the sankey diagrams",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Sankey Diagrams",
@@ -9306,7 +9306,7 @@
       "type": "string",
       "description": "Could be a boolean to plot a matrix of 2D scatterplots or a sample annotation to color and segregate the plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         true,
         false
       ],
@@ -9394,7 +9394,7 @@
       "type": "string",
       "description": "Type of scatter plot",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "line",
         "bar",
@@ -9479,7 +9479,7 @@
       "type": "string",
       "description": "Metadata (or factor) to use to display selected data points instead of the variable name. This metadata has to be in the data.z object. This property is only valid when the selectionMode is name and the visualization is a Scatter plot",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Selection",
@@ -9955,7 +9955,7 @@
       "type": "string",
       "description": "Name of a variable annotation or a sample name or the string variable to shape the variables. When shapeByData is specified shapeBy is used for the title in the legend",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -9980,7 +9980,7 @@
       "type": "string",
       "description": "String that identify the shape to use in regular and multidimensional heatmaps. shapeByData will take precedence over this property",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "sphere",
         "square",
@@ -10334,7 +10334,7 @@
       "type": "string",
       "description": "Name of a variable annotation, or set to true, to display a loess smoothing curve in Scatter plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Loess",
@@ -10442,7 +10442,7 @@
       "type": "string",
       "description": "Name of a variable annotation, or set to true, to display a regression fit in Scatter plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Regression",
@@ -10648,7 +10648,7 @@
       "type": "string",
       "description": "Name of a variable annotation or a sample name or the string variable to size the variables. When sizeByData is specified sizeBy is used for the title in the legend",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -10687,7 +10687,7 @@
       "type": "string",
       "description": "Name of the variable annotation to size the labels in Scatter2D plots",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -11022,7 +11022,7 @@
       "type": "string",
       "description": "Sort the name of the groups after sample grouping.",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "ascending",
         "descending"
@@ -11055,7 +11055,7 @@
       "type": "string",
       "description": "Name of a sample annotation to stack the samples of each variable in Bar graphs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Data Point Attributes",
@@ -11339,7 +11339,7 @@
       "type": "string",
       "description": "Summary type for the data when grouping",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "iqr",
         "median",
@@ -11357,7 +11357,7 @@
       "type": "string",
       "description": "Variable to use in Swimmer Plot. Defaults to the third variable in the data set. See https://blogs.sas.com/content/graphicallyspeaking/2014/06/22/swimmer-plot/",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Swimmer Graphs",
@@ -11367,7 +11367,7 @@
       "type": "string",
       "description": "Variable to use in Swimmer plot. Defaults to the first variable in the data set. See https://blogs.sas.com/content/graphicallyspeaking/2014/06/22/swimmer-plot/",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Swimmer Graphs",
@@ -11377,7 +11377,7 @@
       "type": "string",
       "description": "Name of sample annotation to use in Swimmer Plot. Defaults to High Cap. See https://blogs.sas.com/content/graphicallyspeaking/2014/06/22/swimmer-plot/",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Swimmer Graphs",
@@ -11387,7 +11387,7 @@
       "type": "string",
       "description": "Variable to use in Swimmer Plot. Defaults to the second variable in the data set. See https://blogs.sas.com/content/graphicallyspeaking/2014/06/22/swimmer-plot/",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Swimmer Graphs",
@@ -11397,7 +11397,7 @@
       "type": "string",
       "description": "Name of sample annotation to use in Swimmer Plot. Defaults to Status. See https://blogs.sas.com/content/graphicallyspeaking/2014/06/22/swimmer-plot/",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false
       ],
       "x-cx-category": "Swimmer Graphs",
@@ -11407,7 +11407,7 @@
       "type": "string",
       "description": "Shape for the tag cloud",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "circle",
         "cardioid",
@@ -11901,7 +11901,7 @@
       "type": "string",
       "description": "Default transformation type for ALL the data. Data can also be transformed by axis (x,y,z) to give more flexibility. false, save, reset and undo are NOT real transformations. They are only used in the canvasXpress UIs to save the transformed data",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "log2",
         "log10",
@@ -12786,7 +12786,7 @@
       "type": "string",
       "description": "Name of a variable annotation whose levels become the keyframes of an animation played through a timeline widget (play/stop and a draggable scrubber). Each level filters the data to that frame and the graph tweens between frames via showTransition. Supported in Scatter, Bar, Map, Fish and line-based graphs",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "variable"
       ],
@@ -13614,7 +13614,7 @@
       "type": "string",
       "description": "Type of transformation for values in X axis",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "log2",
         "log10",
@@ -14269,7 +14269,7 @@
       "type": "string",
       "description": "Type of transformation for values in Y axis",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "log2",
         "log10",
@@ -14771,7 +14771,7 @@
       "type": "string",
       "description": "Type of transformation for values in Z axis",
       "default": false,
-      "enum": [
+      "x-cx-options": [
         false,
         "log2",
         "log10",

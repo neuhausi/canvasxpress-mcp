@@ -659,12 +659,22 @@ def _config_schema_to_entries(schema_json: dict) -> dict[str, dict]:
         if not isinstance(prop, dict):
             continue
         enum = prop.get("enum")
+        # An enum containing a NON-string sentinel (e.g. False) is advisory, not
+        # closed: those parameters (colorBy, lineBy, ganttStart, ...) also accept
+        # a data reference — any column/annotation name is legitimate. Treating
+        # them as closed sets flags correct configs as invalid, so only
+        # all-string enums become enforceable valid_values.
+        closed = (isinstance(enum, list) and enum
+                  and all(isinstance(v, str) for v in enum))
         entries[name] = {
             "description":  prop.get("description", ""),
             "type":         _mcp_type_for(prop),
-            "valid_values": list(enum) if isinstance(enum, list) else [],
+            "valid_values": list(enum) if closed else [],
             "graph_types":  ["all"],
         }
+        if isinstance(enum, list) and not closed:
+            # Keep them as prompt suggestions, just not for validation.
+            entries[name]["suggested_values"] = [v for v in enum if isinstance(v, str)]
     return entries
 
 
