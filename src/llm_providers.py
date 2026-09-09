@@ -411,29 +411,53 @@ def _get_gemini():
 # Provider implementations
 # ---------------------------------------------------------------------------
 
+def _anthropic_system_blocks(system: str, system_suffix: str) -> list:
+    """Build the system parameter as cacheable blocks.
+
+    The stable prompt goes first and carries the single cache breakpoint, so
+    every call re-uses it instead of re-sending ~4.5k tokens at full price.
+    Anything that varies per request (the graph-type parameter snippet) goes
+    AFTER the breakpoint — a prompt cache is a prefix match, so putting it
+    inside the cached block would fragment the cache per graph type.
+    """
+    blocks = [{"type": "text", "text": system,
+               "cache_control": {"type": "ephemeral"}}]
+    if system_suffix:
+        blocks.append({"type": "text", "text": system_suffix})
+    return blocks
+
+
+def _anthropic_usage(message) -> dict:
+    """Usage dict including cache hit/write counts for admin visibility."""
+    usage = message.usage
+    return {
+        "input_tokens":  usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "stop_reason":   message.stop_reason,
+        "cache_read_input_tokens":     getattr(usage, "cache_read_input_tokens", 0) or 0,
+        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+    }
+
+
 def _complete_anthropic(
     system: str,
     user: str,
     model: str,
     temperature: float,
     max_tokens: int,
+    system_suffix: str = "",
 ) -> tuple[str, dict]:
-    """Call the Anthropic API directly."""
+    """Call the Anthropic API directly, with the stable system prompt cached."""
     client = _get_anthropic()
     message = client.messages.create(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
-        system=system,
+        system=_anthropic_system_blocks(system, system_suffix),
         messages=[{"role": "user", "content": user}],
     )
     text = message.content[0].text
-    usage = {
-        "input_tokens":  message.usage.input_tokens,
-        "output_tokens": message.usage.output_tokens,
-        "stop_reason":   message.stop_reason,
-    }
-    return text, usage
+    return text, _anthropic_usage(message)
 
 
 def _complete_bedrock(
@@ -601,6 +625,7 @@ def _complete_gateway(
     model: str,
     temperature: float,
     max_tokens: int,
+    system_suffix: str = "",
 ) -> tuple[str, dict]:
     """
     Route to the correct corporate gateway endpoint based on model name.
@@ -614,16 +639,11 @@ def _complete_gateway(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
-            system=system,
+            system=_anthropic_system_blocks(system, system_suffix),
             messages=[{"role": "user", "content": user}],
         )
         text = message.content[0].text
-        usage = {
-            "input_tokens":  message.usage.input_tokens,
-            "output_tokens": message.usage.output_tokens,
-            "stop_reason":   message.stop_reason,
-        }
-        return text, usage
+        return text, _anthropic_usage(message)
     else:
         client = _get_gateway_openai()
         # gpt-5+ models require max_completion_tokens instead of max_tokens
@@ -632,7 +652,8 @@ def _complete_gateway(
             client,
             model,
             [
-                {"role": "system", "content": system},
+                {"role": "system",
+                 "content": system + ("\n" + system_suffix if system_suffix else "")},
                 {"role": "user",   "content": user},
             ],
             temperature,
@@ -701,21 +722,28 @@ def complete(
     model: str | None = None,
     temperature: float = 0.0,
     max_tokens: int = 1500,
+    system_suffix: str = "",
 ) -> tuple[str, dict]:
     """
     Send a system + user prompt to the configured LLM provider.
 
     Args:
-        system:      System prompt string.
+        system:      Stable system prompt. On Anthropic-SDK providers this is
+                     the cached prefix, so keep it byte-identical across calls.
         user:        User message string.
         model:       Model identifier. If None, uses the LLM_MODEL env var
                      (or the provider default).
         temperature: Sampling temperature 0.0–1.0.
         max_tokens:  Maximum tokens to generate.
+        system_suffix: Per-request system text (e.g. the graph-type parameter
+                     snippet). Kept OUT of the cached prefix on Anthropic-SDK
+                     providers; simply appended for the others.
 
     Returns:
         (text, usage) where text is the raw model output string and usage is a
-        dict with input_tokens, output_tokens, stop_reason.
+        dict with input_tokens, output_tokens, stop_reason, and — on
+        Anthropic-SDK providers — cache_read_input_tokens and
+        cache_creation_input_tokens.
 
     Raises:
         ValueError:      Unknown provider.
@@ -736,8 +764,20 @@ def complete(
         PROVIDER, effective_model, temperature, max_tokens,
     )
 
+    # Only the Anthropic-SDK providers understand cacheable system blocks; for
+    # everyone else fold the suffix back into one string so behaviour is
+    # unchanged.
+    if PROVIDER in ("anthropic", "gateway"):
+        return fn(
+            system=system,
+            user=user,
+            model=effective_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            system_suffix=system_suffix,
+        )
     return fn(
-        system=system,
+        system=system + ("\n" + system_suffix if system_suffix else ""),
         user=user,
         model=effective_model,
         temperature=temperature,

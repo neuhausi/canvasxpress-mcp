@@ -693,6 +693,60 @@ Return empty string if the config cannot be made valid.
 """
 
 
+# ---------------------------------------------------------------------------
+# Prompt-cache accounting (admin visibility)
+#
+# The stable system prompt is ~4.5k tokens and is sent on every call, so whether
+# it is being served from cache is the single biggest cost lever. These counters
+# make that visible without turning on DEBUG.
+# ---------------------------------------------------------------------------
+
+CACHE_STATS = {
+    "calls": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+}
+
+
+def _log_cache_usage(op: str, usage: dict) -> None:
+    """Accumulate and log token usage, including prompt-cache effectiveness.
+
+    ``cache_read`` staying at 0 across repeated calls means something is
+    invalidating the prefix (the prompt is a prefix match, so any byte change
+    ahead of the breakpoint costs a full re-read).
+    """
+    try:
+        read = usage.get("cache_read_input_tokens", 0) or 0
+        write = usage.get("cache_creation_input_tokens", 0) or 0
+        CACHE_STATS["calls"] += 1
+        CACHE_STATS["cache_read_input_tokens"] += read
+        CACHE_STATS["cache_creation_input_tokens"] += write
+        CACHE_STATS["input_tokens"] += usage.get("input_tokens", 0) or 0
+        CACHE_STATS["output_tokens"] += usage.get("output_tokens", 0) or 0
+        log.info(
+            "%s: tokens in=%s out=%s cache_read=%s cache_write=%s",
+            op, usage.get("input_tokens", "?"), usage.get("output_tokens", "?"),
+            read, write,
+        )
+    except Exception:  # noqa: BLE001 - accounting must never break a request
+        pass
+
+
+def cache_stats() -> dict:
+    """Cumulative prompt-cache accounting since process start.
+
+    ``hit_rate`` is cached tokens as a share of all cacheable input (reads plus
+    writes): 0.0 means the cache is never hitting, and it climbs toward 1.0 as
+    the stable prefix is re-used.
+    """
+    stats = dict(CACHE_STATS)
+    cacheable = stats["cache_read_input_tokens"] + stats["cache_creation_input_tokens"]
+    stats["hit_rate"] = round(stats["cache_read_input_tokens"] / cacheable, 3) if cacheable else 0.0
+    return stats
+
+
 def build_system_prompt(
     description: str,
     headers: list[str] | None,
@@ -700,18 +754,18 @@ def build_system_prompt(
 ) -> tuple[str, int, Optional[str]]:
     """
     Build a graph-type-aware, tiered system prompt from the knowledge DB.
-    Returns (prompt_string, tier_used, detected_graph_type).
+    Returns (stable_prompt, tier_used, detected_graph_type, volatile_suffix).
     """
     tier       = detect_tier(description, headers, data)
     graph_type = detect_graph_type(description)
-    prompt     = SYSTEM_PROMPT
 
-    # Inject live parameter+valid-values snippet from cx_knowledge
+    # The parameter snippet varies with the detected graph type, so it is
+    # returned SEPARATELY rather than appended: callers pass it as the
+    # uncached system suffix, leaving SYSTEM_PROMPT a byte-identical cacheable
+    # prefix shared by every graph type.
     param_snippet = cx_knowledge.get_param_snippet(graph_type=graph_type)
-    if param_snippet:
-        prompt += "\n" + param_snippet
 
-    return prompt, tier, graph_type
+    return SYSTEM_PROMPT, tier, graph_type, (("\n" + param_snippet) if param_snippet else "")
 
 
 # Warm the cx_knowledge schema cache
@@ -825,7 +879,7 @@ def generate_config(
         print(f"  Calling Anthropic API...", file=sys.stderr)
 
     # Build tiered, graph-type-aware system prompt from knowledge DB
-    system_prompt, tier, graph_type = build_system_prompt(description, headers, data_ref)
+    system_prompt, tier, graph_type, system_suffix = build_system_prompt(description, headers, data_ref)
     if DEBUG:
         bar = "─" * 64
         print("", file=sys.stderr)
@@ -842,13 +896,17 @@ def generate_config(
         user=prompt,
         temperature=temperature,
         max_tokens=1500,
+        system_suffix=system_suffix,
     )
     t_llm = (time.perf_counter() - t1) * 1000
+    _log_cache_usage("generate", usage)
 
     if DEBUG:
         print(f"  Latency       : {t_llm:.0f}ms", file=sys.stderr)
         print(f"  Input tokens  : {usage.get('input_tokens', '?')}", file=sys.stderr)
         print(f"  Output tokens : {usage.get('output_tokens', '?')}", file=sys.stderr)
+        print(f"  Cache read    : {usage.get('cache_read_input_tokens', 0)}", file=sys.stderr)
+        print(f"  Cache write   : {usage.get('cache_creation_input_tokens', 0)}", file=sys.stderr)
         print(f"  Stop reason   : {usage.get('stop_reason', '?')}", file=sys.stderr)
 
     # ── Step 4: Parse response ───────────────────────────────────────────────
@@ -974,7 +1032,7 @@ def modify_config(
         print(f"  Prompt length : {len(prompt)} chars", file=sys.stderr)
 
     # ── Build system prompt (tiered, reusing existing logic) ──────────────────
-    system_prompt, tier, detected_gt = build_system_prompt(instruction, headers, None)
+    system_prompt, tier, detected_gt, system_suffix = build_system_prompt(instruction, headers, None)
 
     modify_preamble = (
         "You are a CanvasXpress configuration editor. "
@@ -1010,8 +1068,10 @@ def modify_config(
         user=prompt,
         temperature=temperature,
         max_tokens=1500,
+        system_suffix=system_suffix,
     )
     t_llm = (time.perf_counter() - t1) * 1000
+    _log_cache_usage("modify", usage)
 
     if DEBUG:
         print(f"  Latency       : {t_llm:.0f}ms", file=sys.stderr)
@@ -1523,6 +1583,21 @@ async def rest_schema(request: Request) -> Response:
     if text == "{}":
         return JSONResponse({"error": "schema not found"}, status_code=404)
     return Response(text, media_type="application/schema+json")
+
+
+@mcp.custom_route("/cache-stats", methods=["GET"])
+async def rest_cache_stats(request: Request) -> Response:
+    """Prompt-cache accounting since process start (admin visibility).
+
+    The stable system prompt is ~4.5k tokens and rides every generate/modify
+    call, so `hit_rate` is the clearest signal of whether prompt caching is
+    actually working. A hit_rate stuck near 0 means the cached prefix is being
+    invalidated and every call is paying full input price.
+    """
+    stats = cache_stats()
+    stats["provider"] = PROVIDER
+    stats["model"] = MODEL
+    return JSONResponse(stats)
 
 
 @mcp.custom_route("/validate", methods=["POST"])
