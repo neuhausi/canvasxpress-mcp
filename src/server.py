@@ -14,6 +14,7 @@ Run build_index.py once before starting to build the vector index:
 Runs at http://0.0.0.0:8100/mcp
 """
 
+import contextvars
 import json
 import os
 import re
@@ -701,12 +702,74 @@ Return empty string if the config cannot be made valid.
 # make that visible without turning on DEBUG.
 # ---------------------------------------------------------------------------
 
+# Per-MTok prices used to turn token counts into dollars. Override per
+# deployment with LLM_PRICE_INPUT / LLM_PRICE_OUTPUT (USD per million tokens);
+# a cached read is billed at a fraction of the input rate.
+_PRICES = {
+    "claude-opus-5":    (5.0, 25.0),
+    "claude-opus-4-8":  (5.0, 25.0),
+    "claude-sonnet-5":  (2.0, 10.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+_CACHE_READ_RATIO = float(os.environ.get("LLM_CACHE_READ_RATIO", "0.1"))
+_CACHE_WRITE_RATIO = float(os.environ.get("LLM_CACHE_WRITE_RATIO", "1.25"))
+
+
+def _rates() -> tuple:
+    """(input, output) USD per million tokens for the configured model."""
+    pin, pout = _PRICES.get(MODEL, (0.0, 0.0))
+    try:
+        pin = float(os.environ.get("LLM_PRICE_INPUT", pin))
+        pout = float(os.environ.get("LLM_PRICE_OUTPUT", pout))
+    except ValueError:
+        pass
+    return pin, pout
+
+
+def usage_cost(usage: dict) -> float:
+    """Estimated USD for one call. 0.0 when the model has no known price."""
+    pin, pout = _rates()
+    if not pin and not pout:
+        return 0.0
+    return (
+        (usage.get("input_tokens", 0) or 0) * pin
+        + (usage.get("output_tokens", 0) or 0) * pout
+        + (usage.get("cache_read_input_tokens", 0) or 0) * pin * _CACHE_READ_RATIO
+        + (usage.get("cache_creation_input_tokens", 0) or 0) * pin * _CACHE_WRITE_RATIO
+    ) / 1e6
+
+
+# Per-request usage, so a caller can be told what ITS request cost. A
+# ContextVar (not a module global) keeps concurrent requests from stealing each
+# other's totals.
+_REQUEST_USAGE: contextvars.ContextVar = contextvars.ContextVar("cx_request_usage", default=None)
+
+
+def begin_request_usage() -> None:
+    """Start a fresh per-request usage tally."""
+    _REQUEST_USAGE.set({"calls": 0, "input_tokens": 0, "output_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0, "cost_usd": 0.0})
+
+
+def end_request_usage() -> dict:
+    """Return (and clear) the tally for the current request."""
+    tally = _REQUEST_USAGE.get()
+    _REQUEST_USAGE.set(None)
+    if not tally:
+        return {}
+    tally["cost_usd"] = round(tally["cost_usd"], 6)
+    return tally
+
+
 CACHE_STATS = {
     "calls": 0,
     "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
     "input_tokens": 0,
     "output_tokens": 0,
+    "cost_usd": 0.0,
 }
 
 
@@ -725,10 +788,21 @@ def _log_cache_usage(op: str, usage: dict) -> None:
         CACHE_STATS["cache_creation_input_tokens"] += write
         CACHE_STATS["input_tokens"] += usage.get("input_tokens", 0) or 0
         CACHE_STATS["output_tokens"] += usage.get("output_tokens", 0) or 0
+        cost = usage_cost(usage)
+        CACHE_STATS["cost_usd"] += cost
+        usage["cost_usd"] = round(cost, 6)
+        tally = _REQUEST_USAGE.get()
+        if tally is not None:
+            tally["calls"] += 1
+            tally["input_tokens"] += usage.get("input_tokens", 0) or 0
+            tally["output_tokens"] += usage.get("output_tokens", 0) or 0
+            tally["cache_read_input_tokens"] += read
+            tally["cache_creation_input_tokens"] += write
+            tally["cost_usd"] += cost
         log.info(
-            "%s: tokens in=%s out=%s cache_read=%s cache_write=%s",
+            "%s: tokens in=%s out=%s cache_read=%s cache_write=%s cost=$%.5f",
             op, usage.get("input_tokens", "?"), usage.get("output_tokens", "?"),
-            read, write,
+            read, write, cost,
         )
     except Exception:  # noqa: BLE001 - accounting must never break a request
         pass
@@ -744,6 +818,11 @@ def cache_stats() -> dict:
     stats = dict(CACHE_STATS)
     cacheable = stats["cache_read_input_tokens"] + stats["cache_creation_input_tokens"]
     stats["hit_rate"] = round(stats["cache_read_input_tokens"] / cacheable, 3) if cacheable else 0.0
+    stats["cost_usd"] = round(stats["cost_usd"], 5)
+    stats["cost_usd_per_call"] = round(stats["cost_usd"] / stats["calls"], 5) if stats["calls"] else 0.0
+    pin, pout = _rates()
+    stats["rates_usd_per_mtok"] = {"input": pin, "output": pout,
+                                   "cache_read_ratio": _CACHE_READ_RATIO}
     return stats
 
 
@@ -2085,6 +2164,7 @@ def generate_canvasxpress_config(
             print(f"  {col:25s} → {typ}", file=sys.stderr)
 
     log.info("Generating config for: %s", description)
+    begin_request_usage()
     result = generate_config(description, resolved_headers, column_types, temperature)
     if isinstance(result, tuple):
         config, removed_params = result
@@ -2203,6 +2283,9 @@ def generate_canvasxpress_config(
         "headers_used":   resolved_headers or [],
         "types_used":     column_types or {},
         "removed_params": removed_params,
+        # Token/cost accounting for THIS request, so a caller (e.g. the
+        # dashboards bridge) can report what a dashboard actually cost.
+        "usage":          end_request_usage(),
     }
 # Note: tier info is logged in debug mode but not returned to keep response lean
 
