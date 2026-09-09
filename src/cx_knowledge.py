@@ -58,6 +58,47 @@ SKIP_FETCH  = os.environ.get("CX_SKIP_FETCH", "").lower() in ("1", "true", "yes"
 _FETCH_FILES = ["SCHEMA.md", "RULES.md", "CONTEXT.md"]
 
 # ---------------------------------------------------------------------------
+# Authoritative config JSON Schema (canvasxpress.org)
+#
+# canvasXpress publishes a machine-generated JSON Schema of EVERY documented
+# config parameter — its type, default and (for enums) allowed values — built
+# from the engine's own internal registry. We prefer it over the regex-scraped
+# markdown for param types and valid_values, because it is exhaustive
+# (~1,686 params vs the markdown/bundled handful) and never drifts from the
+# code. It carries no graph-type applicability, so SCHEMA.md/RULES.md still
+# supply graph_types on top of it (see load_schema()).
+#   Primary : the published latest schema
+#   Fallback : locally cached copy, then the bundled copy in data/schema/
+# ---------------------------------------------------------------------------
+CONFIG_SCHEMA_URL   = os.environ.get(
+    "CX_CONFIG_SCHEMA_URL",
+    "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
+)
+_CONFIG_SCHEMA_CACHE   = _CACHE_DIR / "canvasxpress-config.schema.json"
+_CONFIG_SCHEMA_BUNDLED = _BASE_DIR / "data" / "schema" / "canvasxpress-config-latest.schema.json"
+
+# graphType alias -> canonical graphType, read from the config schema's
+# x-cx-graphtype-aliases block (populated by _load_config_schema_entries()).
+# The core accepts BOTH names, so an alias is never an invalid graphType; this
+# map only says which canonical type it renders as.
+_GRAPHTYPE_ALIASES: dict[str, str] = {}
+
+# Every graphType name the config schema declares (aliases + canonical). Stashed
+# at config-schema load so it is available while the markdown KB is parsed,
+# which happens before the schema cache is populated.
+_CONFIG_GRAPH_TYPES: set[str] = set()
+
+# JSON Schema type -> the MCP knowledge vocabulary (string|numeric|boolean|array|object).
+_JSON_TYPE_TO_MCP = {
+    "string":  "string",
+    "boolean": "boolean",
+    "integer": "numeric",
+    "number":  "numeric",
+    "array":   "array",
+    "object":  "object",
+}
+
+# ---------------------------------------------------------------------------
 # Bundled minimal schema (offline fallback)
 # Keys: parameter name → {description, valid_values, graph_types, type}
 # graph_types: list of applicable graph type names, or ["all"] for universal
@@ -482,9 +523,19 @@ _ALL_GRAPH_TYPES = {
 }
 
 
+def _all_graph_types() -> set[str]:
+    """Every graphType name the engine accepts, aliases included.
+
+    Prefers the config schema's graphType enum — the engine's own list, so it
+    cannot drift — and falls back to the hardcoded _ALL_GRAPH_TYPES set when no
+    config schema layer is available.
+    """
+    return _CONFIG_GRAPH_TYPES or _ALL_GRAPH_TYPES
+
+
 def _extract_graph_types(text: str) -> list[str]:
     """Return graph type names mentioned in a block of text."""
-    found = [gt for gt in _ALL_GRAPH_TYPES if gt in text]
+    found = [gt for gt in _all_graph_types() if gt in text]
     return found if found else ["all"]
 
 
@@ -576,47 +627,165 @@ def _parse_rules_md(content: str, schema: dict[str, dict]) -> None:
 # Schema loading (public entry point)
 # ---------------------------------------------------------------------------
 
+def _mcp_type_for(prop: dict) -> str:
+    """Map a JSON Schema property's ``type`` to the MCP knowledge vocabulary.
+
+    ``type`` may be a string or a list (e.g. ["object","array"]); a list picks
+    its first mappable member. Unknown/absent types fall back to "string" so
+    the entry still participates in value validation.
+    """
+    t = prop.get("type")
+    if isinstance(t, list):
+        for member in t:
+            if member in _JSON_TYPE_TO_MCP:
+                return _JSON_TYPE_TO_MCP[member]
+        return "string"
+    return _JSON_TYPE_TO_MCP.get(t, "string")
+
+
+def _config_schema_to_entries(schema_json: dict) -> dict[str, dict]:
+    """Convert a canvasxpress-config JSON Schema into MCP knowledge entries.
+
+    Produces {param: {description, type, valid_values, graph_types}} keyed by
+    property name. ``valid_values`` comes from a string property's ``enum``
+    (the only closed set the engine declares); array/object member hints in
+    ``x-cx-options`` are advisory and left out of validation. Graph-type
+    applicability is unknown from this source, so every entry is tagged
+    ["all"] and later narrowed by the markdown sources in load_schema().
+    """
+    props   = (schema_json or {}).get("properties", {})
+    entries: dict[str, dict] = {}
+    for name, prop in props.items():
+        if not isinstance(prop, dict):
+            continue
+        enum = prop.get("enum")
+        entries[name] = {
+            "description":  prop.get("description", ""),
+            "type":         _mcp_type_for(prop),
+            "valid_values": list(enum) if isinstance(enum, list) else [],
+            "graph_types":  ["all"],
+        }
+    return entries
+
+
+def _load_config_schema_entries() -> dict[str, dict]:
+    """Load the authoritative config schema and return MCP knowledge entries.
+
+    Fetch order mirrors the markdown KB: published URL (cached on success),
+    then the local cache, then the copy bundled in the repo. Any failure
+    returns {} so load_schema() simply proceeds without this layer.
+
+    Side effect: stashes the schema's graphType alias map in _GRAPHTYPE_ALIASES
+    (see canonical_graph_type()), since it rides in the same document.
+    """
+    global _GRAPHTYPE_ALIASES, _CONFIG_GRAPH_TYPES
+    raw: Optional[str] = None
+    if not SKIP_FETCH:
+        raw = _fetch_url(CONFIG_SCHEMA_URL)
+        if raw:
+            try:
+                _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                _CONFIG_SCHEMA_CACHE.write_text(raw, encoding="utf-8")
+            except Exception as e:  # noqa: BLE001 - cache write is best-effort
+                log.debug("cx_knowledge: could not cache config schema: %s", e)
+    if raw is None and _CONFIG_SCHEMA_CACHE.exists():
+        raw = _CONFIG_SCHEMA_CACHE.read_text(encoding="utf-8")
+    if raw is None and _CONFIG_SCHEMA_BUNDLED.exists():
+        raw = _CONFIG_SCHEMA_BUNDLED.read_text(encoding="utf-8")
+    if raw is None:
+        return {}
+    try:
+        doc = json.loads(raw)
+        aliases = doc.get("x-cx-graphtype-aliases") or {}
+        _GRAPHTYPE_ALIASES = {
+            name: (info or {}).get("canonical")
+            for name, info in aliases.items()
+            if isinstance(info, dict) and info.get("canonical")
+        }
+        entries = _config_schema_to_entries(doc)
+        _CONFIG_GRAPH_TYPES = set(
+            (entries.get("graphType") or {}).get("valid_values") or []
+        )
+        return entries
+    except Exception as e:  # noqa: BLE001 - never let a bad schema break loading
+        log.warning("cx_knowledge: config schema parse failed: %s", e)
+        return {}
+
+
+def _overlay_graph_knowledge(base: dict[str, dict], overlay: dict[str, dict]) -> None:
+    """Fold a markdown/bundled source into ``base`` (mutated in place).
+
+    ``base`` is the authoritative config-schema layer: its ``type`` is never
+    changed and its ``valid_values`` win when present. The overlay contributes
+    only what that layer lacks — specific ``graph_types`` (the config schema
+    knows none, tagging everything "all") and any ``valid_values``/``description``
+    for params whose config-schema entry left them empty. Params the config
+    schema does not know are added wholesale.
+    """
+    for param, entry in overlay.items():
+        target = base.get(param)
+        if target is None:
+            base[param] = entry
+            continue
+        gts = entry.get("graph_types") or []
+        if gts and gts != ["all"]:
+            target["graph_types"] = gts
+        if not target.get("valid_values") and entry.get("valid_values"):
+            target["valid_values"] = entry["valid_values"]
+        if not target.get("description") and entry.get("description"):
+            target["description"] = entry["description"]
+
+
 def load_schema(force: bool = False) -> dict[str, dict]:
     """
     Return the parameter schema dict.  Uses the in-memory cache unless
-    stale or force=True.  Falls back gracefully through:
-        GitHub → local cache → bundled minimal schema
+    stale or force=True.
+
+    Layering (authoritative type/enum first, graph-type applicability on top):
+        1. config JSON Schema  (canvasxpress.org → cache → bundled) — the
+           exhaustive, typed base with per-param enums;
+        2. SCHEMA.md + RULES.md (GitHub → cache) — narrows graph_types and
+           fills gaps;
+        3. _BUNDLED_SCHEMA      — final offline backstop for anything missing.
+    Every layer degrades independently, so the loader still returns a usable
+    schema when any one source is unavailable.
     """
     if not force and _cache.is_fresh():
         return _cache.get()
 
+    # Layer 1 — authoritative config schema (works offline via bundled copy).
+    schema: dict[str, dict] = _load_config_schema_entries()
+    have_config = bool(schema)
+
     if SKIP_FETCH:
-        log.info("cx_knowledge: CX_SKIP_FETCH=1 — using bundled schema")
-        schema = dict(_BUNDLED_SCHEMA)
-        _cache.set(schema, "bundled (skip_fetch)")
+        log.info("cx_knowledge: CX_SKIP_FETCH=1 — config schema + bundled only")
+        _overlay_graph_knowledge(schema, _BUNDLED_SCHEMA)
+        _cache.set(schema, "config+bundled (skip_fetch)" if have_config else "bundled (skip_fetch)")
         return schema
 
     files = _fetch_and_cache_files()
 
-    if not files:
-        log.warning("cx_knowledge: no files available — using bundled schema")
-        schema = dict(_BUNDLED_SCHEMA)
-        _cache.set(schema, "bundled (no files)")
-        return schema
-
-    # Parse SCHEMA.md as the primary source
-    schema: dict[str, dict] = {}
+    # Layer 2 — markdown KB (graph_types + gap-fill).
     if "SCHEMA.md" in files:
-        schema = _parse_schema_md(files["SCHEMA.md"])
-        log.debug("cx_knowledge: parsed %d params from SCHEMA.md", len(schema))
-
-    # Augment with RULES.md
+        _overlay_graph_knowledge(schema, _parse_schema_md(files["SCHEMA.md"]))
     if "RULES.md" in files:
-        _parse_rules_md(files["RULES.md"], schema)
+        rules_schema: dict[str, dict] = {}
+        _parse_rules_md(files["RULES.md"], rules_schema)
+        _overlay_graph_knowledge(schema, rules_schema)
 
-    # Merge bundled entries for any missing params
-    for param, entry in _BUNDLED_SCHEMA.items():
-        if param not in schema:
-            schema[param] = entry
+    # Layer 3 — bundled backstop for anything still missing.
+    _overlay_graph_knowledge(schema, _BUNDLED_SCHEMA)
 
-    source = "GitHub" if any(
-        not (_CACHE_DIR / f).exists() for f in _FETCH_FILES if f in files
-    ) else "cache"
+    if have_config and files:
+        source = "config+markdown"
+    elif have_config:
+        source = "config+bundled"
+    elif files:
+        source = "GitHub" if any(
+            not (_CACHE_DIR / f).exists() for f in _FETCH_FILES if f in files
+        ) else "cache"
+    else:
+        source = "bundled (no files)"
 
     _cache.set(schema, source)
     return schema
@@ -626,17 +795,46 @@ def load_schema(force: bool = False) -> dict[str, dict]:
 # Query helpers
 # ---------------------------------------------------------------------------
 
+def get_graphtype_aliases() -> dict[str, str]:
+    """Return the {alias: canonical} graphType map from the config schema.
+
+    Ensures the schema is loaded first. Empty when no config schema layer is
+    available, in which case callers should treat every name as canonical.
+    """
+    load_schema()
+    return dict(_GRAPHTYPE_ALIASES)
+
+
+def canonical_graph_type(graph_type: str) -> str:
+    """Resolve a graphType to the canonical type the core renders it as.
+
+    e.g. "Volcano"/"Binplot"/"Hexplot" -> "Scatter2D", "Violin" -> "Boxplot".
+    Names that are already canonical (or unknown) are returned unchanged.
+
+    NOTE: this is for reasoning about which types are *related* — do NOT rewrite
+    a user's config with it. The friendly name carries extra behaviour the core
+    applies in setGraphType() (scatterType, binplotShape, ...), so replacing
+    "Hexplot" with "Scatter2D" would silently drop the hexagon binning.
+    """
+    if not graph_type:
+        return graph_type
+    return get_graphtype_aliases().get(graph_type, graph_type)
+
+
 def get_params_for_graph_type(graph_type: str) -> dict[str, dict]:
     """
     Return all parameters that apply to the given graph type.
     Includes params tagged 'all' and params explicitly listing this graph type.
     """
     schema     = load_schema()
-    gt_lower   = graph_type.lower()
+    # Match the requested name AND the canonical type it renders as: the
+    # markdown KB tags params with canonical names, so asking for "Volcano"
+    # must still pick up everything tagged "Scatter2D".
+    wanted     = {graph_type.lower(), canonical_graph_type(graph_type).lower()}
     result     = {}
     for param, entry in schema.items():
         gts = [g.lower() for g in entry.get("graph_types", [])]
-        if "all" in gts or gt_lower in gts:
+        if "all" in gts or wanted.intersection(gts):
             result[param] = entry
     return result
 
@@ -664,8 +862,13 @@ def get_param_snippet(graph_type: Optional[str] = None, max_params: int = 20) ->
     else:
         params = schema
 
+    # The config schema is exhaustive and alphabetical, so iterate the curated
+    # _BUNDLED_SCHEMA params first — they are the ones worth spending the
+    # max_params budget on — then any remaining enum params.
+    ordered = sorted(params.items(), key=lambda kv: (kv[0] not in _BUNDLED_SCHEMA, kv[0]))
+
     lines = []
-    for param, entry in params.items():
+    for param, entry in ordered:
         vals = entry.get("valid_values", [])
         if not vals:
             continue
