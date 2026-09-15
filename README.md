@@ -13,8 +13,11 @@ object ready to pass directly to `new CanvasXpress()`. No CanvasXpress expertise
 "PCA scatter plot colored by Treatment with regression ellipses"
 ```
 
-Supports four LLM backends: **Anthropic API**, **Amazon Bedrock**, **Ollama** (local),
-and **OpenAI-compatible** APIs including corporate gateways.
+Supports seven LLM backends: **Anthropic API**, **Amazon Bedrock**, **Ollama** (local, no outbound
+call), **OpenAI**, **OpenAI-compatible corporate gateways**, a **corporate AI gateway** fronting both
+Anthropic and OpenAI endpoints, and **Google Gemini**. The key lives on this server; the CanvasXpress
+browser client only knows `llmServiceURL`, and a page can block outbound inference entirely with
+`<meta name="canvasxpress-llm-outbound" content="off">`.
 
 ---
 

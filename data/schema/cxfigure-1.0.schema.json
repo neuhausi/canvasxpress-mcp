@@ -159,13 +159,19 @@
         "xAxis": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           }
         },
         "yAxis": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": [
+              "string",
+              "number"
+            ]
           }
         },
         "decimals": {
