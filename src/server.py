@@ -37,7 +37,8 @@ from starlette.responses import JSONResponse, HTMLResponse, Response
 import numpy as np
 import sqlite_vec
 from fastmcp import FastMCP
-from llm_providers import complete as llm_complete, provider_info, PROVIDER, MODEL
+from llm_providers import (complete as llm_complete, provider_info, PROVIDER, MODEL,
+                           begin_llm_trace, end_llm_trace)
 import cx_knowledge
 import cx_survival
 import cx_selector
@@ -1928,6 +1929,33 @@ _PATH_TO_TOOL: dict[str, str] = {
 }
 
 
+def _attach_call_trace(resp_obj: dict, started_at: float, trace: list) -> dict:
+    """Add ``timing`` and ``llm_calls`` to the copy of a response that is stored
+    in the call log (the bytes already sent to the client are untouched).
+
+    ``timing.duration_ms`` is the whole request as seen by the middleware.
+    ``llm_calls`` is one record per model call made while serving it (see
+    ``llm_providers.begin_llm_trace``): model, latency, tokens, the verbatim
+    user prompt and system suffix, and ``cost_usd`` from the configured rates.
+    Tools that never call a model get an empty list. Best-effort: any failure
+    leaves the response as it was.
+    """
+    try:
+        import time as _time
+        resp_obj["timing"] = {"duration_ms": round((_time.perf_counter() - started_at) * 1000, 1)}
+        calls = []
+        for rec in trace or []:
+            rec = dict(rec)
+            # usage_cost() prices with the configured model's rates, which is the
+            # model these calls use unless a caller overrides it per call.
+            rec["cost_usd"] = round(usage_cost(rec), 6) if rec.get("ok") else 0.0
+            calls.append(rec)
+        resp_obj["llm_calls"] = calls
+    except Exception:  # noqa: BLE001 - accounting must never break logging
+        pass
+    return resp_obj
+
+
 class _InjectToolMiddleware:
     """
     Injects ``"tool"``, ``"valid"``, ``"datetime"``, and ``"request_id"`` into
@@ -1947,6 +1975,11 @@ class _InjectToolMiddleware:
         if tool_name is None:
             await self._app(scope, receive, send)
             return
+
+        # Request clock + LLM trace for the call log (see _attach_call_trace).
+        import time as _time
+        started_at = _time.perf_counter()
+        begin_llm_trace()
 
         # --- Buffer the request body so we can log it ----------------------
         req_body_chunks: list[bytes] = []
@@ -2013,8 +2046,11 @@ class _InjectToolMiddleware:
                                 qs = scope.get("query_string", b"").decode(errors="replace")
                                 req_obj = {k: v[0] if len(v) == 1 else v
                                            for k, v in parse_qs(qs).items()}
-                            # Store only the non-binary parts of the response
-                            resp_obj = data if isinstance(data, dict) else {}
+                            # Store only the non-binary parts of the response, on a
+                            # copy so the trace fields never reach the client bytes
+                            # (already serialised above).
+                            resp_obj = dict(data) if isinstance(data, dict) else {}
+                            _attach_call_trace(resp_obj, started_at, end_llm_trace())
                             _call_log.log(
                                 call_id=call_id,
                                 tool=tool_name,

@@ -133,12 +133,48 @@ export LLM_MODEL=gemini-2.0-flash
 python src/server.py
 """
 
+import contextvars
+import hashlib
 import json
 import logging
 import os
+import time
 from typing import Any
 
 log = logging.getLogger("cx-mcp.providers")
+
+# ---------------------------------------------------------------------------
+# Per-request LLM call trace
+#
+# complete() is the single chokepoint every tool goes through to reach a model,
+# so this is the one place that can see, for every call, exactly what was sent
+# (system prompt + suffix + user prompt), how long it took and what it cost in
+# tokens. The server's logging middleware opens a trace per HTTP request with
+# begin_llm_trace(), each complete() appends one record, and end_llm_trace()
+# hands the list back to be stored with the call log. A ContextVar (not a module
+# global) keeps concurrent requests from seeing each other's calls; the list is
+# mutated in place so it is visible even when a handler runs in a worker thread.
+# Outside a request (no begin) nothing is recorded.
+# ---------------------------------------------------------------------------
+_LLM_TRACE: contextvars.ContextVar = contextvars.ContextVar("cx_llm_trace", default=None)
+
+
+def begin_llm_trace() -> None:
+    """Start recording LLM calls for the current request."""
+    _LLM_TRACE.set([])
+
+
+def end_llm_trace() -> list:
+    """Return (and stop) the LLM call records for the current request."""
+    trace = _LLM_TRACE.get()
+    _LLM_TRACE.set(None)
+    return list(trace) if trace else []
+
+
+def _record_llm_call(rec: dict) -> None:
+    trace = _LLM_TRACE.get()
+    if trace is not None:
+        trace.append(rec)
 
 # ---------------------------------------------------------------------------
 # Provider / model defaults
@@ -768,7 +804,7 @@ def complete(
     # everyone else fold the suffix back into one string so behaviour is
     # unchanged.
     if PROVIDER in ("anthropic", "gateway"):
-        return fn(
+        kwargs = dict(
             system=system,
             user=user,
             model=effective_model,
@@ -776,13 +812,50 @@ def complete(
             max_tokens=max_tokens,
             system_suffix=system_suffix,
         )
-    return fn(
-        system=system + ("\n" + system_suffix if system_suffix else ""),
-        user=user,
-        model=effective_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    else:
+        kwargs = dict(
+            system=system + ("\n" + system_suffix if system_suffix else ""),
+            user=user,
+            model=effective_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    # Trace the call (see _LLM_TRACE). The stable system prompt is the cached
+    # prefix and identical across calls, so it is recorded by size + hash rather
+    # than repeated verbatim per call; the per-request suffix and the user prompt
+    # — the text that actually varies — are stored in full. A failed call is
+    # recorded too (with its error) before the exception propagates unchanged.
+    rec = {
+        "provider":      PROVIDER,
+        "model":         effective_model,
+        "temperature":   temperature,
+        "max_tokens":    max_tokens,
+        "system_chars":  len(system or ""),
+        "system_sha1":   hashlib.sha1((system or "").encode("utf-8")).hexdigest()[:12],
+        "system_suffix": system_suffix or "",
+        "user_prompt":   user,
+    }
+    t0 = time.perf_counter()
+    try:
+        text, usage = fn(**kwargs)
+    except Exception as exc:  # noqa: BLE001 - record, then re-raise unchanged
+        rec.update(ms=round((time.perf_counter() - t0) * 1000, 1), ok=False,
+                   error=f"{type(exc).__name__}: {exc}"[:500])
+        try:
+            _record_llm_call(rec)
+        except Exception:  # noqa: BLE001 - tracing must never mask the real error
+            pass
+        raise
+    try:
+        rec.update(ms=round((time.perf_counter() - t0) * 1000, 1), ok=True)
+        for key in ("input_tokens", "output_tokens", "stop_reason",
+                    "cache_read_input_tokens", "cache_creation_input_tokens"):
+            rec[key] = (usage or {}).get(key, 0 if key != "stop_reason" else None)
+        _record_llm_call(rec)
+    except Exception:  # noqa: BLE001 - tracing must never break a request
+        pass
+    return text, usage
 
 
 def provider_info() -> dict:

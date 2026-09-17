@@ -977,6 +977,21 @@ Every tool call is automatically logged to `data/call_log.db` (a separate SQLite
 database from the vector index). Each response includes a `request_id` UUID that
 can be used to submit thumbs-up/down feedback.
 
+### What each logged call contains
+
+Besides the request and response bodies, every stored call carries:
+
+| Field | Description |
+|-------|-------------|
+| `timing.duration_ms` | Wall-clock time of the whole request |
+| `llm_calls[]` | One record per model call made while serving it (empty for tools that never call a model): `provider`, `model`, `temperature`, `max_tokens`, `ms`, `ok`/`error`, `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `stop_reason`, `cost_usd` (from the configured rates), the stable system prompt by size + hash (`system_chars`, `system_sha1`), and — verbatim — the per-request `system_suffix` and `user_prompt` |
+
+These are recorded at the single LLM chokepoint (`llm_providers.complete`), so
+they cover all tools uniformly and are stored only in the call log — they are not
+added to the API response. A failed model call is recorded with its error before
+the exception propagates. The `manage_call_log.py export` command and the
+`/feedback/export` endpoint return them with each row.
+
 ### Submit feedback
 
 ```bash
