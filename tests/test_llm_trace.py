@@ -65,6 +65,8 @@ def test_trace_records_verbatim_prompt_timing_and_tokens(fake_provider):
     assert rec["temperature"] == 0.2 and rec["max_tokens"] == 99
     assert rec["input_tokens"] == 120 and rec["output_tokens"] == 30
     assert rec["cache_read_input_tokens"] == 4000 and rec["stop_reason"] == "end_turn"
+    # The raw model output is stored verbatim alongside the prompt.
+    assert rec["response_text"] == "MODEL OUTPUT"
     # The trace is cleared after end.
     assert lp.end_llm_trace() == []
 

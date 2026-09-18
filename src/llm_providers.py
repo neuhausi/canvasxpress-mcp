@@ -852,6 +852,10 @@ def complete(
         for key in ("input_tokens", "output_tokens", "stop_reason",
                     "cache_read_input_tokens", "cache_creation_input_tokens"):
             rec[key] = (usage or {}).get(key, 0 if key != "stop_reason" else None)
+        # The raw model output, verbatim — the other half of the exchange. It is
+        # what the audit page shows next to the prompt; without it a call can
+        # only be judged by its token count.
+        rec["response_text"] = text if isinstance(text, str) else str(text)
         _record_llm_call(rec)
     except Exception:  # noqa: BLE001 - tracing must never break a request
         pass
