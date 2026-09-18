@@ -1767,6 +1767,15 @@ class _CallLog:
                     comment  TEXT
                 )
             """)
+            # Who called: the real client IP (behind the Apache proxy) and, if the
+            # caller sent an X-API-Key, a short hash of it — never the key itself.
+            # Added after the table existed, so migrate in place; ALTER is a no-op
+            # error when the column is already there.
+            for col in ("ip TEXT", "api_key_id TEXT"):
+                try:
+                    con.execute("ALTER TABLE tool_calls ADD COLUMN " + col)
+                except Exception:  # noqa: BLE001 - duplicate column: already migrated
+                    pass
             con.commit()
             con.close()
 
@@ -1778,6 +1787,8 @@ class _CallLog:
         request: dict | str,
         response: dict | str,
         status: int,
+        ip: str | None = None,
+        api_key_id: str | None = None,
     ) -> None:
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).isoformat()
@@ -1787,9 +1798,9 @@ class _CallLog:
             con = self._connect()
             con.execute(
                 "INSERT OR IGNORE INTO tool_calls "
-                "(id, tool, path, request, response, status, ts) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (call_id, tool, path, req_str, resp_str, status, ts),
+                "(id, tool, path, request, response, status, ts, ip, api_key_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (call_id, tool, path, req_str, resp_str, status, ts, ip, api_key_id),
             )
             con.commit()
             con.close()
@@ -1956,6 +1967,48 @@ def _attach_call_trace(resp_obj: dict, started_at: float, trace: list) -> dict:
     return resp_obj
 
 
+def _scope_header(scope, name: str) -> str:
+    """First value of an HTTP header from an ASGI scope (case-insensitive), or ''."""
+    want = name.lower().encode()
+    for k, v in scope.get("headers") or []:
+        if k.lower() == want:
+            return v.decode("latin-1").strip()
+    return ""
+
+
+def _client_ip(scope) -> str | None:
+    """The real caller's IP for the call log.
+
+    The server binds to 127.0.0.1 and is reached only through the Apache
+    reverse proxy (mcp-proxy.conf), so the socket peer is always the proxy and
+    the caller is the FIRST hop of ``X-Forwarded-For`` (Apache appends the
+    client to it). Trusting that header is safe here precisely because only the
+    local proxy can reach the port. Falls back to the socket peer (direct local
+    calls, e.g. the deploy's functional check) and to ``X-Real-IP``.
+    """
+    xff = _scope_header(scope, "x-forwarded-for")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    real = _scope_header(scope, "x-real-ip")
+    if real:
+        return real
+    client = scope.get("client")
+    return client[0] if client else None
+
+
+def _api_key_id(scope) -> str | None:
+    """A short, stable id for the caller's X-API-Key — sha256 prefix, never the
+    key — so calls can be grouped by key without the log holding a secret.
+    None when no key was sent (the header is optional and not enforced)."""
+    key = _scope_header(scope, "x-api-key")
+    if not key:
+        return None
+    import hashlib
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
+
 class _InjectToolMiddleware:
     """
     Injects ``"tool"``, ``"valid"``, ``"datetime"``, and ``"request_id"`` into
@@ -2058,6 +2111,8 @@ class _InjectToolMiddleware:
                                 request=req_obj,
                                 response=resp_obj,
                                 status=status_code,
+                                ip=_client_ip(scope),
+                                api_key_id=_api_key_id(scope),
                             )
                         except Exception as _log_exc:
                             log.debug("call-log write failed: %s", _log_exc)
