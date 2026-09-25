@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "69.3",
+  "x-cx-version": "70.2",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -5188,6 +5188,21 @@
       "x-cx-category": "Aspect Ratio, Space and Width",
       "x-cx-nl": "Scale data point size to {_float_}"
     },
+    "dataSelection": {
+      "type": [
+        "object",
+        "array",
+        "boolean",
+        "string",
+        "number"
+      ],
+      "description": "Declarative, serializable data selection layer authored on top of the DataFilters engine (an authoring sugar that de-sugars into filterSmpBy / filterVarBy / filterDataBy — not a second filter engine). A single object, or an ARRAY of named { name, active, ... } blocks (the active/first is applied; switch at runtime with applyNamedDataSelection). A block has keys samples / variables / values; each is { any: [...] } (OR) or { all: [...] } (AND), and a leaf is { annotation, op, value } where op uses friendly vocab (min, max, exact, like, not like, between, different). Example: { samples: { all: [ { annotation: \"Treatment\", op: \"exact\", value: [\"Control\"] } ] } }",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-scalar-autowrap": true,
+      "x-cx-category": "Data Filters",
+      "x-cx-nl": "Set the data selection to {_object-or-array_}"
+    },
     "dataTableAccentColor": {
       "type": [
         "string",
@@ -10274,6 +10289,89 @@
       "x-cx-scalar-autowrap": true,
       "x-cx-category": "Text",
       "x-cx-nl": "Set the fonts external to {_array_}"
+    },
+    "forecastHorizon": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of future steps to forecast. 0 uses the forecast package default: 10, or two seasons when forecastSeasonLength is greater than 1",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "Set the forecast horizon to {_integer_}",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
+    "forecastLevel": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Level of the forecast prediction interval (e.g. 0.8 or 0.95)",
+      "default": 0.95,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "Set the forecast level to {_float_}",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
+    "forecastLineType": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Line type for the projected forecast line",
+      "default": "dashed",
+      "enum": [
+        "dashed",
+        "solid",
+        "dotted",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "Set the forecast line type to {_option_}",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
+    "forecastMethod": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Forecast method. ses : simple exponential smoothing (level), holt : level and trend, hw : Holt-Winters (level, trend and additive seasonality). auto uses hw when forecastSeasonLength is greater than 1, holt otherwise. Short series fall back hw to holt to ses",
+      "default": "auto",
+      "enum": [
+        "auto",
+        "ses",
+        "holt",
+        "hw",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "Forecast with {_option_}",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
+    "forecastSeasonLength": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of observations per season (e.g. 12 for monthly data with a yearly cycle, 7 for daily data with a weekly cycle). 0 or 1 disables seasonality",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "Set the forecast season length to {_integer_}",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
     },
     "foreground": {
       "type": [
@@ -17523,7 +17621,7 @@
         "boolean"
       ],
       "format": "cx-color",
-      "description": "Color for the nodes",
+      "description": "Color for the text in node",
       "default": "rgb(245,245,245)",
       "x-cx-false-disables": true,
       "x-cx-category": "Network Graphs",
@@ -25269,6 +25367,33 @@
         "Scatter2D"
       ]
     },
+    "showForecast": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Name of a variable annotation, or set to true, to display a forecast (projected line and prediction interval) in Scatter plots. The x values must be regularly spaced (numbers or dates)",
+      "default": false,
+      "x-cx-options": [
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "Forecast by {_factor_}",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
+    "showForecastInterval": {
+      "type": "boolean",
+      "description": "Flag to show/hide the forecast prediction interval",
+      "default": true,
+      "x-cx-category": "Forecast",
+      "x-cx-nl": "{Show|Hide} the forecast interval",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
     "showHeatmapIndicator": {
       "type": "boolean",
       "description": "Flag to show/hide the heatmap color indicator",
@@ -25825,7 +25950,7 @@
     },
     "showSampleLegend": {
       "type": "boolean",
-      "description": "Flag to show/hide the legend sample. Not implemented!!!!!",
+      "description": "Flag to show/hide the legend sample",
       "default": true,
       "x-cx-category": "Legends",
       "x-cx-nl": "{Show|Hide} the sample legend",
@@ -29629,6 +29754,32 @@
       "x-cx-graphtypes": [
         "Pie"
       ]
+    },
+    "streamEvict": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Eviction policy applied by pushData() once the sample count exceeds streamWindow. Currently only drop-oldest (remove the oldest samples first) is supported",
+      "default": "drop-oldest",
+      "enum": [
+        "drop-oldest",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Plot Performance",
+      "x-cx-nl": "Set the stream evict to {_option_}"
+    },
+    "streamWindow": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Maximum number of samples to retain when live-streaming via pushData(). When set, each pushData() call appends the incoming samples and evicts the oldest ones beyond this window so the matrix stays bounded for real-time updates. Null keeps every sample (no eviction)",
+      "default": null,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Plot Performance",
+      "x-cx-nl": "Set the stream window to {_integer_}"
     },
     "stringEdgeAttributes": {
       "type": [
