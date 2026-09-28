@@ -1,0 +1,5 @@
+# data/ood.jsonl holds real user prompts from the local call log; runs/ holds
+# model outputs for them. Neither may be committed to this public repo.
+data/
+runs/
+*.log

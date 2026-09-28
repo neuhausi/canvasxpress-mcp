@@ -167,10 +167,13 @@ _BUNDLED_SCHEMA: dict[str, dict] = {
         "description": "Visual theme controlling overall chart aesthetics.",
         "type": "string",
         "graph_types": ["all"],
+        # The config schema declares no enum for theme, so this list is what
+        # validation uses: keep it in step with SCHEMA.md and the engine.
         "valid_values": [
-            "bw","classic","cx","dark","economist","excel","ggblanket","ggplot",
-            "gray","grey","highcharts","igray","light","linedraw","minimal","none",
-            "ptol","solarized","stata","tableau","void0","wsj",
+            "auto","bw","classic","cx","cx2","cxblue","cxdark","dark","economist",
+            "excel","ggblanket","ggplot","gray","grey","highcharts","igray","light",
+            "linedraw","minimal","none","ptol","solarized","stata","tableau","void0",
+            "wsj",
         ],
     },
     "colorScheme": {
@@ -659,13 +662,23 @@ def _config_schema_to_entries(schema_json: dict) -> dict[str, dict]:
         if not isinstance(prop, dict):
             continue
         enum = prop.get("enum")
-        # An enum containing a NON-string sentinel (e.g. False) is advisory, not
-        # closed: those parameters (colorBy, lineBy, ganttStart, ...) also accept
-        # a data reference — any column/annotation name is legitimate. Treating
-        # them as closed sets flags correct configs as invalid, so only
-        # all-string enums become enforceable valid_values.
+        # A trailing False in an enum is the "false disables" switch
+        # (x-cx-false-disables), not a data-reference marker: colorScheme,
+        # legendPosition, lineType, ... are ["string","boolean"] with a closed
+        # string set plus False. Those enums are closed on their strings.
+        # Parameters that take a data reference (colorBy, lineBy, ganttStart, ...)
+        # carry no enum — their hints live in x-cx-options — and their NL template
+        # names a column ({_factor_}) instead of an {_option_}; any enum that has
+        # another non-string sentinel, or whose template is not an {_option_}
+        # pick, stays advisory so a column/annotation name is never flagged.
+        nl_template = prop.get("x-cx-nl")
+        picks_option = nl_template is None or "{_option_}" in nl_template
         closed = (isinstance(enum, list) and enum
-                  and all(isinstance(v, str) for v in enum))
+                  and all(isinstance(v, str) or v is False for v in enum)
+                  and any(isinstance(v, str) for v in enum)
+                  and picks_option)
+        if closed:
+            enum = [v for v in enum if isinstance(v, str)]
         entries[name] = {
             "description":  prop.get("description", ""),
             "type":         _mcp_type_for(prop),
@@ -740,7 +753,11 @@ def _overlay_graph_knowledge(base: dict[str, dict], overlay: dict[str, dict]) ->
         gts = entry.get("graph_types") or []
         if gts and gts != ["all"]:
             target["graph_types"] = gts
-        if not target.get("valid_values") and entry.get("valid_values"):
+        # An empty list next to suggested_values is a deliberate "open" verdict
+        # from the config schema; refilling it from an older closed list would
+        # reject values the engine accepts.
+        if (not target.get("valid_values") and "suggested_values" not in target
+                and entry.get("valid_values")):
             target["valid_values"] = entry["valid_values"]
         if not target.get("description") and entry.get("description"):
             target["description"] = entry["description"]
