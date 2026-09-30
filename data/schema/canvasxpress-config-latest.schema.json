@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "70.3",
+  "x-cx-version": "70.7",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -25071,7 +25071,7 @@
     },
     "showDataValues": {
       "type": "boolean",
-      "description": "Flag to show/hide the data values in the bar graphs, stacked graphs, dotplots and line graphs",
+      "description": "Flag to show/hide the data values in the bar graphs, stacked graphs, dotplots, line graphs and Sankey node labels",
       "default": false,
       "x-cx-category": "Plot Area",
       "x-cx-nl": "{Show|Hide} the data values",
@@ -34626,6 +34626,24 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Data UI Widgets",
       "x-cx-nl": "Color the widgets striped {_color_}"
+    },
+    "widgetsTheme": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Light or dark UI widgets (toolbar, menus, Customizer, data table and filters, dialogs). theme follows the chart theme (cxdark and cxblue are dark, auto follows the OS) and otherwise the page container, e.g. a dark dashboard; auto follows the OS appearance",
+      "default": "theme",
+      "enum": [
+        "theme",
+        "light",
+        "dark",
+        "auto",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Data UI Widgets",
+      "x-cx-nl": "Set the widgets theme to {_option_}"
     },
     "widthFactor": {
       "type": [
