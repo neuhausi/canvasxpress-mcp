@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "70.7",
+  "x-cx-version": "70.8",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -17,6 +17,17 @@
       "x-cx-false-disables": true,
       "x-cx-category": "R",
       "x-cx-nl": "Set the  rdataset to {_object_}"
+    },
+    "a11yDescription": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Author-written text alternative (alt text) for screen readers. When set it replaces the generated chart summary in the canvas aria-label and is added to SVG exports as their title and description",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Titles and Subtitles",
+      "x-cx-nl": "Set the alt text for the graph to {_string_}"
     },
     "adjustAspectRatioHeatmapIndicator": {
       "type": "boolean",
@@ -2053,6 +2064,17 @@
         "Bullet"
       ]
     },
+    "byline": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Author or organization credit shown in the chart footer, e.g. \"Chart: Jane Doe\"",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Citations or References",
+      "x-cx-nl": "Set the footer byline to {_string_}"
+    },
     "cacheBase64": {
       "type": "boolean",
       "description": "Flag to cache image in meta data as Base64",
@@ -3129,6 +3151,23 @@
         "WordCloud"
       ]
     },
+    "colorLegendSteps": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Numeric colour legend for binned colouring: equal draws one equal-width swatch per class with every class edge labelled (stepped legend); proportional sizes swatches by their value range; auto is equal with a colorSpectrumBreaksMethod, else proportional",
+      "default": "auto",
+      "enum": [
+        "auto",
+        "proportional",
+        "equal",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Colors",
+      "x-cx-nl": "Set the color legend steps to {_option_}"
+    },
     "colorLegendTitle": {
       "type": [
         "string",
@@ -3459,6 +3498,23 @@
       "x-cx-scalar-autowrap": true,
       "x-cx-category": "Colors",
       "x-cx-nl": "Set the color spectrum breaks to {_array_}"
+    },
+    "colorSpectrumBreaksMethod": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Classify the colorBy values into one colour class per colorSpectrum colour (a classed choropleth): jenks (natural breaks), quantile (equal count) or equalWidth. Computes the colorSpectrumBreaks and turns on binned colouring",
+      "default": false,
+      "x-cx-options": [
+        false,
+        "jenks",
+        "quantile",
+        "equalWidth"
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Colors",
+      "x-cx-nl": "Set the color spectrum breaks method to {_option_}"
     },
     "colorSpectrumByFactor": {
       "type": [
@@ -5085,6 +5141,18 @@
         "Volcano"
       ]
     },
+    "dataLabelNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Number format for the data values drawn on the chart (showDataValues and data labels). Overrides numberFormat. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}. Uses Intl.NumberFormat when available",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Text",
+      "x-cx-nl": "Set the data label number format to {_string_}"
+    },
     "dataPipeline": {
       "type": [
         "array",
@@ -5574,7 +5642,7 @@
         "object",
         "boolean"
       ],
-      "description": "Format for the cols in the data table. Key is the sample name and the value is the format string using sprintf notation",
+      "description": "Format for the cols in the data table. Key is the sample name and the value is a sprintf format string, a number-format preset (comma, percent, dollar, euro, pound, yen, compact) or a number-format object {locale, style, currency, decimals}",
       "default": {},
       "x-cx-false-disables": true,
       "x-cx-category": "Data Table",
@@ -5633,6 +5701,17 @@
       "x-cx-category": "Data Table",
       "x-cx-nl": "Set the data table col properties to {_object_}"
     },
+    "dataTableColRenderer": {
+      "type": [
+        "object",
+        "boolean"
+      ],
+      "description": "In-cell graphics per column of the data table. Key is the column name and the value is bar (a bar behind the value scaled to the column, from zero when the column has negatives), {type: bar, color}, or {type: sparkline, columns: [...], color, width, height, showValue} (a small line of the row values across those columns, replacing the value unless showValue)",
+      "default": {},
+      "x-cx-false-disables": true,
+      "x-cx-category": "Data Table",
+      "x-cx-nl": "Set the data table col renderer to {_object_}"
+    },
     "dataTableColWidth": {
       "type": [
         "integer",
@@ -5662,6 +5741,20 @@
       "x-cx-category": "Data Table",
       "x-cx-nl": "{Color|Do Not Color} the data table"
     },
+    "dataTableFitHeight": {
+      "type": "boolean",
+      "description": "Flag to shrink the data table to the height of its rows when they do not fill the space (no empty area under the last row); a longer table still scrolls",
+      "default": false,
+      "x-cx-category": "Data Table",
+      "x-cx-nl": "{Shrink|Do Not Shrink} the data table to the height of its rows when they do not fill the space (no empty area under the last row); a longer table still scrolls"
+    },
+    "dataTableFitWidth": {
+      "type": "boolean",
+      "description": "Flag to narrow the data table to the width of its columns when they do not fill the space (no empty area after the last column); a wider table still scrolls",
+      "default": false,
+      "x-cx-category": "Data Table",
+      "x-cx-nl": "{Narrow|Do Not Narrow} the data table to the width of its columns when they do not fill the space (no empty area after the last column); a wider table still scrolls"
+    },
     "dataTableGrouped": {
       "type": "boolean",
       "description": "Flag to group rows in the data table based on metadata",
@@ -5680,6 +5773,23 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Data Table",
       "x-cx-nl": "Color the data table header background {_color_}"
+    },
+    "dataTableHeaderIcons": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "When the data table header cells show their menu, filter and resize icons: always, only while the header cell is hovered, or auto (on hover with the minimal dataUIStyle, always otherwise). Sorting arrows and the filter of a filtered column always show",
+      "default": "auto",
+      "enum": [
+        "auto",
+        "always",
+        "hover",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Data Table",
+      "x-cx-nl": "Set the data table header icons to {_option_}"
     },
     "dataTableHeaderTemplate": {
       "type": [
@@ -7074,6 +7184,7 @@
       "enum": [
         "cx",
         "stripped",
+        "minimal",
         "modern",
         "old",
         "bms",
@@ -8944,6 +9055,30 @@
         "Violin"
       ]
     },
+    "dumbbellArrowDirection": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Direction of the arrows in arrow dumbbells (dumbbellType arrow): value points each arrow at the smaller value; order points from the first variable to the next (before to after)",
+      "default": "value",
+      "enum": [
+        "value",
+        "order",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Dumbbell Graphs",
+      "x-cx-nl": "Set the dumbbell arrow direction to {_option_}",
+      "x-cx-graphtypes": [
+        "Boxplot",
+        "Cleveland",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Violin"
+      ]
+    },
     "dumbbellType": {
       "type": [
         "string",
@@ -10289,6 +10424,23 @@
       "x-cx-scalar-autowrap": true,
       "x-cx-category": "Text",
       "x-cx-nl": "Set the fonts external to {_array_}"
+    },
+    "footerAlign": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Horizontal alignment for the structured chart footer (notes, source, byline, data download)",
+      "default": "left",
+      "enum": [
+        "left",
+        "center",
+        "right",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Citations or References",
+      "x-cx-nl": "Set the footer align to {_option_}"
     },
     "forecastHorizon": {
       "type": [
@@ -14316,6 +14468,18 @@
         "Waterfall"
       ]
     },
+    "legendNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Number format for numeric values displayed in legends (continuous color ramps and size-by bins). Overrides numberFormat. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}. Uses Intl.NumberFormat when available",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Text",
+      "x-cx-nl": "Set the legend number format to {_string_}"
+    },
     "legendOrder": {
       "type": [
         "object",
@@ -15895,6 +16059,21 @@
         "Scatter2D"
       ]
     },
+    "mapBubbleColor": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "format": "cx-color",
+      "description": "Color for the region bubbles on maps (sizeBy a sample: a circle per region sized by its value); the size legend uses it too",
+      "default": "rgba(255,0,0,0.6)",
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "Color the map bubble {_color_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
     "mapCentralMeridian": {
       "type": [
         "number",
@@ -15991,6 +16170,35 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Maps",
       "x-cx-nl": "Set the map id to {_string_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
+    "mapLabelColor": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "format": "cx-color",
+      "description": "Color for the region labels on maps. Defaults to black or white, whichever contrasts with the region fill",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "Color the map label {_color_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
+    "mapLabelProperty": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Map feature property used as the region label (defaults to name, then NAME, then the region key)",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "Set the map label property to {_string_}",
       "x-cx-graphtypes": [
         "Map"
       ]
@@ -17735,6 +17943,29 @@
       "x-cx-graphtypes": [
         "Network"
       ]
+    },
+    "notes": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Footer notes drawn above the source line at the bottom of the chart. Newlines split into multiple lines",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Citations or References",
+      "x-cx-nl": "Set the footer notes to {_string_}"
+    },
+    "numberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Default number format for values displayed in axis ticks, tooltips, legends and data labels. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}. Uses Intl.NumberFormat when available",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Text",
+      "x-cx-nl": "Set the number format to {_string_}"
     },
     "numericGroupSort": {
       "type": "boolean",
@@ -19596,16 +19827,36 @@
         "Pie"
       ]
     },
+    "pieShape": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Shape of the pie: a full circle, or a half circle (semicircle, e.g. an election donut with pieInnerRadius)",
+      "default": "full",
+      "enum": [
+        "full",
+        "half",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Pie Charts",
+      "x-cx-nl": "Set the pie shape to {_option_}",
+      "x-cx-graphtypes": [
+        "Pie"
+      ]
+    },
     "pieType": {
       "type": [
         "string",
         "boolean"
       ],
-      "description": "Position for the pices of the pie",
+      "description": "Position for the pices of the pie. parliament draws one dot per seat on a hemicycle (the values are seat counts), grouped by party from left to right",
       "default": "separated",
       "enum": [
         "separated",
         "solid",
+        "parliament",
         false
       ],
       "x-cx-false-disables": true,
@@ -20263,6 +20514,21 @@
       "x-cx-false-disables": true,
       "x-cx-category": "R-Axis",
       "x-cx-nl": "Set the r axis log ticks width to {_float_}",
+      "x-cx-graphtypes": [
+        "Circular"
+      ]
+    },
+    "rAxisNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Locale-aware number format for the tick values in the R axis. Overrides numberFormat for this axis; an explicit rAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "R-Axis",
+      "x-cx-nl": "Set the r axis number format to {_string_}",
       "x-cx-graphtypes": [
         "Circular"
       ]
@@ -21349,6 +21615,20 @@
       "default": true,
       "x-cx-category": "Events",
       "x-cx-nl": "{Disable|Do Not Disable} resizing the height of canvas by dragging the mouse over the edges"
+    },
+    "responsiveRules": {
+      "type": [
+        "array",
+        "boolean",
+        "string",
+        "number"
+      ],
+      "description": "Width-based config overrides applied on render/resize, i.e. [{\"maxWidth\": 480, \"config\": {\"legendPosition\": \"bottom\", \"fontScaleFontFactor\": 0.8}}]. A rule matches when the canvas width is <= maxWidth and >= minWidth (either bound optional); later rules win on conflicting keys. Overrides revert automatically when the width stops matching and are never saved into the configuration",
+      "default": [],
+      "x-cx-false-disables": true,
+      "x-cx-scalar-autowrap": true,
+      "x-cx-category": "Plot Data Type",
+      "x-cx-nl": "Set the responsive rules to {_array_}"
     },
     "ribbonBy": {
       "type": [
@@ -25038,6 +25318,13 @@
         "Scatter2D"
       ]
     },
+    "showDataDownload": {
+      "type": "boolean",
+      "description": "Flag to show a \"Get the data\" link in the chart footer which downloads the current data as CSV",
+      "default": false,
+      "x-cx-category": "Citations or References",
+      "x-cx-nl": "{Show|Do Not Show} a \"Get the data\" link in the chart footer which downloads the current data as CSV"
+    },
     "showDataLabels": {
       "type": "boolean",
       "description": "Flag to show/hide the data labels in scatter plots",
@@ -25631,6 +25918,24 @@
         "Waterfall"
       ]
     },
+    "showLineEndLabels": {
+      "type": "boolean",
+      "description": "Flag to show/hide the series name at the end of each line in line graphs, in the series color, replacing the legend (direct labeling). Overlapping labels are nudged apart",
+      "default": false,
+      "x-cx-category": "Line Graphs",
+      "x-cx-nl": "{Show|Hide} the line end labels",
+      "x-cx-graphtypes": [
+        "Area",
+        "AreaLine",
+        "BarLine",
+        "DotLine",
+        "Line",
+        "ParallelCoordinates",
+        "Pareto",
+        "StackedLine",
+        "StackedPercentLine"
+      ]
+    },
     "showLineLegend": {
       "type": "boolean",
       "description": "Flag to show/hide the legend line",
@@ -25674,6 +25979,16 @@
       "x-cx-nl": "Fit Loess by {_factor_}",
       "x-cx-graphtypes": [
         "Scatter2D"
+      ]
+    },
+    "showMapLabels": {
+      "type": "boolean",
+      "description": "Flag to show/hide the region labels on maps (only labels that fit inside their region without overlapping another label are drawn, largest regions first)",
+      "default": false,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "{Show|Hide} the map labels",
+      "x-cx-graphtypes": [
+        "Map"
       ]
     },
     "showNameOverlays": {
@@ -29544,6 +29859,28 @@
         "WordCloud"
       ]
     },
+    "source": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Data source name shown in the chart footer as \"Source: ...\". Combine with sourceUrl to make it a link",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Citations or References",
+      "x-cx-nl": "Set the data source in the footer to {_string_}"
+    },
+    "sourceUrl": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "URL for the footer data source. When set with source, the \"Source: ...\" footer text becomes a clickable link (exports still include the text)",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Citations or References",
+      "x-cx-nl": "Set the source url to {_string_}"
+    },
     "splitSamplesBy": {
       "type": [
         "string",
@@ -30772,6 +31109,7 @@
         "cxblue",
         "dark",
         "economist",
+        "editorial",
         "excel",
         "ggblanket",
         "ggplot",
@@ -31161,6 +31499,18 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Tooltip",
       "x-cx-nl": "Color the tooltip font {_color_}"
+    },
+    "tooltipNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Number format for values displayed in tooltips. Overrides numberFormat. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}. Uses Intl.NumberFormat when available",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Text",
+      "x-cx-nl": "Set the tooltip number format to {_string_}"
     },
     "tooltipTransparency": {
       "type": [
@@ -35258,6 +35608,85 @@
         "WordCloud"
       ]
     },
+    "xAxis2NumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Locale-aware number format for the tick values in the second X axis. Overrides numberFormat for this axis; an explicit xAxis2TickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "X-Axis",
+      "x-cx-nl": "Set the x axis2 number format to {_string_}",
+      "x-cx-graphtypes": [
+        "Alluvial",
+        "Area",
+        "AreaLine",
+        "Bar",
+        "BarLine",
+        "Boxplot",
+        "Bin",
+        "Binplot",
+        "Bubble",
+        "Bullet",
+        "CDF",
+        "Chord",
+        "Circular",
+        "Cleveland",
+        "Contour",
+        "Correlation",
+        "Density",
+        "Distribution",
+        "Donut",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Fish",
+        "Gantt",
+        "Heatmap",
+        "Hex",
+        "Hexplot",
+        "Histogram",
+        "KaplanMeier",
+        "Line",
+        "Lollipop",
+        "Map",
+        "Meter",
+        "ParallelCoordinates",
+        "OptionsWall",
+        "Pareto",
+        "Pie",
+        "QQ",
+        "Quantile",
+        "Radar",
+        "Ribbon",
+        "Ridgeline",
+        "Sankey",
+        "Scatter2D",
+        "Scatter3D",
+        "ScatterBubble2D",
+        "Spaghetti",
+        "SPLOM",
+        "Stacked",
+        "StackedLine",
+        "StackedPercent",
+        "StackedPercentLine",
+        "Streamgraph",
+        "Sunburst",
+        "TagCloud",
+        "Tornado",
+        "TimeSeries",
+        "Tree",
+        "TreeBracket",
+        "Treemap",
+        "Upset",
+        "Violin",
+        "Volcano",
+        "Waterfall",
+        "WordCloud"
+      ]
+    },
     "xAxis2Rotate": {
       "type": "boolean",
       "description": "Flag to rotate 180 degrees the direction of the X axis on the top",
@@ -38259,6 +38688,85 @@
       "x-cx-false-disables": true,
       "x-cx-category": "X-Axis",
       "x-cx-nl": "Set the x axis minor ticks to {_integer_}",
+      "x-cx-graphtypes": [
+        "Alluvial",
+        "Area",
+        "AreaLine",
+        "Bar",
+        "BarLine",
+        "Boxplot",
+        "Bin",
+        "Binplot",
+        "Bubble",
+        "Bullet",
+        "CDF",
+        "Chord",
+        "Circular",
+        "Cleveland",
+        "Contour",
+        "Correlation",
+        "Density",
+        "Distribution",
+        "Donut",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Fish",
+        "Gantt",
+        "Heatmap",
+        "Hex",
+        "Hexplot",
+        "Histogram",
+        "KaplanMeier",
+        "Line",
+        "Lollipop",
+        "Map",
+        "Meter",
+        "ParallelCoordinates",
+        "OptionsWall",
+        "Pareto",
+        "Pie",
+        "QQ",
+        "Quantile",
+        "Radar",
+        "Ribbon",
+        "Ridgeline",
+        "Sankey",
+        "Scatter2D",
+        "Scatter3D",
+        "ScatterBubble2D",
+        "Spaghetti",
+        "SPLOM",
+        "Stacked",
+        "StackedLine",
+        "StackedPercent",
+        "StackedPercentLine",
+        "Streamgraph",
+        "Sunburst",
+        "TagCloud",
+        "Tornado",
+        "TimeSeries",
+        "Tree",
+        "TreeBracket",
+        "Treemap",
+        "Upset",
+        "Violin",
+        "Volcano",
+        "Waterfall",
+        "WordCloud"
+      ]
+    },
+    "xAxisNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Locale-aware number format for the tick values in the X axis. Overrides numberFormat for this axis; an explicit xAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "X-Axis",
+      "x-cx-nl": "Set the x axis number format to {_string_}",
       "x-cx-graphtypes": [
         "Alluvial",
         "Area",
@@ -42617,6 +43125,41 @@
         "Volcano"
       ]
     },
+    "yAxisNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Locale-aware number format for the tick values in the Y axis. Overrides numberFormat for this axis; an explicit yAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Y-Axis",
+      "x-cx-nl": "Set the y axis number format to {_string_}",
+      "x-cx-graphtypes": [
+        "Bin",
+        "Binplot",
+        "CDF",
+        "Contour",
+        "Density",
+        "Distribution",
+        "Hex",
+        "Hexplot",
+        "Histogram",
+        "KaplanMeier",
+        "QQ",
+        "Quantile",
+        "Ridgeline",
+        "Scatter2D",
+        "ScatterBubble2D",
+        "Scatter3D",
+        "Spaghetti",
+        "SPLOM",
+        "Streamgraph",
+        "TimeSeries",
+        "Volcano"
+      ]
+    },
     "yAxisRugHeight": {
       "type": [
         "integer",
@@ -44330,6 +44873,22 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Z-Axis",
       "x-cx-nl": "Set the z axis log ticks width to {_float_}",
+      "x-cx-graphtypes": [
+        "ScatterBubble2D",
+        "Scatter3D"
+      ]
+    },
+    "zAxisNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Locale-aware number format for the tick values in the Z axis. Overrides numberFormat for this axis; an explicit zAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Z-Axis",
+      "x-cx-nl": "Set the z axis number format to {_string_}",
       "x-cx-graphtypes": [
         "ScatterBubble2D",
         "Scatter3D"
