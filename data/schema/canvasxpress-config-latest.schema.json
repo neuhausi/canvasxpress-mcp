@@ -3268,6 +3268,7 @@
       "description": "Color schemes can be user defined which will take the colors in the color property or one provided in canvasXpress. The order of the colors will be used to sequentially select when a different color is needed in a particular visualization",
       "default": "User",
       "enum": [
+        "User",
         "AAAS",
         "Accent",
         "BMS",
@@ -7214,6 +7215,46 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Plot Area",
       "x-cx-nl": "Set the data values frequency to {_option_}",
+      "x-cx-graphtypes": [
+        "Area",
+        "AreaLine",
+        "Bar",
+        "BarLine",
+        "Boxplot",
+        "Bullet",
+        "Cleveland",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Gantt",
+        "Heatmap",
+        "Line",
+        "Lollipop",
+        "Meter",
+        "ParallelCoordinates",
+        "OptionsWall",
+        "Pareto",
+        "Stacked",
+        "StackedLine",
+        "StackedPercent",
+        "StackedPercentLine",
+        "TagCloud",
+        "Tornado",
+        "Tree",
+        "TreeBracket",
+        "Treemap",
+        "Upset",
+        "Violin",
+        "Waterfall",
+        "WordCloud"
+      ]
+    },
+    "dataValuesHideOverlap": {
+      "type": "boolean",
+      "description": "Flag to hide a data value label that does not fit inside its stacked bar segment (showDataValues in Stacked graphs), instead of drawing it over the neighbouring segments",
+      "default": false,
+      "x-cx-category": "Plot Area",
+      "x-cx-nl": "{Hide|Do Not Hide} a data value label that does not fit inside its stacked bar segment (showDataValues in Stacked graphs), instead of drawing it over the neighbouring segments",
       "x-cx-graphtypes": [
         "Area",
         "AreaLine",
@@ -14231,6 +14272,43 @@
         "Waterfall"
       ]
     },
+    "legendJustifyTo": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "What a left/right-justified top or bottom legend (legendHorizontalJustification 0 or 1) aligns to: the panel (plot area) edge or the whole plot (canvas) edge, like titleAlign plot::0",
+      "default": "panel",
+      "enum": [
+        "panel",
+        "plot",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Legends",
+      "x-cx-nl": "Set the legend justify to to {_option_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "BarLine",
+        "Boxplot",
+        "Bullet",
+        "Cleveland",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Heatmap",
+        "Line",
+        "Lollipop",
+        "Pareto",
+        "Stacked",
+        "StackedLine",
+        "StackedPercent",
+        "StackedPercentLine",
+        "Tornado",
+        "Violin",
+        "Waterfall"
+      ]
+    },
     "legendKeyBackgroundBorderColor": {
       "type": [
         "string",
@@ -18372,17 +18450,14 @@
     },
     "optionsWallChain": {
       "type": [
-        "string",
+        "object",
         "boolean"
       ],
       "description": "Option chain object for one expiry: {strikes, expiry, call:{premium,iv,volume}, put:{premium,iv,volume}}",
       "default": false,
-      "x-cx-options": [
-        false
-      ],
       "x-cx-false-disables": true,
       "x-cx-category": "OptionsWall Charts",
-      "x-cx-nl": "Set the options wall chain to {_option_}",
+      "x-cx-nl": "Set the options wall chain to {_object_}",
       "x-cx-graphtypes": [
         "OptionsWall"
       ]
@@ -21633,14 +21708,14 @@
     "ribbonBy": {
       "type": [
         "string",
-        "boolean"
+        "array",
+        "boolean",
+        "number"
       ],
       "description": "Name of a sample annotation(s) to create a ribbon of each variable in scatter plots. If a single annotation is passed then it will be used as a standard deviation. If two annotations are passed then, it will be used as upper and lower confidence intervals. Alternatively it could be a pair of arrays witht the actual data. Works in coordination with the lineBy parameter",
       "default": false,
-      "x-cx-options": [
-        false
-      ],
       "x-cx-false-disables": true,
+      "x-cx-scalar-autowrap": true,
       "x-cx-category": "Data Point Attributes",
       "x-cx-nl": "Ribbon by {_factor_}",
       "x-cx-graphtypes": [
