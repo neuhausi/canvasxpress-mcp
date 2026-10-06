@@ -115663,5 +115663,77 @@
    ],
    "bulletTargetVarName": "Col2"
   }
+ },
+ {
+  "id": 3781,
+  "data": "data",
+  "header": [
+   "Sample",
+   "Date",
+   "Sales"
+  ],
+  "description": "Create a Bar chart of a running total of Sales using a cumulative-sum calculated field cumsum(Sales).",
+  "config": {
+   "graphType": "Bar",
+   "calculatedFields": [
+    {
+     "name": "Running Sales",
+     "formula": "cumsum(Sales)",
+     "target": "variable"
+    }
+   ],
+   "xAxis": [
+    "Running Sales"
+   ]
+  }
+ },
+ {
+  "id": 3782,
+  "data": "data",
+  "header": [
+   "Region",
+   "Sales"
+  ],
+  "description": "Create a Bar chart of each region's share of total Sales using a level-of-detail percent-of-total calculated field pcttotal(Sales, by=Region).",
+  "config": {
+   "graphType": "Bar",
+   "calculatedFields": [
+    {
+     "name": "Sales Share",
+     "formula": "pcttotal(Sales, by=Region)",
+     "target": "variable"
+    }
+   ],
+   "xAxis": [
+    "Sales Share"
+   ],
+   "groupingFactors": [
+    "Region"
+   ]
+  }
+ },
+ {
+  "id": 3783,
+  "data": "data",
+  "header": [
+   "Region",
+   "State",
+   "City",
+   "Sales"
+  ],
+  "description": "Create a Bar chart of Sales grouped by Region with a drill-down hierarchy Region then State then City, so clicking a bar drills into the next level with a breadcrumb to step back.",
+  "config": {
+   "graphType": "Bar",
+   "groupingFactors": [
+    "Region"
+   ],
+   "drillHierarchy": [
+    "Region",
+    "State",
+    "City"
+   ],
+   "summaryType": "mean",
+   "showLegend": true
+  }
  }
 ]
