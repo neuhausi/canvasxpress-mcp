@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "71.2",
+  "x-cx-version": "71.3",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -492,6 +492,27 @@
         "Volcano",
         "Waterfall",
         "WordCloud"
+      ]
+    },
+    "aspect3D": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "3D aspect mode. cube (default) draws all three axes at equal length so each fills its own range; data scales the X/Y/Z box proportions to the real per-axis data spans so the surface keeps true data proportions (like Plotly aspectmode:data)",
+      "default": "cube",
+      "enum": [
+        "cube",
+        "data",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "Set the aspect3 d to {_option_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
+        "Scatter3D"
       ]
     },
     "attractiveForceFunction": {
@@ -10989,6 +11010,22 @@
         "Volcano"
       ]
     },
+    "fxSamples": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of grid subdivisions per axis when plotting a function (fx) as a 3D surface. Higher values give smoother surfaces and finer color detail; the grid has fxSamples+1 points per axis",
+      "default": 25,
+      "x-cx-false-disables": true,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "Set the fx samples to {_integer_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
+        "Scatter3D"
+      ]
+    },
     "ganttCompletion": {
       "type": [
         "string",
@@ -14191,55 +14228,6 @@
       "default": false,
       "x-cx-category": "Events",
       "x-cx-nl": "{Load|Do Not Load} canvas only if shown in viewport"
-    },
-    "leafletAlpha": {
-      "type": [
-        "number",
-        "boolean"
-      ],
-      "description": "Transparency for leaflet layers",
-      "default": 0.7,
-      "x-cx-false-disables": true,
-      "x-cx-category": "Maps Leaflet",
-      "x-cx-nl": "Set the leaflet alpha to {_float_}",
-      "x-cx-graphtypes": [
-        "Map"
-      ]
-    },
-    "leafletTileType": {
-      "type": [
-        "string",
-        "boolean"
-      ],
-      "description": "Leaflet tile type",
-      "default": "street",
-      "enum": [
-        "street",
-        "terrain",
-        "labels",
-        "satellite",
-        false
-      ],
-      "x-cx-false-disables": true,
-      "x-cx-category": "Maps Leaflet",
-      "x-cx-nl": "Set the leaflet tile type to {_option_}",
-      "x-cx-graphtypes": [
-        "Map"
-      ]
-    },
-    "leafletZoomAlphaColor": {
-      "type": [
-        "number",
-        "boolean"
-      ],
-      "description": "Zoom level before turning transparent the leaflet layers",
-      "default": 6,
-      "x-cx-false-disables": true,
-      "x-cx-category": "Maps Leaflet",
-      "x-cx-nl": "Set the leaflet zoom alpha color to {_float_}",
-      "x-cx-graphtypes": [
-        "Map"
-      ]
     },
     "leftMarginalText": {
       "type": [
@@ -23482,7 +23470,7 @@
         "string",
         "boolean"
       ],
-      "description": "Type of scatter plot",
+      "description": "Type of scatter plot. On a Scatter3D, density builds a kernel-density (kde2d) surface from 2D scattered points and renders it as a rotatable surface.",
       "default": false,
       "x-cx-options": [
         false,
@@ -23500,7 +23488,8 @@
         "bin2d",
         "clustree",
         "polygon",
-        "stream"
+        "stream",
+        "density"
       ],
       "x-cx-false-disables": true,
       "x-cx-category": "Scatter Plots",
@@ -25522,6 +25511,18 @@
         "Scatter3D"
       ]
     },
+    "show3DMinorGrid": {
+      "type": "boolean",
+      "description": "Flag to show/hide the minor (unlabeled) grid lines in 3D plots. Off by default for a cleaner surface; the per-axis xAxisGridMinorShow/yAxisGridMinorShow/zAxisGridMinorShow still hide individual axes when this is on",
+      "default": false,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "{Show|Hide} the3 d minor grid",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
+        "Scatter3D"
+      ]
+    },
     "showAnimation": {
       "type": "boolean",
       "description": "Flag to show/hide the animation for the graphs",
@@ -27094,6 +27095,16 @@
       "x-cx-category": "Shadows",
       "x-cx-nl": "{Show|Hide} the text shadow"
     },
+    "showTiles": {
+      "type": "boolean",
+      "description": "Flag to draw an XYZ raster tile basemap behind the map",
+      "default": false,
+      "x-cx-category": "Maps Tiles",
+      "x-cx-nl": "{Draw|Do Not Draw} an XYZ raster tile basemap behind the map",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
     "showTransition": {
       "type": "boolean",
       "description": "Flag to show/hide the transitions for the graphs",
@@ -27901,6 +27912,18 @@
       "x-cx-scalar-autowrap": true,
       "x-cx-category": "Sizes",
       "x-cx-nl": "Set the sizes to {_array_}"
+    },
+    "smoothSurface": {
+      "type": "boolean",
+      "description": "Soften a 3D surface by stroking each facet with its own fill colour so adjacent facets blend seamlessly (no facet wireframe or seams). On by default for a soft look; combine with a higher fxSamples for the smoothest result. Set false to show the facet edges (outline3DColor)",
+      "default": true,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "Set the smooth surface to {_boolean_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
+        "Scatter3D"
+      ]
     },
     "smpDendrogramHang": {
       "type": "boolean",
@@ -31643,6 +31666,55 @@
       "x-cx-category": "General",
       "x-cx-nl": "Use the style {_option_}"
     },
+    "tileAlpha": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Transparency for the map fill drawn over the tile basemap",
+      "default": 0.7,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps Tiles",
+      "x-cx-nl": "Set the tile alpha to {_float_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
+    "tileType": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Tile basemap style",
+      "default": "street",
+      "enum": [
+        "street",
+        "terrain",
+        "labels",
+        "satellite",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps Tiles",
+      "x-cx-nl": "Set the tile type to {_option_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
+    "tileZoomAlphaColor": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Zoom level before turning the map fill transparent over the tiles",
+      "default": 6,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps Tiles",
+      "x-cx-nl": "Set the tile zoom alpha color to {_float_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
     "timeFormat": {
       "type": [
         "string",
@@ -33083,16 +33155,6 @@
       "x-cx-nl": "{Use|Do Not Use} Barnes-Hut simulation",
       "x-cx-graphtypes": [
         "Network"
-      ]
-    },
-    "useLeaflet": {
-      "type": "boolean",
-      "description": "Flag to use leaflet",
-      "default": false,
-      "x-cx-category": "Maps Leaflet",
-      "x-cx-nl": "{Use|Do Not Use} leaflet",
-      "x-cx-graphtypes": [
-        "Map"
       ]
     },
     "useRoundRectangles": {
@@ -36817,6 +36879,22 @@
         "Volcano",
         "Waterfall",
         "WordCloud"
+      ]
+    },
+    "xAxis3DTicks": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of major ticks on the 3D X axis. When false (default) the count is chosen automatically from the data range (nice numbers, bounded 4-10); set a positive integer to force an exact count",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "Set the x axis3 d ticks to {_integer_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
+        "Scatter3D"
       ]
     },
     "xAxisCeilValue": {
@@ -42684,6 +42762,22 @@
         "Volcano"
       ]
     },
+    "yAxis3DTicks": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of major ticks on the 3D Y (value) axis. When false (default) the count is chosen automatically from the data range (nice numbers, bounded 4-10); set a positive integer to force an exact count",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "Set the y axis3 d ticks to {_integer_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
+        "Scatter3D"
+      ]
+    },
     "yAxisCeilValue": {
       "type": [
         "number",
@@ -45287,6 +45381,22 @@
       "x-cx-nl": "Set the z axis2 title to {_string_}",
       "x-cx-graphtypes": [
         "ScatterBubble2D",
+        "Scatter3D"
+      ]
+    },
+    "zAxis3DTicks": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of major ticks on the 3D Z axis. When false (default) the count is chosen automatically from the data range (nice numbers, bounded 4-10); set a positive integer to force an exact count",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "3D Attributes",
+      "x-cx-nl": "Set the z axis3 d ticks to {_integer_}",
+      "x-cx-graphtypes": [
+        "Bar",
+        "Network",
         "Scatter3D"
       ]
     },
