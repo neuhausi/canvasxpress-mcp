@@ -971,6 +971,43 @@ Optional fields: `label` (string), `color` (default `"red"`), `shape` (`teardrop
 
 ---
 
+### `compose_canvasxpress_dashboard`
+
+Assemble a multi-panel **linked dashboard** spec for the
+[canvasxpress-dashboards](https://github.com/neuhausi/canvasxpress-dashboards) npm
+package from a list of CanvasXpress charts — each a `{data, config}` pair, typically
+produced by `generate_canvasxpress_config`. Panels sharing the same data are linked
+automatically (the engine's broadcast mechanism): clicking a bar, slice or row in one
+panel selects the matching samples in the others. Deterministic and instant (no LLM
+call).
+
+**Input:** `title` (string), `panels` (`[{data, config, title?, width?}]`),
+`description?` (intro text panel), `columns?` (panels per row, 1–4, default 2),
+`theme?` (`light` | `dark` | `auto`).
+
+**Response:** `{"spec": {...}, "valid": true, "errors": [], "usage": "<html snippet>"}` —
+the validated dashboard spec plus a ready-to-paste snippet that renders it with
+`CanvasXpressDashboards.renderDashboard`.
+
+### `validate_dashboard_spec`
+
+Validate a canvasxpress-dashboards spec: structure plus every internal reference
+(layout items → panels, panel `dataRef` → data sources, source kinds, `$param`
+tokens → declared params, joins/relationships, calculated fields, pushdown queries,
+filters, controls, and self-referencing join/function cycles). Returns
+`{"valid": bool, "errors": [...]}` — structured errors an agent can fix before
+rendering. Use after hand-editing a composed spec.
+
+### `explain_canvasxpress_dashboards`
+
+Documentation for composing linked dashboards: installation (npm / UMD / the
+self-hosted server with its no-code builder and share links), spec anatomy, cross-chart
+linking (broadcast, relationships, drill-through actions, controls), and the
+recommended MCP workflow. Optional `topic`: `overview`, `install`, `spec`, `linking`,
+`workflow`.
+
+---
+
 ## Call logging & feedback
 
 Every tool call is automatically logged to `data/call_log.db` (a separate SQLite

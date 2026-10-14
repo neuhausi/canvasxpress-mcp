@@ -29,6 +29,91 @@ _BOOL_ALIASES    = {"boolean", "bool", "logical", "flag"}
 _TEXT_ALIASES    = {"text", "freetext", "free_text", "long_text", "varchar"}
 
 
+# ---------------------------------------------------------------------------
+# Oncoprint value-level detection
+#
+# An oncoprint matrix is structurally indistinguishable from a wide Heatmap or
+# categorical table by column TYPES alone, so the structural scorer keeps it at
+# zero (see _score_oncoprint). The only reliable signal is the CELL VALUES: they
+# are drawn from a fixed alteration vocabulary (mutation / copy-number tokens,
+# GISTIC integers, and ';'-layered combinations). This mirrors the engine's own
+# drag-and-drop detector (arrayToCXOncoprint / isOncoprintMatrix in
+# canvasXpress.IO.js); the token sets are kept in lock-step with
+# CanvasXpress.oncoprintMutTokens / oncoprintCnaTokens in canvasXpress.init.js.
+# ---------------------------------------------------------------------------
+
+_ONCOPRINT_MUT_TOKENS = {"MUT", "MISSENSE", "TRUNC", "INFRAME", "PROMOTER", "FUS", "FUSION"}
+_ONCOPRINT_CNA_TOKENS = {"AMP", "GAIN", "HETLOSS", "HOMDEL", "DEL"}
+_ONCOPRINT_GISTIC = re.compile(r"^-?[012]$")
+_ONCOPRINT_EMPTY = {"", "NA", "NAN", "NULL", "NONE"}
+
+
+def _oncoprint_cell_ok(value) -> tuple[bool, bool]:
+    """Classify one matrix cell against the oncoprint alteration vocabulary.
+
+    A cell may be empty, a single token, or several ';'-layered tokens
+    (e.g. ``"MUT;HOMDEL"`` or ``"MUT;0"``). Every token must be a recognised
+    mutation token, copy-number token, or GISTIC integer (-2..2).
+
+    Returns ``(recognised, has_mutation)`` — ``recognised`` is False if any
+    token is outside the vocabulary (which rejects the whole matrix), and
+    ``has_mutation`` is True if the cell carries a mutation/fusion token.
+    """
+    text = ("" if value is None else str(value)).strip()
+    if text.upper() in _ONCOPRINT_EMPTY:
+        return True, False
+    has_mutation = False
+    for token in text.split(";"):
+        token = token.strip()
+        if token == "" or token.upper() in _ONCOPRINT_EMPTY:
+            continue
+        upper = token.upper()
+        if _ONCOPRINT_GISTIC.match(token):
+            continue                   # GISTIC copy-number integer (-2..2)
+        if upper in _ONCOPRINT_MUT_TOKENS:
+            has_mutation = True
+            continue
+        if upper in _ONCOPRINT_CNA_TOKENS:
+            continue
+        return False, has_mutation     # unrecognised token → not an oncoprint
+    return True, has_mutation
+
+
+def looks_like_oncoprint(data_arr: list) -> bool:
+    """True when a header+rows array is a gene × sample alteration matrix.
+
+    ``data_arr`` is an array-of-arrays with the header row first (the shape the
+    wizard/`/select` endpoint previews). Requires at least one data row, a
+    first column of non-empty gene/row labels, every remaining cell drawn only
+    from the alteration vocabulary (:func:`_oncoprint_cell_ok`), and at least
+    one mutation/fusion token present. The mutation requirement mirrors the
+    engine's own drag-and-drop auto-detector (``oncoprint.hasMutation`` in
+    canvasXpress.IO.js): a pure GISTIC/copy-number integer matrix renders as a
+    plain Heatmap in both paths. Returns False for any table with
+    out-of-vocabulary values, so it never mislabels a chart the structural
+    scorer already handles.
+    """
+    if not isinstance(data_arr, list) or len(data_arr) < 2:
+        return False
+    header = data_arr[0]
+    if not isinstance(header, list) or len(header) < 2:
+        return False
+    found_mutation = False
+    for row in data_arr[1:]:
+        if not isinstance(row, list) or len(row) < 2:
+            return False
+        label = row[0]
+        if label is None or str(label).strip() == "":
+            return False
+        for cell in row[1:]:
+            recognised, has_mutation = _oncoprint_cell_ok(cell)
+            if not recognised:
+                return False
+            if has_mutation:
+                found_mutation = True
+    return found_mutation
+
+
 def _count_types(column_types: dict[str, str]) -> tuple[int, int, int, int, int]:
     """Return (n_factor, n_numeric, n_time, n_bool, n_text)."""
     n_fac  = sum(1 for t in column_types.values() if t.lower() in _FACTOR_ALIASES)

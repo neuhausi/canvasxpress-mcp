@@ -42,9 +42,12 @@ from llm_providers import (complete as llm_complete, provider_info, PROVIDER, MO
 import cx_knowledge
 import cx_survival
 import cx_selector
+import cloud_meter
 import asyncio
 import cx_validate
 import cx_render
+import cx_dashboard
+import cx_dashboard_validate
 from sentence_transformers import SentenceTransformer
 
 # ---------------------------------------------------------------------------
@@ -2009,6 +2012,16 @@ def _api_key_id(scope) -> str | None:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
 
 
+async def _send_json(send, status: int, payload: dict) -> None:
+    """Emit a minimal ASGI JSON response (used by the AI-metering gate to refuse
+    a request before it reaches a tool)."""
+    body = json.dumps(payload).encode("utf-8")
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode())]})
+    await send({"type": "http.response.body", "body": body})
+
+
 class _InjectToolMiddleware:
     """
     Injects ``"tool"``, ``"valid"``, ``"datetime"``, and ``"request_id"`` into
@@ -2028,6 +2041,26 @@ class _InjectToolMiddleware:
         if tool_name is None:
             await self._app(scope, receive, send)
             return
+
+        # CanvasXpress Cloud AI metering (off unless CX_AI_METER is configured;
+        # a standalone/self-hosted MCP server is never metered). Reserve one
+        # prepaid credit per model-backed generation before it runs; refuse with
+        # 402 when the account is unknown or out of credits.
+        if cloud_meter.metering_enabled() and path in cloud_meter.METERED_PATHS:
+            account = _api_key_id(scope)
+            if not account:
+                await _send_json(send, 402, {"error": (
+                    "AI generation on this server requires an API key with "
+                    "CanvasXpress Cloud AI credits. See "
+                    "https://www.canvasxpress.org/cloud.html")})
+                return
+            reserved = cloud_meter.reserve_credit(account, 1)
+            if not reserved.get("ok"):
+                await _send_json(send, 402, {
+                    "error": ("Out of CanvasXpress Cloud AI credits. Buy a credit "
+                              "pack at https://www.canvasxpress.org/cloud.html"),
+                    "ai_credits": reserved.get("ai_credits", 0)})
+                return
 
         # Request clock + LLM trace for the call log (see _attach_call_trace).
         import time as _time
@@ -3366,6 +3399,92 @@ def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
         "sections": sections,
         "available_topics": list(sections.keys()),
     }
+
+
+# ---------------------------------------------------------------------------
+# Dashboards (canvasxpress-dashboards spec: compose / validate / explain)
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    description=(
+        "Compose a multi-panel LINKED dashboard spec for the canvasxpress-dashboards "
+        "npm package from a list of CanvasXpress charts. Each panel is a {data, config} "
+        "pair (use generate_canvasxpress_config to create them), plus an optional title "
+        "and width in grid columns. Panels sharing the same data are automatically "
+        "linked: clicking a bar/slice/row in one selects the matching samples in the "
+        "others (the engine's broadcast mechanism). Returns the validated dashboard "
+        "spec JSON, a ready-to-paste HTML snippet that renders it, and any validation "
+        "errors. Deterministic and instant (no LLM call)."
+    )
+)
+def compose_canvasxpress_dashboard(
+    title: str,
+    panels: list,
+    description: str | None = None,
+    columns: int = 2,
+    theme: str | None = None,
+) -> dict:
+    """
+    Args:
+        title: Dashboard title (also derives the spec id).
+        panels: List of {data, config, title?, width?} objects. data/config are a
+                CanvasXpress data object and config; width is grid columns (1-12).
+        description: Optional intro text shown as a full-width text panel.
+        columns: Chart panels per row (1-4, default 2).
+        theme: Optional "light", "dark" or "auto".
+
+    Returns:
+        {"spec": {...}, "valid": bool, "errors": [...], "usage": "<html snippet>"}
+    """
+    return cx_dashboard.compose_dashboard(
+        title, panels, description=description, columns=columns, theme=theme)
+
+
+@mcp.tool(
+    description=(
+        "Validate a canvasxpress-dashboards spec (the JSON consumed by "
+        "renderDashboard / the dashboards builder). Checks structure and every "
+        "internal reference: layout items -> panels, panel dataRef -> data sources, "
+        "data source kinds (inline/connector/dataset/join/function/live), query and "
+        "pushdown $param tokens -> declared params, joins/relationships, calculated "
+        "fields, filters, controls, and self-referencing join/function cycles. "
+        "Returns structured errors an agent can fix before rendering. Use after "
+        "hand-editing a spec from compose_canvasxpress_dashboard."
+    )
+)
+def validate_dashboard_spec(spec: dict) -> dict:
+    """
+    Args:
+        spec: The dashboard spec object to validate.
+
+    Returns:
+        {"valid": bool, "errors": [str, ...], "warnings": [str, ...]?}
+    """
+    return cx_dashboard_validate.validate_spec(spec)
+
+
+@mcp.tool(
+    description=(
+        "Explain the canvasxpress-dashboards package: composing linked multi-chart "
+        "dashboards from one JSON spec. Covers installation (npm / UMD / the "
+        "self-hosted server with builder and share links), the spec anatomy (layout, "
+        "data sources, panels, params, pushdown, calculated fields), cross-chart "
+        "linking (broadcast, relationships, drill-through actions, controls), and "
+        "the recommended MCP workflow with compose_canvasxpress_dashboard. "
+        "Optionally filter by topic: 'overview', 'install', 'spec', 'linking', "
+        "'workflow'."
+    )
+)
+def explain_canvasxpress_dashboards(topic: str | None = None) -> dict:
+    """
+    Args:
+        topic: Optional topic filter: 'overview', 'install', 'spec', 'linking',
+               'workflow'. Returns all sections if omitted.
+
+    Returns:
+        Dict with documentation sections for canvasxpress-dashboards.
+    """
+    return cx_dashboard.explain(topic)
 
 
 # ---------------------------------------------------------------------------
@@ -5481,6 +5600,7 @@ async def rest_select(request: Request) -> Response:
     n_samples: int | None = None
     inferred_headers: list[str] = []
     type_source = "explicit"
+    oncoprint_detected = False
 
     # 1. Parse data array if provided → infer types
     raw_data = p.get("data")
@@ -5493,6 +5613,19 @@ async def rest_select(request: Request) -> Response:
             column_types = inferred_types
             n_samples = n_rows
             type_source = "inferred"
+            # Value-level oncoprint detection. The structural scorer cannot tell a
+            # gene x sample alteration matrix from a wide Heatmap by column types
+            # alone, so sniff the cell values for the alteration vocabulary (same
+            # signature the engine uses on drag-and-drop). When it matches and the
+            # caller did not already name oncoprint, activate the Layer-3 boost by
+            # appending the keyword to intent — identical to a user typing it.
+            try:
+                import cx_selector as _cxs_onco
+                if _cxs_onco.looks_like_oncoprint(data_arr) and "oncoprint" not in intent.lower():
+                    intent = (intent + " oncoprint").strip()
+                    oncoprint_detected = True
+            except Exception:
+                pass
             # Compute cardinalities and dominant-level fractions for factor columns
             if data_arr and len(data_arr) > 1:
                 headers_row = [str(h) for h in data_arr[0]]
@@ -5548,6 +5681,8 @@ async def rest_select(request: Request) -> Response:
         )
         # Annotate with provenance for transparency
         result["type_source"] = type_source
+        if oncoprint_detected:
+            result["oncoprint_detected"] = True
         if inferred_headers:
             result["headers_detected"] = inferred_headers
         result["target"] = cx.get("target", "")
