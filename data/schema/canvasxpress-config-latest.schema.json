@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "71.6",
+  "x-cx-version": "71.7",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -22563,6 +22563,23 @@
       "default": false,
       "x-cx-category": "Sankey Diagrams",
       "x-cx-nl": "{Colour|Do Not Colour} each Sankey node by its own value (level) rather than by a single colorBy annotation, and to paint every flow ribbon in its source node's colour",
+      "x-cx-graphtypes": [
+        "Sankey"
+      ]
+    },
+    "sankeyHide": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Name of a sample annotation that flags a link (row) to be hidden from the Sankey/alluvial diagram. A truthy value (true/1/\"yes\") suppresses that flow ribbon WITHOUT removing it from the data, so the node values, box heights and the showDataValues number still count it. Use it to drop a noise branch visually while keeping each node total correct (issue #320)",
+      "default": false,
+      "x-cx-options": [
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Sankey Diagrams",
+      "x-cx-nl": "Set the sankey hide to {_option_}",
       "x-cx-graphtypes": [
         "Sankey"
       ]
