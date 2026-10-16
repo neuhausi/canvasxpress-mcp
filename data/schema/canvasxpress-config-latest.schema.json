@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "71.7",
+  "x-cx-version": "71.8",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -5461,10 +5461,14 @@
     "dataPointSize": {
       "type": [
         "integer",
-        "boolean"
+        "boolean",
+        "string"
       ],
-      "description": "Approximate pixel size for the data points in scatter plots, dotplots and boxplots. The size will be adjusted according to the dimensions of the graph",
+      "description": "Approximate pixel size for the data points in scatter plots, dotplots and boxplots. The size will be adjusted according to the dimensions of the graph. Boxplots and dotplots default to 15 (to match ggplot2 geom_point) unless set explicitly. Set to the string \"auto\" to size scatter points from the plot area, damped by the number of points (larger dots on sparse/large panels, smaller on dense ones)",
       "default": 10,
+      "x-cx-presets": [
+        "auto"
+      ],
       "x-cx-false-disables": true,
       "x-cx-category": "Aspect Ratio, Space and Width",
       "x-cx-nl": "Set the data point size to {_integer_}"
@@ -23612,6 +23616,16 @@
       "x-cx-category": "Data Faceting",
       "x-cx-nl": "Segregate variables by {_multi-factor_}"
     },
+    "selectableFits": {
+      "type": "boolean",
+      "description": "Flag to make fit lines and confidence areas (regression, loess, forecast, Kaplan-Meier curves/bands, area/ribbon) clickable: a click selects and broadcasts the data the fit/curve was computed over (e.g. a KM arm selects its whole cohort)",
+      "default": true,
+      "x-cx-category": "Confidence Intervals",
+      "x-cx-nl": "{Make|Do Not Make} fit lines and confidence areas (regression, loess, forecast, Kaplan-Meier curves/bands, area/ribbon) clickable: a click selects and broadcasts the data the fit/curve was computed over (e",
+      "x-cx-graphtypes": [
+        "Scatter2D"
+      ]
+    },
     "selectedDataPoints": {
       "type": [
         "array",
@@ -29051,6 +29065,80 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Samples",
       "x-cx-nl": "Rotate the sample text {_integer_} degrees",
+      "x-cx-graphtypes": [
+        "Alluvial",
+        "Area",
+        "AreaLine",
+        "Bar",
+        "BarLine",
+        "Boxplot",
+        "Bin",
+        "Binplot",
+        "Bubble",
+        "Bullet",
+        "CDF",
+        "Chord",
+        "Circular",
+        "Cleveland",
+        "Contour",
+        "Correlation",
+        "Density",
+        "Distribution",
+        "Donut",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Fish",
+        "Gantt",
+        "Heatmap",
+        "Hex",
+        "Hexplot",
+        "Histogram",
+        "KaplanMeier",
+        "Line",
+        "Lollipop",
+        "Map",
+        "Meter",
+        "ParallelCoordinates",
+        "OptionsWall",
+        "Pareto",
+        "Pie",
+        "QQ",
+        "Quantile",
+        "Radar",
+        "Ribbon",
+        "Ridgeline",
+        "Sankey",
+        "Scatter2D",
+        "Scatter3D",
+        "ScatterBubble2D",
+        "Spaghetti",
+        "SPLOM",
+        "Stacked",
+        "StackedLine",
+        "StackedPercent",
+        "StackedPercentLine",
+        "Streamgraph",
+        "Sunburst",
+        "TagCloud",
+        "Tornado",
+        "TimeSeries",
+        "Tree",
+        "TreeBracket",
+        "Treemap",
+        "Upset",
+        "Violin",
+        "Volcano",
+        "Waterfall",
+        "WordCloud"
+      ]
+    },
+    "smpTextRotateAuto": {
+      "type": "boolean",
+      "description": "Flag to automatically keep the sample (or grouping-factor) labels of vertical one-dimensional plots horizontal when the longest label fits its band, falling back to smpTextRotate otherwise. Re-evaluated on resize",
+      "default": true,
+      "x-cx-category": "Samples",
+      "x-cx-nl": "{Automatically|Do Not Automatically} keep the sample (or grouping-factor) labels of vertical one-dimensional plots horizontal when the longest label fits its band, falling back to smpTextRotate otherwise",
       "x-cx-graphtypes": [
         "Alluvial",
         "Area",
