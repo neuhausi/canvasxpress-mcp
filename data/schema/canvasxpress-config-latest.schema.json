@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "72.4",
+  "x-cx-version": "72.5",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -3373,6 +3373,20 @@
         "Waterfall",
         "WordCloud"
       ]
+    },
+    "colorLegendLabels": {
+      "type": [
+        "array",
+        "boolean",
+        "string",
+        "number"
+      ],
+      "description": "Class names for a stepped colour legend (see colorLegendSteps): one label per colour class, lowest class first, drawn beside its swatch in place of the numeric class edges, for example [\"a\", \"b\", \"c\", \"d\", \"e\"]. Ignored unless the legend is stepped and the array has exactly one entry per class",
+      "default": [],
+      "x-cx-false-disables": true,
+      "x-cx-scalar-autowrap": true,
+      "x-cx-category": "Colors",
+      "x-cx-nl": "Set the color legend labels to {_array_}"
     },
     "colorLegendSteps": {
       "type": [
@@ -12150,6 +12164,20 @@
         "Heatmap"
       ]
     },
+    "heatmapCellSpace": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Pixels of empty space (gap) left around each heatmap cell so it renders as a separate padded tile instead of a contiguous block; 0 (default) keeps cells edge-to-edge. Combine with colorSpectrumBinned for a discrete-colour tiled heatmap, or use heatmapType \"tiled\"",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Heatmap Graphs",
+      "x-cx-nl": "Set the heatmap cell space to {_float_}",
+      "x-cx-graphtypes": [
+        "Heatmap"
+      ]
+    },
     "heatmapCellText": {
       "type": [
         "array",
@@ -12320,7 +12348,7 @@
         "string",
         "boolean"
       ],
-      "description": "Type of Heatmap used to overlay a layer on top of an image. Special for spatial transcriptomics and UpSet plots",
+      "description": "Type of Heatmap used to overlay a layer on top of an image. Special for spatial transcriptomics and UpSet plots. \"tiled\" is a preset for a discrete-colour, padded-cell heatmap (binned colours + heatmapCellSpace, no cell box)",
       "default": "normal",
       "enum": [
         "normal",
@@ -12329,6 +12357,7 @@
         "upset",
         "correlation",
         "split",
+        "tiled",
         false
       ],
       "x-cx-false-disables": true,
