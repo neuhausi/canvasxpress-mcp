@@ -210,6 +210,10 @@ _DOCS = {
         "target panel's config."
     ),
     "workflow": (
+        "Shortcut for one dataset: call suggest_canvasxpress_dashboard with the data. If it "
+        "is a patient cohort with survival columns or a sequencing run-QC table, it returns "
+        "the whole validated, linked dashboard (filters plus the panels that shape calls "
+        "for) in one step; otherwise use the workflow below. "
         "Recommended MCP workflow: 1) per chart, call "
         "recommend_canvasxpress_graphtype then generate_canvasxpress_config to get "
         "each panel's {data, config}; 2) call compose_canvasxpress_dashboard with "

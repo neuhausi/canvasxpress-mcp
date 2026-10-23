@@ -25,7 +25,7 @@ _FUNCTION_LANGUAGES = ("python", "r")
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _JOIN_TYPES = ("inner", "left", "right", "outer")
 _AXES = ("smps", "vars")
-_MARKING_MODES = ("focus", "highlight", "ghost")
+_MARKING_MODES = ("focus", "highlight", "ghost", "filter")
 _FIELD_KINDS = ("values", "range", "search")
 _CALC_TARGETS = ("variable", "sampleAnnotation", "variableAnnotation")
 _BIN_METHODS = ("equalWidth", "quantile", "percentile", "custom")
@@ -90,7 +90,8 @@ def validate_spec(spec: Any) -> dict:
     _check_data(data, params, errors, warnings if status == "newer-minor" else None)
     _check_relationships(spec.get("relationships"), data, errors)
     if spec.get("markingMode") is not None and spec.get("markingMode") not in _MARKING_MODES:
-        errors.append('spec.markingMode must be "focus", "highlight", or "ghost"')
+        errors.append("spec.markingMode must be one of: " + ", ".join(_MARKING_MODES))
+    _check_insights(spec.get("insights"), data, errors)
     _check_filter_schemes(spec.get("filterSchemes"), data, errors)
     _check_params(params, errors)
     _check_controls(spec.get("controls"), data, errors)
@@ -638,6 +639,49 @@ def _check_filters_panel(panel: dict, at: str, data: Any, errors: list) -> None:
             errors.append(fat + " needs a dataRef (on the field or the panel)")
         if f.get("kind") is not None and f.get("kind") not in _FIELD_KINDS:
             errors.append(fat + '.kind must be "values", "range", or "search"')
+
+
+def _check_insights(insights: Any, data: Any, errors: list) -> None:
+    """Check the optional ``insights`` block (mirrors ``checkInsights`` in validateSpec.js)."""
+    if insights is None:
+        return
+    if not isinstance(insights, dict):
+        errors.append("spec.insights must be an object")
+        return
+    ops = ("lt", "le", "gt", "ge")
+    thresholds = insights.get("thresholds")
+    if thresholds is not None:
+        if not isinstance(thresholds, list):
+            errors.append("spec.insights.thresholds must be an array")
+        else:
+            for i, t in enumerate(thresholds):
+                at = "spec.insights.thresholds[%d]" % i
+                if not isinstance(t, dict):
+                    errors.append(at + " must be an object")
+                    continue
+                if not isinstance(t.get("field"), str) or not t.get("field"):
+                    errors.append(at + ".field must be a non-empty field name")
+                if t.get("op") not in ops:
+                    errors.append(at + ".op must be one of: " + ", ".join(ops))
+                value = t.get("value")
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value \
+                        or value in (float("inf"), float("-inf")):
+                    errors.append(at + ".value must be a number")
+                if t.get("label") is not None and not isinstance(t.get("label"), str):
+                    errors.append(at + ".label must be a string")
+                if t.get("source") is not None and (not isinstance(data, dict) or t["source"] not in data):
+                    errors.append(at + '.source "%s" has no matching entry in spec.data' % t["source"])
+    sources = insights.get("sources")
+    if sources is not None:
+        if not isinstance(sources, list):
+            errors.append("spec.insights.sources must be an array of source names")
+        else:
+            for i, ref in enumerate(sources):
+                if not isinstance(ref, str) or not isinstance(data, dict) or ref not in data:
+                    errors.append('spec.insights.sources[%d] "%s" has no matching entry in spec.data' % (i, ref))
+    limit = insights.get("max")
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
+        errors.append("spec.insights.max must be a positive whole number")
 
 
 def _check_filter_schemes(schemes: Any, data: Any, errors: list) -> None:

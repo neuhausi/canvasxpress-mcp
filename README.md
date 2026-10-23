@@ -989,6 +989,43 @@ call).
 the validated dashboard spec plus a ready-to-paste snippet that renders it with
 `CanvasXpressDashboards.renderDashboard`.
 
+### `suggest_canvasxpress_dashboard`
+
+Build a whole **linked dashboard from one dataset** in a single call. Pass a CanvasXpress
+data object; when the analysis shape is recognised, the tool returns the validated
+dashboard spec — a Filters panel plus the panels that shape calls for, all bound to the
+one dataset so a selection in one panel selects the same rows in the others.
+
+| Shape recognised | Dashboard |
+|---|---|
+| Patient cohort with survival columns (a time column such as `time`, `os_months`, `PFS.days` plus a **numeric** 0/1 event column) | Filters, Kaplan–Meier curve by the best grouping column, a measure by group (boxplot) and against time (scatter), and a case card |
+| Per-sample sequencing run QC (three or more of: reads, mapping, quality, duplication, GC, insert size, coverage, adapter, contamination) | Filters, depth per sample, mapping vs duplication, quality spread by lane / flowcell / batch, and a case card |
+
+Every dashboard ends with a **case card**: click a patient's point (or a sample's bar) and a one-row
+table loads that row's record, while the charts keep the whole dataset and pick the case out. It is
+plain spec — a `case` parameter, a second source narrowed to it, and a `setParam` click action — so
+it works in any dashboard. Only data stored with rows as samples and variables as measures is
+handled; a table stored the other way round, or a survival table with a text event (`Dead`/`Alive`),
+gets no suggestion.
+
+It is a suggestion, never a silent rewrite: when nothing fits it answers
+`{"suggested": false, ...}` and points at `select_canvasxpress_chart` +
+`compose_canvasxpress_dashboard`. Deterministic and instant (no LLM call), and the data is
+never altered. The same recognition drives the "whole dashboard" option in the
+canvasxpress-dashboards data wizard.
+
+Each dashboard also opts in to an **insights strip** — captions above the charts for what stands out
+(a group that differs, outliers, and any limit you declare), each carrying its figures and computed
+by fixed deterministic checks, not a model. Pass `thresholds` to flag failures: limits are never
+inferred, only the ones you declare are checked, e.g.
+`[{"field": "q30", "op": "lt", "value": 85, "label": "Q30 below 85%"}]` (`op` is `lt`, `le`, `gt` or `ge`).
+
+**Input:** `data` (CanvasXpress data object), `title?`, `theme?` (`light` | `dark` | `auto`),
+`thresholds?` (limits to flag in the insights strip).
+
+**Response:** `{"suggested": true, "template": "cohort" | "ngs-qc", "label", "reason",
+"panels": [{id, title, graphType}], "spec": {...}, "valid": true, "errors": [], "usage": "<html snippet>"}`.
+
 ### `validate_dashboard_spec`
 
 Validate a canvasxpress-dashboards spec: structure plus every internal reference

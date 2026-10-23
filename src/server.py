@@ -47,6 +47,7 @@ import asyncio
 import cx_validate
 import cx_render
 import cx_dashboard
+import cx_dashboard_suggest
 import cx_dashboard_validate
 from sentence_transformers import SentenceTransformer
 
@@ -3438,6 +3439,46 @@ def compose_canvasxpress_dashboard(
     """
     return cx_dashboard.compose_dashboard(
         title, panels, description=description, columns=columns, theme=theme)
+
+
+@mcp.tool(
+    description=(
+        "Suggest a whole LINKED dashboard from ONE dataset, in a single call. Give it a "
+        "CanvasXpress data object; if it recognises the analysis shape it returns the "
+        "validated dashboard spec — a Filters panel plus the panels that shape calls for, "
+        "all bound to the one dataset so a selection in one panel selects the same rows in "
+        "the others. Recognises a patient cohort with survival columns (filters, "
+        "Kaplan-Meier curve, a measure by group and against time) and a per-sample "
+        "sequencing run-QC table (filters, depth per sample, mapping vs duplication, quality "
+        "by lane/batch); each ends with a case card that loads the record of the patient or "
+        "sample you click, and opts in to an insights strip (outliers, group differences and any "
+        "thresholds you declare, each caption carrying its figures). When nothing fits it says so (suggested: false) and points at "
+        "select_canvasxpress_chart + compose_canvasxpress_dashboard instead. Deterministic "
+        "and instant (no LLM call); it never alters the data."
+    )
+)
+def suggest_canvasxpress_dashboard(
+    data: dict,
+    title: str | None = None,
+    theme: str | None = None,
+    thresholds: list | None = None,
+) -> dict:
+    """
+    Args:
+        data: A CanvasXpress data object {"y": {"vars", "smps", "data"}, "x"?, "z"?}
+              (rows are samples when there are no more variables than samples).
+        title: Optional dashboard title (default: the template's name).
+        theme: Optional "light", "dark" or "auto".
+        thresholds: Optional failure conditions to flag in the dashboard's insights strip, e.g.
+                    [{"field": "q30", "op": "lt", "value": 85, "label": "Q30 below 85%"}] (op is one
+                    of lt, le, gt, ge). Never inferred: only what you declare is checked.
+
+    Returns:
+        {"suggested": true, "template": "cohort" | "ngs-qc", "label", "reason",
+         "panels": [{id, title, graphType}], "spec": {...}, "valid": bool,
+         "errors": [...], "usage": "<html snippet>"} or {"suggested": false, "reason": "..."}
+    """
+    return cx_dashboard_suggest.suggest(data, title=title, theme=theme, thresholds=thresholds)
 
 
 @mcp.tool(

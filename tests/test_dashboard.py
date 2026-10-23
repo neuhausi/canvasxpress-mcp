@@ -111,4 +111,4 @@ def test_tools_registered():
         loop.close()
     names = {t.name for t in tools}
     assert {"compose_canvasxpress_dashboard", "validate_dashboard_spec",
-            "explain_canvasxpress_dashboards"} <= names
+            "explain_canvasxpress_dashboards", "suggest_canvasxpress_dashboard"} <= names
