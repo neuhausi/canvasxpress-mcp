@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "72.5",
+  "x-cx-version": "72.6",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -21010,7 +21010,7 @@
         "object",
         "boolean"
       ],
-      "description": "Locale-aware number format for the tick values in the R axis. Overrides numberFormat for this axis; an explicit rAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "description": "Locale-aware number format for the tick values in the R axis. Overrides numberFormat for this axis; an explicit rAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact, auto), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact|auto\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
       "default": false,
       "x-cx-false-disables": true,
       "x-cx-category": "R-Axis",
@@ -39915,7 +39915,7 @@
         "object",
         "boolean"
       ],
-      "description": "Locale-aware number format for the tick values in the X axis. Overrides numberFormat for this axis; an explicit xAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "description": "Locale-aware number format for the tick values in the X axis. Overrides numberFormat for this axis; an explicit xAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact, auto), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact|auto\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
       "default": false,
       "x-cx-false-disables": true,
       "x-cx-category": "X-Axis",
@@ -44300,7 +44300,7 @@
         "object",
         "boolean"
       ],
-      "description": "Locale-aware number format for the tick values in the Y axis. Overrides numberFormat for this axis; an explicit yAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "description": "Locale-aware number format for the tick values in the Y axis. Overrides numberFormat for this axis; an explicit yAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact, auto), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact|auto\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
       "default": false,
       "x-cx-false-disables": true,
       "x-cx-category": "Y-Axis",
@@ -46069,7 +46069,7 @@
         "object",
         "boolean"
       ],
-      "description": "Locale-aware number format for the tick values in the Z axis. Overrides numberFormat for this axis; an explicit zAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
+      "description": "Locale-aware number format for the tick values in the Z axis. Overrides numberFormat for this axis; an explicit zAxisTickFormat takes precedence over it. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact, auto), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact|auto\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}",
       "default": false,
       "x-cx-false-disables": true,
       "x-cx-category": "Z-Axis",
