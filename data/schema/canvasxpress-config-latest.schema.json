@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "72.7",
+  "x-cx-version": "72.8",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -8894,6 +8894,38 @@
         "Volcano",
         "Waterfall"
       ]
+    },
+    "demo": {
+      "type": [
+        "array",
+        "boolean",
+        "string",
+        "number"
+      ],
+      "description": "Declarative storyboard of semantic steps (toolbar/customizer/marker/point/legend/caption/wait/raw) the ghost cursor performs for a demo video; see playDemo",
+      "default": [],
+      "x-cx-false-disables": true,
+      "x-cx-scalar-autowrap": true,
+      "x-cx-category": "Plot Mode",
+      "x-cx-nl": "Set the demo to {_array_}"
+    },
+    "demoAutoPlay": {
+      "type": "boolean",
+      "description": "When a demo storyboard is set, play it automatically once after the first render",
+      "default": true,
+      "x-cx-category": "Plot Mode",
+      "x-cx-nl": "Set the demo auto play to {_boolean_}"
+    },
+    "demoSpeed": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Demo playback speed multiplier (1 = human pace, 2 = twice as fast)",
+      "default": 1,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Plot Mode",
+      "x-cx-nl": "Set the demo speed to {_float_}"
     },
     "dendrogramColor": {
       "type": [
