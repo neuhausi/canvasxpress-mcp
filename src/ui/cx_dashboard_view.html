@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CanvasXpress Dashboard View</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; min-height: 100%; }
+    /* A dashboard is a grid of panels that can be taller than the iframe, so
+       (unlike the single-chart view) the body scrolls rather than clipping. */
+    body {
+      overflow-x: hidden;
+      overflow-y: auto;
+      background: var(--cxd-bg, #ffffff);
+      color: var(--cxd-fg, #111827);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #cx-dashboard { width: 100%; }
+    #cx-error {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #fee2e2;
+      color: #b91c1c;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #fca5a5;
+      z-index: 9999;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+  <!--
+    The canonical canvasxpress-dashboards drop-in: the CanvasXpress engine CSS +
+    JS, then the dashboards UMD bundle. Both are served from
+    https://www.canvasxpress.org, so a single origin covers the MCP Apps CSP
+    (resourceDomains). The dashboards global is `CanvasXpressDashboards`; it needs
+    the `CanvasXpress` global, hence the load order.
+    Per MCP Apps spec §UI Resource Format: resourceDomains must include
+    "https://www.canvasxpress.org" when the host enforces CSP.
+  -->
+  <link href="https://www.canvasxpress.org/dist/canvasXpress.css" rel="stylesheet" />
+  <script src="https://www.canvasxpress.org/dist/canvasXpress.min.js"></script>
+  <script src="https://www.canvasxpress.org/dashboards/canvasxpress-dashboards.umd.js"></script>
+</head>
+<body>
+  <div id="cx-error"></div>
+  <div id="cx-dashboard"></div>
+
+  <script>
+    // ---------------------------------------------------------------------------
+    // MCP Apps protocol implementation (dashboard view).
+    // Per MCP Apps spec §Communication Protocol (2026-01-26):
+    //   - View sends ui/initialize request to window.parent via postMessage
+    //   - Host sends ui/notifications/tool-result notification with CallToolResult
+    //   - Spec §Transport Layer: postMessage target origin is '*'
+    // Modelled on cx_chart_view.html; the difference is that the payload carries a
+    // full dashboard `spec` rendered with CanvasXpressDashboards.renderDashboard()
+    // (a grid of linked panels) instead of a single {data, config} chart.
+    // ---------------------------------------------------------------------------
+
+    let handle = null;         // { close } from renderDashboard (live-source teardown)
+    let lastSpec = null;       // last spec drawn, for a resize re-render
+    let lastWidth = 0;         // last viewport width a render was done at
+    let resizeTimer = null;
+    let nextId = 1;
+
+    /** Show a visible error banner (not just console.error). */
+    function showError(msg) {
+      const el = document.getElementById('cx-error');
+      el.textContent = 'CanvasXpress Dashboards error: ' + msg;
+      el.style.display = 'block';
+      console.error('[cx-dashboard-view]', msg);
+    }
+
+    /** Clear a prior error banner. */
+    function clearError() {
+      const el = document.getElementById('cx-error');
+      if (el) el.style.display = 'none';
+    }
+
+    /**
+     * Get the dashboard container, re-creating it if a prior render removed it.
+     * renderDashboard() replaces the container's contents, so this just has to
+     * guarantee the element exists.
+     */
+    function ensureContainer() {
+      let el = document.getElementById('cx-dashboard');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'cx-dashboard';
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    /**
+     * Render a dashboard spec into the container. Closes any previous instance
+     * first (its live-source streams, if any) and empties the container so a
+     * re-render does not stack two grids. The spec carries its data inline, so no
+     * network fetch is needed; renderDashboard validates it and throws on an
+     * invalid spec, which we surface in the error banner.
+     */
+    function renderDashboardSpec(spec) {
+      try {
+        if (handle && typeof handle.close === 'function') {
+          try { handle.close(); } catch (e) { /* ignore */ }
+        }
+        handle = null;
+        const el = ensureContainer();
+        el.innerHTML = '';
+
+        if (typeof CanvasXpressDashboards === 'undefined' ||
+            typeof CanvasXpressDashboards.renderDashboard !== 'function') {
+          showError('canvasxpress-dashboards bundle did not load.');
+          return;
+        }
+        handle = CanvasXpressDashboards.renderDashboard(spec, 'cx-dashboard');
+        lastSpec = spec;
+        lastWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        clearError();
+        initResizeHandling();
+      } catch (err) {
+        showError(err.message || String(err));
+      }
+    }
+
+    /**
+     * Re-fit the dashboard when the host resizes the panel. The grid layout is
+     * responsive by CSS, so only a WIDTH change (which re-flows the columns and
+     * the charts' pixel sizes) warrants a re-render; height changes are just the
+     * dashboard's own content growing and need no action. Re-rendering resets
+     * per-panel selections, so it is deliberately limited to real width changes.
+     */
+    function refitToViewport() {
+      const w = window.innerWidth || document.documentElement.clientWidth || 0;
+      if (!lastSpec || w === lastWidth || w === 0) return;
+      renderDashboardSpec(lastSpec);
+    }
+
+    let resizeBound = false;
+    /** Debounced resize handling, bound once. */
+    function initResizeHandling() {
+      if (resizeBound) return;
+      resizeBound = true;
+      function schedule() {
+        if (resizeTimer !== null) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () { resizeTimer = null; refitToViewport(); }, 150);
+      }
+      window.addEventListener('resize', schedule);
+    }
+
+    /**
+     * Send a JSON-RPC request to the host via postMessage.
+     * Per spec §Transport Layer: use '*' as the target origin.
+     */
+    function sendRequest(method, params) {
+      const id = nextId++;
+      window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+      return new Promise((resolve, reject) => {
+        function listener(event) {
+          const msg = event.data;
+          if (msg && msg.id === id) {
+            window.removeEventListener('message', listener);
+            if (msg.result !== undefined) resolve(msg.result);
+            else if (msg.error) reject(new Error(JSON.stringify(msg.error)));
+            else reject(new Error('Unexpected response: ' + JSON.stringify(msg)));
+          }
+        }
+        window.addEventListener('message', listener);
+      });
+    }
+
+    /**
+     * Parse the tool result and extract the dashboard spec.
+     * Per spec §Notifications (Host → View): ui/notifications/tool-result params
+     * is a CallToolResult: { content: Array<{type, text?}>, isError?: boolean }.
+     * The compose/suggest tools return a wrapper { spec, valid, errors, usage, ... };
+     * suggest may return { suggested: false, reason } when nothing fits.
+     */
+    function handleToolResult(params) {
+      try {
+        const result = params;  // params IS the CallToolResult
+        if (result.isError) {
+          showError('Tool returned an error: ' +
+            ((result.content && result.content[0] && result.content[0].text) || 'unknown'));
+          return;
+        }
+        if (!result.content || !result.content.length) {
+          showError('Tool result has no content');
+          return;
+        }
+        const textBlock = result.content.find(c => c.type === 'text' && c.text);
+        if (!textBlock) {
+          showError('No text content block in tool result');
+          return;
+        }
+        let payload;
+        try {
+          payload = JSON.parse(textBlock.text);
+        } catch (e) {
+          showError('Failed to parse tool result JSON: ' + e.message);
+          return;
+        }
+        // suggest_canvasxpress_dashboard can decline when no template fits.
+        if (payload && payload.suggested === false) {
+          showError('No dashboard was suggested: ' +
+            (payload.reason || 'the data did not match a known template.'));
+          return;
+        }
+        // Accept the wrapper's `spec`, or a bare spec (has layout + panels).
+        const spec = (payload && payload.spec) ? payload.spec
+          : (payload && payload.layout && payload.panels ? payload : null);
+        if (!spec) {
+          showError('Tool result has no dashboard spec (missing layout/panels).');
+          return;
+        }
+        if (payload && payload.valid === false && Array.isArray(payload.errors) && payload.errors.length) {
+          // The server flagged it invalid; renderDashboard would throw anyway.
+          showError('Dashboard spec is invalid:\n  - ' + payload.errors.join('\n  - '));
+          return;
+        }
+        renderDashboardSpec(spec);
+      } catch (err) {
+        showError(err.message || String(err));
+      }
+    }
+
+    /**
+     * Listen for host notifications.
+     * Per spec §Notifications (Host → View):
+     *   - ui/notifications/tool-result  → render the dashboard
+     *   - ui/notifications/tool-input   → clear any previous error (loading)
+     */
+    window.addEventListener('message', function (event) {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.method === 'ui/notifications/tool-result') {
+        handleToolResult(msg.params);
+      } else if (msg.method === 'ui/notifications/tool-input') {
+        clearError();
+      }
+      // initialize response etc. handled by sendRequest()
+    });
+
+    /**
+     * On load: send ui/initialize to the host.
+     * Per spec §Lifecycle: the host replies with McpUiInitializeResult, then sends
+     * ui/notifications/initialized, tool-input and tool-result.
+     */
+    document.addEventListener('DOMContentLoaded', function () {
+      sendRequest('ui/initialize', {
+        // Only inline is declared: the dashboard is sized to the iframe width and
+        // scrolls vertically; modal/fullscreen would need extra layout logic.
+        appCapabilities: { availableDisplayModes: ['inline'] },
+        clientInfo: { name: 'canvasxpress-dashboard-view', version: '1.0.0' },
+        protocolVersion: '2026-01-26',
+      }).catch(function (err) {
+        // Host may not support MCP Apps; the dashboard still renders if a
+        // tool-result postMessage arrives.
+        console.warn('[cx-dashboard-view] ui/initialize failed (host may not support MCP Apps):', err);
+      });
+    });
+  </script>
+</body>
+</html>

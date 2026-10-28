@@ -1035,6 +1035,28 @@ filters, controls, and self-referencing join/function cycles). Returns
 `{"valid": bool, "errors": [...]}` — structured errors an agent can fix before
 rendering. Use after hand-editing a composed spec.
 
+### `publish_canvasxpress_dashboard`
+
+Publish a composed spec to a running **canvasxpress-dashboards** install so it opens
+in the no-code Builder. Saves the spec (from `compose_canvasxpress_dashboard` /
+`suggest_canvasxpress_dashboard`) to the install named by `CXD_DASHBOARDS_URL`,
+authenticating with `CXD_DASHBOARDS_API_KEY` (sent as `X-Cxd-Api-Key`, matched against
+the server's `CXD_API_KEY`). Returns `builder_url` — a link that opens the dashboard
+straight in the Builder via the server's `?open=<id>` deep link — plus a `share_url`
+when `visibility` is `auth` or `public` (default `private`). Never throws: returns
+`{"published": false, "errors": [...]}` when unconfigured, the spec is invalid, or the
+server rejects it. Configure with:
+
+```
+CXD_DASHBOARDS_URL=https://canvasxpress.org/dashboards
+CXD_DASHBOARDS_API_KEY=<matches CXD_API_KEY on the dashboards server>
+# CXD_DASHBOARDS_AUTH=Bearer ...   # optional, for an authenticating proxy
+```
+
+On the dashboards server, set `CXD_API_KEY` (the shared secret) and `CXD_API_USER` (an
+admin account so publishing and public sharing are permitted); published dashboards are
+owned by that account, so sign into the Builder as the same user to see them.
+
 ### `explain_canvasxpress_dashboards`
 
 Documentation for composing linked dashboards: installation (npm / UMD / the
@@ -1331,7 +1353,7 @@ apachectl configtest && service httpd restart
 
 ## MCP Apps support
 
-MCP Apps ([SEP-1865](https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/main/specification/2026-01-26/apps.mdx)) is an MCP extension that lets hosts embed a server-supplied iframe directly inside the conversation UI, enabling inline interactive chart rendering.
+MCP Apps ([SEP-1865](https://raw.githubusercontent.com/modelcontextprotocol/ext-apps/main/specification/2026-01-26/apps.mdx)) is an MCP extension that lets hosts embed a server-supplied iframe directly inside the conversation UI, enabling inline interactive chart **and dashboard** rendering.
 
 ### Which tools declare a UI resource
 
@@ -1345,6 +1367,15 @@ Four chart-producing tools carry `_meta.ui.resourceUri = "ui://canvasxpress/char
 | `create_map_config` | Generate a choropleth / map config |
 
 When a supporting host calls any of these tools it will load the `ui://canvasxpress/chart` resource, render it in a sandboxed iframe, and post the tool result to the iframe via the `ui/notifications/tool-result` postMessage notification. The iframe parses the JSON config and calls `new CanvasXpress()` to display the chart inline.
+
+Two dashboard-composing tools carry `_meta.ui.resourceUri = "ui://canvasxpress/dashboard"`:
+
+| Tool | Purpose |
+|------|---------|
+| `compose_canvasxpress_dashboard` | Compose a linked multi-panel dashboard from chart panels |
+| `suggest_canvasxpress_dashboard` | Suggest a whole linked dashboard from one dataset |
+
+These render the returned spec inline as a **live, interactive dashboard** — a grid of linked CanvasXpress panels — via [`ui://canvasxpress/dashboard`](src/ui/cx_dashboard_view.html), which loads the `canvasxpress-dashboards` UMD bundle and calls `renderDashboard(spec, element)`. Selections propagate across panels in the conversation, no server or sign-in needed. (To instead *persist* a dashboard into an install and open it in the no-code Builder, use `publish_canvasxpress_dashboard` above.)
 
 ### Known supporting hosts
 

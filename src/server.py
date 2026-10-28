@@ -47,6 +47,7 @@ import asyncio
 import cx_validate
 import cx_render
 import cx_dashboard
+import cx_dashboard_publish
 import cx_dashboard_suggest
 import cx_dashboard_validate
 from sentence_transformers import SentenceTransformer
@@ -1576,6 +1577,48 @@ def cx_chart_resource() -> ResourceResult:
         contents=[
             ResourceContent(
                 _CX_APP_HTML,
+                mime_type=_CX_APP_MIME_TYPE,
+                meta=_CX_APP_RESOURCE_META,
+            ),
+        ],
+        meta=_CX_APP_RESOURCE_META,
+    )
+
+
+# --- MCP App: live dashboard view ------------------------------------------
+# A second UI resource that renders a whole canvasxpress-dashboards spec (a grid
+# of linked panels) inline in the conversation, the same way the chart view
+# renders one chart. Both the engine and the dashboards UMD are served from
+# https://www.canvasxpress.org, so the chart view's CSP meta (_CX_APP_RESOURCE_META,
+# resourceDomains = canvasxpress.org) covers this view too and is reused as-is.
+_CX_DASH_APP_HTML = (Path(__file__).parent / "ui" / "cx_dashboard_view.html").read_text(encoding="utf-8")
+
+_CX_DASH_RESOURCE_URI = "ui://canvasxpress/dashboard"
+
+# Tools that return a dashboard spec reference this view via _meta.ui.resourceUri.
+_META_FOR_DASHBOARD = {
+    "ui": {
+        "resourceUri": _CX_DASH_RESOURCE_URI,
+    },
+}
+
+
+@mcp.resource(
+    _CX_DASH_RESOURCE_URI,
+    mime_type=_CX_APP_MIME_TYPE,
+    name="CanvasXpress Dashboard View",
+    meta=_CX_APP_RESOURCE_META,
+)
+def cx_dashboard_resource() -> ResourceResult:
+    """HTML MCP App iframe for rendering a canvasxpress-dashboards spec inline.
+
+    Returns a ResourceResult so the CSP _meta is also attached to the
+    resources/read response content per spec lines 243-250 / 303-314.
+    """
+    return ResourceResult(
+        contents=[
+            ResourceContent(
+                _CX_DASH_APP_HTML,
                 mime_type=_CX_APP_MIME_TYPE,
                 meta=_CX_APP_RESOURCE_META,
             ),
@@ -3416,7 +3459,8 @@ def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
         "others (the engine's broadcast mechanism). Returns the validated dashboard "
         "spec JSON, a ready-to-paste HTML snippet that renders it, and any validation "
         "errors. Deterministic and instant (no LLM call)."
-    )
+    ),
+    meta=_META_FOR_DASHBOARD,
 )
 def compose_canvasxpress_dashboard(
     title: str,
@@ -3455,7 +3499,8 @@ def compose_canvasxpress_dashboard(
         "thresholds you declare, each caption carrying its figures). When nothing fits it says so (suggested: false) and points at "
         "select_canvasxpress_chart + compose_canvasxpress_dashboard instead. Deterministic "
         "and instant (no LLM call); it never alters the data."
-    )
+    ),
+    meta=_META_FOR_DASHBOARD,
 )
 def suggest_canvasxpress_dashboard(
     data: dict,
@@ -3502,6 +3547,35 @@ def validate_dashboard_spec(spec: dict) -> dict:
         {"valid": bool, "errors": [str, ...], "warnings": [str, ...]?}
     """
     return cx_dashboard_validate.validate_spec(spec)
+
+
+@mcp.tool(
+    description=(
+        "Publish a composed dashboard spec to a running canvasxpress-dashboards "
+        "install so it opens in the no-code Builder (and, optionally, gets a share "
+        "link). Takes the spec from compose_canvasxpress_dashboard / "
+        "suggest_canvasxpress_dashboard. Saves it to the install configured by the "
+        "CXD_DASHBOARDS_URL + CXD_DASHBOARDS_API_KEY environment variables, then "
+        "returns 'builder_url' — a link that opens the dashboard straight in the "
+        "Builder (the server's ?open=<id> deep link) — plus a 'share_url' when "
+        "visibility is 'auth' or 'public'. visibility defaults to 'private' (saved "
+        "to the API user's account, no public link). Returns an error (never "
+        "throws) when publishing is unconfigured, the spec is invalid, or the "
+        "server rejects it."
+    )
+)
+def publish_canvasxpress_dashboard(spec: dict, visibility: str = "private") -> dict:
+    """
+    Args:
+        spec: A composed dashboard spec (must have a non-empty 'id').
+        visibility: "private" (default), "auth" (any signed-in viewer), or
+                    "public" (anyone with the link). Non-private mints a share link.
+
+    Returns:
+        {"published": bool, "id", "builder_url", "open_url", "share_url"?,
+         "embed"?, "visibility", "valid": bool, "errors": [...]}.
+    """
+    return cx_dashboard_publish.publish_dashboard(spec, visibility=visibility)
 
 
 @mcp.tool(
