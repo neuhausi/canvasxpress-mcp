@@ -17,6 +17,15 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #cx-dashboard { width: 100%; }
+    /* Compact filter search boxes (the bundle's default is a 32px field). */
+    .cxd-filters input.cX-DataFilter-Search { height: 24px; font-size: 12px; padding: 0 0 0 6px; margin-bottom: 3px; }
+    .cxd-filters input.cxd-filters-find { margin-bottom: 6px; }
+    #cx-toolbar { display: none; justify-content: flex-end; padding: 4px 8px 0; }
+    #cx-builder {
+      font-size: 12px; color: inherit; opacity: .75; text-decoration: none;
+      border: 1px solid currentColor; border-radius: 4px; padding: 2px 8px; cursor: pointer;
+    }
+    #cx-builder:hover { opacity: 1; }
     #cx-error {
       display: none;
       position: fixed;
@@ -47,6 +56,7 @@
 </head>
 <body>
   <div id="cx-error"></div>
+  <div id="cx-toolbar"><a id="cx-builder" href="#" role="button">Open in Builder</a></div>
   <div id="cx-dashboard"></div>
 
   <script>
@@ -174,6 +184,23 @@
     }
 
     /**
+     * "Open in Builder": the configured dashboards install, else canvasxpress.org. The host
+     * opens the link (ui/open-link); a plain new-tab link is the fallback.
+     */
+    function showBuilderLink(url) {
+      if (!url) return;
+      const link = document.getElementById('cx-builder');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.onclick = function (e) {
+        e.preventDefault();
+        sendRequest('ui/open-link', { url: url }).catch(function () { window.open(url, '_blank'); });
+      };
+      document.getElementById('cx-toolbar').style.display = 'flex';
+    }
+
+    /**
      * Parse the tool result and extract the dashboard spec.
      * Per spec §Notifications (Host → View): ui/notifications/tool-result params
      * is a CallToolResult: { content: Array<{type, text?}>, isError?: boolean }.
@@ -223,6 +250,7 @@
           return;
         }
         renderDashboardSpec(spec);
+        showBuilderLink(payload && payload.builder_url);
       } catch (err) {
         showError(err.message || String(err));
       }

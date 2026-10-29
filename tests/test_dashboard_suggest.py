@@ -148,7 +148,7 @@ def test_qc_spec_is_valid():
 def test_theme_is_passed_through_and_junk_ignored():
     data = _case("qc: lane + flowcell")["data"]
     assert sg.suggest(data, theme="dark")["spec"]["theme"] == "dark"
-    assert "theme" not in sg.suggest(data, theme="neon")["spec"]
+    assert sg.suggest(data, theme="neon")["spec"]["theme"] == "auto"
 
 
 def test_no_match_says_so_and_points_at_the_composer():
@@ -355,3 +355,15 @@ def test_result_carries_inline_render_recipe():
     assert "canvasxpress@72.9.1" in guide["widget_template"]
     assert "renderDashboard(spec" in guide["widget_template"]
     assert any("one dataRef" in step for step in guide["steps"])
+
+
+def test_no_scheme_box_auto_theme_and_builder_link(monkeypatch):
+    monkeypatch.delenv("CXD_DASHBOARDS_URL", raising=False)
+    out = sg.suggest(dataset="penguins")
+    assert out["spec"]["theme"] == "auto"
+    assert sg.suggest(dataset="penguins", theme="dark")["spec"]["theme"] == "dark"
+    filters = [p for p in out["spec"]["panels"].values() if p.get("type") == "filters"]
+    assert filters and all(p["saveSchemes"] is False for p in filters)
+    assert out["builder_url"] == "https://canvasxpress.org/dashboards"
+    monkeypatch.setenv("CXD_DASHBOARDS_URL", "http://localhost:8200/")
+    assert sg.suggest(dataset="iris")["builder_url"] == "http://localhost:8200"

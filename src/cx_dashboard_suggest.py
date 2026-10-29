@@ -686,8 +686,8 @@ def dashboard_spec(suggestion: dict, dashboard_id: str, data: dict, title: Optio
         "insights": {"thresholds": copy.deepcopy(thresholds)} if thresholds else {},
         "panels": {},
     }
-    if theme in ("light", "dark", "auto"):
-        spec["theme"] = theme
+    # "auto" follows the host's light/dark setting unless the caller asks for one.
+    spec["theme"] = theme if theme in ("light", "dark", "auto") else "auto"
     if suggestion.get("calculatedFields"):
         spec["data"]["data"]["calculatedFields"] = copy.deepcopy(suggestion["calculatedFields"])
     drill = suggestion.get("drill")
@@ -703,7 +703,9 @@ def dashboard_spec(suggestion: dict, dashboard_id: str, data: dict, title: Optio
         entry: dict = {"title": panel.get("title", ""), "dataRef": data_ref}
         if panel.get("type") == "filters":
             entry = {"type": "filters", "title": panel.get("title") or "Filters", "dataRef": "data",
-                     "fields": list(panel.get("fields") or [])}
+                     "fields": list(panel.get("fields") or []),
+                     # No scheme name box / Save: a saved scheme has nowhere to persist here.
+                     "saveSchemes": False}
         else:
             entry["config"] = copy.deepcopy(panel.get("dashboardConfig") or panel["config"])
             if panel.get("transpose") is not None:
@@ -762,7 +764,7 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
                        "factor column. Choose charts with select_canvasxpress_chart and "
                        "assemble them with compose_canvasxpress_dashboard."),
         }
-    from cx_dashboard import _usage_snippet, inline_render_guide  # local import: cx_dashboard owns the snippet text
+    from cx_dashboard import _usage_snippet, inline_render_guide, builder_base_url  # local import: cx_dashboard owns the snippet text
 
     dash_id = _slug(title or suggestion["label"])
     spec = dashboard_spec(suggestion, dash_id, data, title=title, theme=theme, thresholds=thresholds)
@@ -780,6 +782,7 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
         "errors": result["errors"],
         "usage": _usage_snippet(dash_id),
         "render_inline": inline_render_guide(),
+        "builder_url": builder_base_url(),
     }
     if result.get("warnings"):
         out["warnings"] = result["warnings"]

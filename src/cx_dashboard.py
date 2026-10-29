@@ -13,6 +13,7 @@ Pure functions; no server state. Validation is the vendored
 
 from __future__ import annotations
 
+import os
 import json
 import re
 from typing import Any, Optional
@@ -146,7 +147,8 @@ def compose_dashboard(
     result = validate_spec(spec)
     out = {"spec": spec, "valid": result["valid"], "errors": result["errors"],
            "usage": _usage_snippet(dash_id),
-           "render_inline": inline_render_guide()}
+           "render_inline": inline_render_guide(),
+           "builder_url": builder_base_url()}
     if result.get("warnings"):
         out["warnings"] = result["warnings"]
     return out
@@ -178,6 +180,12 @@ _WIDGET_TEMPLATE = (
     '  document.getElementById("status").textContent = "Load error: " + ev.message; });\n'
     '</script>'
 ) % {"engine": INLINE_ENGINE_VERSION, "dash": INLINE_DASHBOARDS_VERSION}
+
+
+def builder_base_url() -> str:
+    """Where "Open in Builder" goes: the configured install (CXD_DASHBOARDS_URL), else the
+    public canvasxpress.org dashboards app."""
+    return (os.getenv("CXD_DASHBOARDS_URL") or "").strip().rstrip("/") or "https://canvasxpress.org/dashboards"
 
 
 def inline_render_guide() -> dict:
