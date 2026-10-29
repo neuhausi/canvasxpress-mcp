@@ -346,3 +346,12 @@ def test_render_every_penguins_panel():
             pytest.skip(str(exc))
         colors = len(set(Image.open(io.BytesIO(png)).convert("RGB").getdata()))
         assert colors > 20, "panel %s rendered blank (%d colours)" % (panel_id, colors)
+
+
+def test_result_carries_inline_render_recipe():
+    out = sg.suggest(dataset="penguins")
+    guide = out["render_inline"]
+    assert "/*SPEC_JSON*/" in guide["widget_template"]
+    assert "canvasxpress@72.9.1" in guide["widget_template"]
+    assert "renderDashboard(spec" in guide["widget_template"]
+    assert any("one dataRef" in step for step in guide["steps"])

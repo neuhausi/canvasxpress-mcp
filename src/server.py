@@ -3487,7 +3487,8 @@ def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
         "linked: clicking a bar/slice/row in one selects the matching samples in the "
         "others (the engine's broadcast mechanism). Returns the validated dashboard "
         "spec JSON, a ready-to-paste HTML snippet that renders it, and any validation "
-        "errors. Deterministic and instant (no LLM call)."
+        "errors. Show it as a live dashboard in the chat, not JSON (see render_inline). "
+        "Deterministic and instant (no LLM call)."
     ),
     meta=_META_FOR_DASHBOARD,
 )
@@ -3519,6 +3520,9 @@ def compose_canvasxpress_dashboard(
         "One call for any dashboard request. Pass dataset (penguins, iris, mtcars) or data "
         "(object or headers+rows). Returns a validated linked spec rendered inline by the "
         "dashboard view. "
+        "Show the result as a live interactive dashboard in the chat (never as JSON): the MCP App "
+        "view does it where supported, otherwise follow the returned render_inline recipe with an "
+        "HTML widget tool. "
         "Every panel is bound to the one dataset, so a selection in one panel selects the same "
         "rows in the others. Recognises a patient cohort with survival columns (filters, "
         "Kaplan-Meier curve, a measure by group and against time, a case card) and a per-sample "
@@ -3558,7 +3562,7 @@ def suggest_canvasxpress_dashboard(
     Returns:
         {"suggested": true, "template": "cohort" | "ngs-qc" | "explore", "label", "reason",
          "panels": [{id, title, graphType}], "spec": {...}, "valid": bool,
-         "errors": [...], "usage": "<html snippet>"}, or {"suggested": false, "reason": "..."}
+         "errors": [...], "usage": "<html snippet>", "render_inline": {steps, widget_template}}, or {"suggested": false, "reason": "..."}
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
     return cx_dashboard_suggest.suggest(
