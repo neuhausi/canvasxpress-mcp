@@ -2232,6 +2232,35 @@ _cors_middleware: list = [
 ]
 
 
+def resolve_data_headers(
+    headers: list[str] | None, data: list[list] | None,
+) -> tuple[list[str] | None, list[str]]:
+    """
+    The column names for a generate call, and any warnings about the data rows.
+
+    With ``headers`` the caller has named the columns, so ``data`` holds data rows only and
+    every row is data (none is consumed as a header row). Without ``headers`` the first row of
+    ``data`` is the header row. Raises ValueError when ``data`` is not an array of arrays.
+    """
+    if data is None:
+        return (list(headers) if headers is not None else None), []
+    if not isinstance(data, list) or any(not isinstance(row, list) for row in data):
+        raise ValueError(
+            "data must be an array of arrays. Example: [[col1,col2,col3],[val1,val2,val3]]"
+        )
+    if headers is None:
+        return extract_headers_from_data(data), []
+    resolved = [str(h).strip() for h in headers]
+    ragged = [i for i, row in enumerate(data) if len(row) != len(resolved)]
+    warnings = []
+    if ragged:
+        warnings.append(
+            "%d data row(s) do not have %d values (the number of headers), e.g. row %d"
+            % (len(ragged), len(resolved), ragged[0])
+        )
+    return resolved, warnings
+
+
 @mcp.tool(
     description=(
         "Generate a CanvasXpress visualization config from a plain English description. "
@@ -2266,11 +2295,12 @@ def generate_canvasxpress_config(
                  and subsequent columns should contain numeric values to display.
                  e.g. ["Country", "GDP", "Population"] for a world map
                       ["State", "Sales", "Units"]     for a US states map
-        data: Optional flat CSV-style array of arrays where the first row
-              contains column headers and subsequent rows contain data values.
-              e.g. [["Gene","Sample1","Treatment"],["BRCA1",1.2,"Control"]]
-              When provided, headers are extracted from row 0 automatically.
-              If both headers and data are provided, data takes precedence.
+        data: Optional flat CSV-style array of arrays.
+              Without headers, the first row contains the column headers and the
+              rest are data rows, e.g. [["Gene","Sample1","Treatment"],["BRCA1",1.2,"Control"]].
+              With headers, headers are the header row and EVERY row of data is a
+              data row (none is read as a header), e.g. headers=["Gene","Sample1"],
+              data=[["BRCA1",1.2],["TP53",2.1]].
               For Map charts, first-column values must be geographic ID codes:
                 World map:  ISO-3 codes like "ALB", "ARG", "AUS", "CAN", "FRA" ...
                 US States:  2-letter codes like "CA", "TX", "NY", "FL", "WA" ...
@@ -2294,28 +2324,24 @@ def generate_canvasxpress_config(
           types_used   (dict)  - the column types passed in (if provided)
     """
     # ── Resolve headers ──────────────────────────────────────────────────────
-    # data takes precedence over headers if both are supplied
+    # headers (when given) name the columns; data then holds data rows only
     resolved_headers: list[str] | None = None
-
-    if data is not None:
-        try:
-            resolved_headers = extract_headers_from_data(data)
-            log.info("Extracted %d headers from data array", len(resolved_headers))
-            if DEBUG:
-                bar = "─" * 64
-                print(f"\n{bar}\n  DATA INPUT\n{bar}", file=sys.stderr)
-                print(f"  Rows (incl. header) : {len(data)}", file=sys.stderr)
-                print(f"  Columns extracted   : {resolved_headers}", file=sys.stderr)
-        except ValueError as e:
-            return {
-                "config": {},
-                "valid": False,
-                "warnings": [str(e)],
-                "invalid_refs": {},
-                "headers_used": [],
-            }
-    elif headers is not None:
-        resolved_headers = headers
+    data_warnings: list[str] = []
+    try:
+        resolved_headers, data_warnings = resolve_data_headers(headers, data)
+    except ValueError as e:
+        return {
+            "config": {},
+            "valid": False,
+            "warnings": [str(e)],
+            "invalid_refs": {},
+            "headers_used": [],
+        }
+    if DEBUG and data is not None:
+        bar = "─" * 64
+        print(f"\n{bar}\n  DATA INPUT\n{bar}", file=sys.stderr)
+        print(f"  Rows : {len(data)} ({'all data' if headers is not None else 'incl. header row'})", file=sys.stderr)
+        print(f"  Columns : {resolved_headers}", file=sys.stderr)
 
     # Validate column_types values
     VALID_TYPES = {"string", "numeric", "factor", "date"}
@@ -2446,7 +2472,7 @@ def generate_canvasxpress_config(
         "config":         config,
         "data":           data,
         "valid":          validation["valid"],
-        "warnings":       validation["warnings"] + _geocode_warnings,
+        "warnings":       validation["warnings"] + _geocode_warnings + data_warnings,
         "invalid_refs":   validation["invalid_refs"],
         "headers_used":   resolved_headers or [],
         "types_used":     column_types or {},

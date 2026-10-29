@@ -300,6 +300,14 @@ def _panel_config_for(config: dict, data: dict) -> dict:
     return out
 
 
+def panel_config_for(config: dict, data: Any) -> dict:
+    """``_panel_config_for`` for callers outside the templates (compose): a copy of the config
+    without the engine's ``transposeData`` when the dashboard renderer will transpose the data."""
+    if not isinstance(data, dict) or not isinstance(data.get("y"), dict):
+        return dict(config)
+    return _panel_config_for(config, data)
+
+
 # ---------------------------------------------------------------------------
 # Templates (suggestDashboard.js)
 # ---------------------------------------------------------------------------

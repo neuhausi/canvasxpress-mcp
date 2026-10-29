@@ -112,3 +112,56 @@ def test_tools_registered():
     names = {t.name for t in tools}
     assert {"compose_canvasxpress_dashboard", "validate_dashboard_spec",
             "explain_canvasxpress_dashboards", "suggest_canvasxpress_dashboard"} <= names
+
+
+# ---------------------------------------------------------------------------
+# compose: a generated scatter config must not be flipped twice
+# ---------------------------------------------------------------------------
+
+def _penguin_rows():
+    import cx_datasets
+    data = cx_datasets.load_dataset("penguins")
+    y, x = data["y"], data["x"]
+    rows = [list(y["vars"]) + list(x)]
+    for j in range(len(y["smps"])):
+        rows.append([y["data"][i][j] for i in range(len(y["vars"]))] + [x[k][j] for k in x])
+    return data, rows
+
+
+_SCATTER = {"graphType": "Scatter2D", "xAxis": ["bill_length_mm"], "yAxis": ["bill_depth_mm"],
+            "colorBy": "species"}
+
+
+def test_compose_drops_transpose_data_the_renderer_would_repeat():
+    import cx_dashboard
+    data, _ = _penguin_rows()
+    out = cx_dashboard.compose_dashboard(
+        "Penguins", [{"data": data, "config": dict(_SCATTER, transposeData=True)}])
+    assert out["valid"], out["errors"]
+    assert "transposeData" not in next(iter(out["spec"]["panels"].values()))["config"]
+
+
+def test_compose_keeps_transpose_data_when_the_renderer_will_not_transpose():
+    import cx_dashboard
+    data, _ = _penguin_rows()
+    cfg = {"graphType": "Histogram", "xAxis": ["body_mass_g"], "transposeData": True}
+    out = cx_dashboard.compose_dashboard("H", [{"data": data, "config": cfg}])
+    assert next(iter(out["spec"]["panels"].values()))["config"]["transposeData"] is True
+
+
+def test_compose_turns_a_headers_plus_rows_panel_into_a_data_object():
+    import cx_dashboard
+    data, rows = _penguin_rows()
+    out = cx_dashboard.compose_dashboard(
+        "Penguins", [{"data": rows, "config": dict(_SCATTER, transposeData=True)},
+                     {"data": data, "config": {"graphType": "Boxplot", "xAxis": ["body_mass_g"]}}])
+    assert out["valid"], out["errors"]
+    sources = list(out["spec"]["data"].values())
+    assert len(sources) == 1                       # array and object of the same table share a source
+    assert sources[0]["value"]["y"]["vars"][0] == "bill_length_mm"
+
+
+def test_compose_reports_a_bad_headers_plus_rows_panel():
+    import cx_dashboard
+    out = cx_dashboard.compose_dashboard("X", [{"data": [["a", "b"]], "config": dict(_SCATTER)}])
+    assert out["valid"] is False and "panels[0].data" in out["errors"][0]

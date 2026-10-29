@@ -17,6 +17,8 @@ import json
 import re
 from typing import Any, Optional
 
+import cx_dashboard_suggest
+import cx_datasets
 from cx_dashboard_validate import validate_spec, DASHBOARD_SCHEMA_VERSION
 
 _GRID_COLS = 12          # default spec grid
@@ -99,15 +101,27 @@ def compose_dashboard(
 
         # Identical data objects share one source, so a selection in one panel
         # broadcasts to the others over the same rows.
-        data_key = json.dumps(panel["data"], sort_keys=True, default=str)
+        panel_data = panel["data"]
+        if isinstance(panel_data, list):
+            # A headers+rows table (as generate_canvasxpress_config takes it) becomes a data object.
+            try:
+                panel_data = cx_datasets.table_to_data(panel_data)
+            except ValueError as exc:
+                problems.append("panels[%d].data: %s" % (i, exc))
+                continue
+        data_key = json.dumps(panel_data, sort_keys=True, default=str)
         data_ref = seen_data.get(data_key)
         if data_ref is None:
             data_ref = panel_id if panel_id not in spec["data"] else "data-%d" % (len(seen_data) + 1)
             seen_data[data_key] = data_ref
-            spec["data"][data_ref] = {"kind": "inline", "value": panel["data"]}
+            spec["data"][data_ref] = {"kind": "inline", "value": panel_data}
 
         config = dict(panel["config"])
         config.pop("title", None)  # the panel header shows the title
+        # generate_canvasxpress_config sets the engine's transposeData for a row-per-sample
+        # scatter, which is right standalone; the dashboard renderer flips such a panel itself,
+        # so keeping the flag flips it twice and the chart draws blank or as noise.
+        config = cx_dashboard_suggest.panel_config_for(config, panel_data)
         spec["panels"][panel_id] = {
             "title": str(panel_title),
             "dataRef": data_ref,
