@@ -96,7 +96,7 @@ def test_validate_pushdown_and_params():
 
 def test_explain_topics():
     everything = cx_dashboard.explain()
-    assert set(everything["sections"]) == {"overview", "install", "spec", "linking", "workflow"}
+    assert set(everything["sections"]) == {"overview", "install", "spec", "linking", "workflow", "inline_widget"}
     one = cx_dashboard.explain("linking")
     assert one["topic"] == "linking" and "broadcast" in one["explanation"]
 

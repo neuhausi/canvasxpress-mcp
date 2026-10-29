@@ -147,7 +147,6 @@ def compose_dashboard(
     result = validate_spec(spec)
     out = {"spec": spec, "valid": result["valid"], "errors": result["errors"],
            "usage": _usage_snippet(dash_id),
-           "render_inline": inline_render_guide(),
            "builder_url": builder_base_url()}
     if result.get("warnings"):
         out["warnings"] = result["warnings"]
@@ -274,6 +273,13 @@ _DOCS = {
         "target panel into view). Controls: filters panels, param controls "
         "(dropdown/radio/buttons/search/slider) and config controls that switch a "
         "target panel's config."
+    ),
+    "inline_widget": (
+        "FALLBACK ONLY, for a client that does not show the MCP App view "
+        "(ui://canvasxpress/dashboard). Where the view is shown, the tool result renders there "
+        "by itself (with Save and Open in Builder): do not redraw it in an HTML widget and do not "
+        "change its layout. Fallback recipe: %s Template:\n%s"
+        % (" ".join(inline_render_guide()["steps"]), inline_render_guide()["widget_template"])
     ),
     "workflow": (
         "Shortcut for one dataset: call suggest_canvasxpress_dashboard with the data. If it "

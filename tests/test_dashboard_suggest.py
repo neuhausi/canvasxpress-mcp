@@ -348,13 +348,11 @@ def test_render_every_penguins_panel():
         assert colors > 20, "panel %s rendered blank (%d colours)" % (panel_id, colors)
 
 
-def test_result_carries_inline_render_recipe():
-    out = sg.suggest(dataset="penguins")
-    guide = out["render_inline"]
-    assert "/*SPEC_JSON*/" in guide["widget_template"]
-    assert "canvasxpress@72.9.1" in guide["widget_template"]
-    assert "renderDashboard(spec" in guide["widget_template"]
-    assert any("one dataRef" in step for step in guide["steps"])
+def test_result_does_not_invite_a_widget_redraw_but_explain_has_the_fallback():
+    import cx_dashboard
+    assert "render_inline" not in sg.suggest(dataset="penguins")
+    topic = cx_dashboard.explain("inline_widget")["explanation"]
+    assert "/*SPEC_JSON*/" in topic and "canvasxpress@72.9.1" in topic and "FALLBACK ONLY" in topic
 
 
 def test_no_scheme_box_auto_theme_and_builder_link(monkeypatch):
