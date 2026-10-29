@@ -152,7 +152,9 @@ def test_theme_is_passed_through_and_junk_ignored():
 
 
 def test_no_match_says_so_and_points_at_the_composer():
-    out = sg.suggest(_case("none: sales table")["data"])
+    # Numeric columns only (no factor to explore by): none of the templates fits.
+    data = {"y": {"vars": ["a", "b"], "smps": ["r1", "r2", "r3"], "data": [[1, 2, 3], [4, 5, 7]]}}
+    out = sg.suggest(data)
     assert out["suggested"] is False
     assert "compose_canvasxpress_dashboard" in out["reason"]
     assert "spec" not in out
@@ -189,3 +191,158 @@ def test_an_invalid_threshold_is_reported_by_validation_not_swallowed():
     assert out["valid"] is False
     assert "spec.insights.thresholds[0].op must be one of: lt, le, gt, ge" in out["errors"]
     assert "spec.insights.thresholds[0].value must be a number" in out["errors"]
+
+
+# ---------------------------------------------------------------------------
+# Bundled datasets, headers+rows input and the generic "explore" template
+# ---------------------------------------------------------------------------
+
+import cx_datasets  # noqa: E402
+
+
+def _rows_from(data):
+    """The headers+rows array equivalent of a {y, x} data object (as a caller would send it)."""
+    y, x = data["y"], data.get("x") or {}
+    headers = list(y["vars"]) + list(x)
+    rows = [headers]
+    for j in range(len(y["smps"])):
+        rows.append([y["data"][i][j] for i in range(len(y["vars"]))] + [x[k][j] for k in x])
+    return rows
+
+
+def test_dataset_penguins_is_a_valid_five_panel_explorer():
+    out = sg.suggest(dataset="penguins")
+    assert out["suggested"] is True and out["template"] == "explore"
+    assert out["valid"], out["errors"]
+    assert len(out["panels"]) == 5 and len(out["spec"]["panels"]) == 5
+    assert list(out["spec"]["data"]) == ["data"]
+    assert {p["dataRef"] for p in out["spec"]["panels"].values()} == {"data"}
+    assert [p["graphType"] for p in out["panels"]] == ["filters", "Scatter2D", "Boxplot", "Histogram", "Stacked"]
+    assert out["spec"]["panels"]["filters"]["fields"] == ["species", "island", "sex", "year"]
+    assert cx_dashboard_validate.validate_spec(out["spec"])["valid"]
+
+
+def test_penguins_data_is_parsed_as_specified():
+    data = cx_datasets.load_dataset("Palmer Penguins")  # case-insensitive alias
+    assert len(data["y"]["smps"]) == 344
+    assert data["y"]["vars"] == ["bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g"]
+    assert None in data["y"]["data"][0]                      # numeric NA -> null
+    assert "NA" in data["x"]["sex"]                          # factor NA -> "NA"
+    assert "year" in data["x"] and set(data["x"]["year"]) == {"2007", "2008", "2009"}  # year is a factor
+
+
+def test_explore_panels_follow_the_main_factor():
+    spec = sg.suggest(dataset="penguins")["spec"]["panels"]
+    assert spec["scatter"]["config"]["colorBy"] == "species"
+    assert spec["compare"]["config"]["groupingFactors"] == ["species"]
+    assert spec["compare"]["config"]["colorBy"] == "sex"             # the second factor
+    assert spec["distribution"]["config"]["groupingFactors"] == ["species"]
+    counts = spec["counts"]["config"]
+    assert counts["groupingFactors"] == ["sex"] and counts["stackBy"] == "species"
+    # The count bar reads the source's calculated n = 1; the histogram flips a copy of its data.
+    assert spec["counts"]["measures"] == ["n"]
+    assert sg.suggest(dataset="penguins")["spec"]["data"]["data"]["calculatedFields"] == [
+        {"name": "n", "formula": "1"}]
+    assert spec["distribution"]["transpose"] is True
+    assert all("transposeData" not in p.get("config", {}) for p in spec.values())
+
+
+def test_factor_choice_keeps_na_and_skips_time_columns():
+    data = cx_datasets.load_dataset("penguins")
+    assert "NA" in data["x"]["sex"]
+    out = sg.suggest(data)
+    # year has as few levels as the others but is never the main or second factor; it stays a filter.
+    assert out["spec"]["panels"]["scatter"]["config"]["colorBy"] == "species"
+    assert out["spec"]["panels"]["counts"]["config"]["groupingFactors"] == ["sex"]
+    assert "year" in out["spec"]["panels"]["filters"]["fields"]
+    # Only time-like factors: nothing to explore by.
+    only_year = {"y": data["y"], "x": {"year": data["x"]["year"]}}
+    assert sg.suggest(only_year)["suggested"] is False
+    # No row is dropped: the NA rows are still in the data the spec carries.
+    assert out["spec"]["data"]["data"]["value"]["x"]["sex"].count("NA") == 11
+
+
+def test_array_input_matches_the_equivalent_object_input():
+    data = cx_datasets.load_dataset("penguins")
+    from_object = sg.suggest(data)
+    from_array = sg.suggest(_rows_from(data))
+    assert from_array == from_object
+
+
+def test_other_bundled_datasets_get_an_explorer():
+    for name in ("iris", "mtcars"):
+        out = sg.suggest(dataset=name)
+        assert out["suggested"] and out["template"] == "explore" and out["valid"], (name, out.get("errors"))
+        assert len(out["panels"]) == 5
+
+
+def test_cohort_and_qc_still_win_over_the_explorer():
+    assert sg.suggest(_case("cohort: os_months/os_event")["data"])["template"] == "cohort"
+    assert sg.suggest(_case("qc: lane + flowcell")["data"])["template"] == "ngs-qc"
+
+
+def test_unknown_dataset_lists_the_available_ones():
+    out = sg.suggest(dataset="titanic")
+    assert out["suggested"] is False
+    assert "titanic" in out["error"]
+    for name in ("penguins", "iris", "mtcars"):
+        assert name in out["error"]
+
+
+def test_exactly_one_of_data_or_dataset():
+    assert "exactly one" in sg.suggest()["error"]
+    both = sg.suggest(cx_datasets.load_dataset("iris"), dataset="iris")
+    assert both["suggested"] is False and "exactly one" in both["error"]
+
+
+def test_bad_array_is_a_plain_error():
+    assert sg.suggest([["a", "b"]])["suggested"] is False
+    assert sg.suggest([["a", "a"], [1, 2]])["suggested"] is False
+
+
+def test_numeric_means_more_than_ninety_percent_parse():
+    rows = [["g", "m", "mostly"]] + [["a", i, "x" if i == 0 else i] for i in range(20)]
+    data = cx_datasets.table_to_data(rows)
+    assert data["y"]["vars"] == ["m", "mostly"]          # 19/20 = 95% numeric
+    rows = [["half", "m"]] + [[1 if i % 2 else "x", i] for i in range(20)]
+    assert cx_datasets.table_to_data(rows)["y"]["vars"] == ["m"]                     # 50% numeric: a factor
+
+def test_render_every_penguins_panel():
+    """Each panel's config draws something (not blank) in headless Chromium, prepared the way
+    the dashboard renderer prepares it. Skipped when Playwright or the engine CDN is unavailable."""
+    pytest.importorskip("playwright")
+    from PIL import Image
+    import io
+    import cx_render
+
+    data = cx_datasets.load_dataset("penguins")
+    spec = sg.suggest(dataset="penguins")["spec"]
+    source = copy.deepcopy(data)
+    source["y"]["vars"].append("n")
+    source["y"]["data"].append([1] * len(source["y"]["smps"]))      # calculatedFields: n = 1
+
+    def prepare(panel):
+        keep = panel.get("measures")
+        dat = copy.deepcopy(source)
+        if keep:
+            rows = [dat["y"]["data"][dat["y"]["vars"].index(m)] for m in keep]
+            dat["y"] = {"vars": list(keep), "smps": dat["y"]["smps"], "data": rows}
+        if panel.get("transpose") or (panel["config"]["graphType"] == "Scatter2D"):
+            y = dat["y"]
+            flipped = {"y": {"vars": y["smps"], "smps": y["vars"],
+                             "data": [[y["data"][i][j] for i in range(len(y["vars"]))]
+                                      for j in range(len(y["smps"]))]}}
+            if dat.get("x"):
+                flipped["z"] = dat["x"]
+            dat = flipped
+        return dat
+
+    for panel_id, panel in spec["panels"].items():
+        if panel.get("type") == "filters":
+            continue
+        try:
+            png = cx_render.render_png(prepare(panel), panel["config"], width=700, height=500)
+        except RuntimeError as exc:
+            pytest.skip(str(exc))
+        colors = len(set(Image.open(io.BytesIO(png)).convert("RGB").getdata()))
+        assert colors > 20, "panel %s rendered blank (%d colours)" % (panel_id, colors)

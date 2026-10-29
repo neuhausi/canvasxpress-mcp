@@ -3452,7 +3452,10 @@ def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
 @mcp.tool(
     description=(
         "Compose a multi-panel LINKED dashboard spec for the canvasxpress-dashboards "
-        "npm package from a list of CanvasXpress charts. Each panel is a {data, config} "
+        "npm package from a list of CanvasXpress charts. For a dashboard of ONE dataset, "
+        "call suggest_canvasxpress_dashboard first (it takes a bundled dataset name or the "
+        "table itself and needs no panels); use this tool when you need to choose the charts "
+        "or combine different datasets. Each panel is a {data, config} "
         "pair (use generate_canvasxpress_config to create them), plus an optional title "
         "and width in grid columns. Panels sharing the same data are automatically "
         "linked: clicking a bar/slice/row in one selects the matching samples in the "
@@ -3487,43 +3490,53 @@ def compose_canvasxpress_dashboard(
 
 @mcp.tool(
     description=(
-        "Suggest a whole LINKED dashboard from ONE dataset, in a single call. Give it a "
-        "CanvasXpress data object; if it recognises the analysis shape it returns the "
-        "validated dashboard spec — a Filters panel plus the panels that shape calls for, "
-        "all bound to the one dataset so a selection in one panel selects the same rows in "
-        "the others. Recognises a patient cohort with survival columns (filters, "
-        "Kaplan-Meier curve, a measure by group and against time) and a per-sample "
-        "sequencing run-QC table (filters, depth per sample, mapping vs duplication, quality "
-        "by lane/batch); each ends with a case card that loads the record of the patient or "
-        "sample you click, and opts in to an insights strip (outliers, group differences and any "
-        "thresholds you declare, each caption carrying its figures). When nothing fits it says so (suggested: false) and points at "
-        "select_canvasxpress_chart + compose_canvasxpress_dashboard instead. Deterministic "
-        "and instant (no LLM call); it never alters the data."
+        "One call for any dashboard request. Pass dataset (penguins, iris, mtcars) or data "
+        "(object or headers+rows). Returns a validated linked spec rendered inline by the "
+        "dashboard view. "
+        "Every panel is bound to the one dataset, so a selection in one panel selects the same "
+        "rows in the others. Recognises a patient cohort with survival columns (filters, "
+        "Kaplan-Meier curve, a measure by group and against time, a case card) and a per-sample "
+        "sequencing run-QC table (filters, depth per sample, mapping vs duplication, quality by "
+        "lane/batch, a case card); any other table with at least two numeric columns and one "
+        "factor column gets a generic explorer (filters, scatter, boxplot, histogram, counts by "
+        "factor). Cohort and QC dashboards opt in to an insights strip (outliers, group "
+        "differences and any thresholds you declare, each caption carrying its figures). When "
+        "nothing fits it says so (suggested: false) and points at select_canvasxpress_chart + "
+        "compose_canvasxpress_dashboard instead. Deterministic and instant (no LLM call); it "
+        "never alters the data."
     ),
     meta=_META_FOR_DASHBOARD,
 )
 def suggest_canvasxpress_dashboard(
-    data: dict,
+    data: dict | list | None = None,
     title: str | None = None,
     theme: str | None = None,
     thresholds: list | None = None,
+    dataset: str | None = None,
 ) -> dict:
     """
     Args:
-        data: A CanvasXpress data object {"y": {"vars", "smps", "data"}, "x"?, "z"?}
-              (rows are samples when there are no more variables than samples).
+        data: The table, when not using a bundled dataset: a CanvasXpress data object
+              {"y": {"vars", "smps", "data"}, "x"?, "z"?} (rows are samples when there are no
+              more variables than samples), or a headers+rows array (first row = headers;
+              numeric columns become measures, the rest factors; "NA" is missing).
         title: Optional dashboard title (default: the template's name).
         theme: Optional "light", "dark" or "auto".
         thresholds: Optional failure conditions to flag in the dashboard's insights strip, e.g.
                     [{"field": "q30", "op": "lt", "value": 85, "label": "Q30 below 85%"}] (op is one
                     of lt, le, gt, ge). Never inferred: only what you declare is checked.
+        dataset: A bundled sample dataset instead of data: "penguins", "iris" or "mtcars"
+                 (case-insensitive; e.g. "palmer penguins" works). Exactly one of data or
+                 dataset is required.
 
     Returns:
-        {"suggested": true, "template": "cohort" | "ngs-qc", "label", "reason",
+        {"suggested": true, "template": "cohort" | "ngs-qc" | "explore", "label", "reason",
          "panels": [{id, title, graphType}], "spec": {...}, "valid": bool,
-         "errors": [...], "usage": "<html snippet>"} or {"suggested": false, "reason": "..."}
+         "errors": [...], "usage": "<html snippet>"}, or {"suggested": false, "reason": "..."}
+         (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
-    return cx_dashboard_suggest.suggest(data, title=title, theme=theme, thresholds=thresholds)
+    return cx_dashboard_suggest.suggest(
+        data, title=title, theme=theme, thresholds=thresholds, dataset=dataset)
 
 
 @mcp.tool(

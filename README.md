@@ -991,15 +991,30 @@ the validated dashboard spec plus a ready-to-paste snippet that renders it with
 
 ### `suggest_canvasxpress_dashboard`
 
-Build a whole **linked dashboard from one dataset** in a single call. Pass a CanvasXpress
-data object; when the analysis shape is recognised, the tool returns the validated
-dashboard spec — a Filters panel plus the panels that shape calls for, all bound to the
+Build a whole **linked dashboard from one dataset** in a single call — the one-call path for
+"make a dashboard of X". Pass a bundled `dataset` by name (`penguins`, `iris`, `mtcars`), or
+`data`: a CanvasXpress data object or a headers+rows array. The tool returns the validated
+dashboard spec — a Filters panel plus the panels the data calls for, all bound to the
 one dataset so a selection in one panel selects the same rows in the others.
+
+Exactly one of `data` or `dataset` is required. Dataset names are case-insensitive and take
+aliases (`"palmer penguins"`); an unknown name returns an error listing the available datasets.
 
 | Shape recognised | Dashboard |
 |---|---|
 | Patient cohort with survival columns (a time column such as `time`, `os_months`, `PFS.days` plus a **numeric** 0/1 event column) | Filters, Kaplan–Meier curve by the best grouping column, a measure by group (boxplot) and against time (scatter), and a case card |
 | Per-sample sequencing run QC (three or more of: reads, mapping, quality, duplication, GC, insert size, coverage, adapter, contamination) | Filters, depth per sample, mapping vs duplication, quality spread by lane / flowcell / batch, and a case card |
+| Anything else with at least two numeric columns and one factor column (the `explore` template, the fallback) | Filters (one per factor), a scatter of the two numeric columns that separate the main factor best, a boxplot, a histogram grouped by the main factor, and counts by the second factor stacked by the main one |
+
+**Headers+rows input.** A first row of headers followed by data rows, the same shape
+`generate_canvasxpress_config` takes. A column is numeric when more than 90% of its non-missing
+values parse as numbers (it becomes a measure); anything else is a factor. `NA` is missing: `null`
+in a numeric column, a literal `"NA"` level in a factor (no row is ever dropped). `year` is always a factor.
+
+**How the explorer picks factors.** The main factor has the fewest levels (counting `NA`), ties going to
+the factor that separates the numeric columns most. The second is the next fewest, ties going to the one
+least associated with the main factor (so it adds a second view instead of repeating the first). Year and
+date columns are never chosen, though they stay filters. For penguins that is `species` and `sex`.
 
 Every dashboard ends with a **case card**: click a patient's point (or a sample's bar) and a one-row
 table loads that row's record, while the charts keep the whole dataset and pick the case out. It is
@@ -1020,11 +1035,13 @@ by fixed deterministic checks, not a model. Pass `thresholds` to flag failures: 
 inferred, only the ones you declare are checked, e.g.
 `[{"field": "q30", "op": "lt", "value": 85, "label": "Q30 below 85%"}]` (`op` is `lt`, `le`, `gt` or `ge`).
 
-**Input:** `data` (CanvasXpress data object), `title?`, `theme?` (`light` | `dark` | `auto`),
-`thresholds?` (limits to flag in the insights strip).
+**Input:** `data?` (CanvasXpress data object or headers+rows array), `dataset?` (`penguins` | `iris` |
+`mtcars`), `title?`, `theme?` (`light` | `dark` | `auto`), `thresholds?` (limits to flag in the
+insights strip). Exactly one of `data` / `dataset`.
 
-**Response:** `{"suggested": true, "template": "cohort" | "ngs-qc", "label", "reason",
+**Response:** `{"suggested": true, "template": "cohort" | "ngs-qc" | "explore", "label", "reason",
 "panels": [{id, title, graphType}], "spec": {...}, "valid": true, "errors": [], "usage": "<html snippet>"}`.
+When nothing fits, or the input is wrong, it is `{"suggested": false, "reason": "..."}` (plus `"error"` for bad input).
 
 ### `validate_dashboard_spec`
 
@@ -1373,7 +1390,7 @@ Two dashboard-composing tools carry `_meta.ui.resourceUri = "ui://canvasxpress/d
 | Tool | Purpose |
 |------|---------|
 | `compose_canvasxpress_dashboard` | Compose a linked multi-panel dashboard from chart panels |
-| `suggest_canvasxpress_dashboard` | Suggest a whole linked dashboard from one dataset |
+| `suggest_canvasxpress_dashboard` | One call for any dashboard request: a bundled `dataset` (penguins, iris, mtcars) or your own `data` |
 
 These render the returned spec inline as a **live, interactive dashboard** — a grid of linked CanvasXpress panels — via [`ui://canvasxpress/dashboard`](src/ui/cx_dashboard_view.html), which loads the `canvasxpress-dashboards` UMD bundle and calls `renderDashboard(spec, element)`. Selections propagate across panels in the conversation, no server or sign-in needed. (To instead *persist* a dashboard into an install and open it in the no-code Builder, use `publish_canvasxpress_dashboard` above.)
 

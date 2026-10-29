@@ -449,6 +449,177 @@ def _qc_template(data: dict, columns: list, metrics: dict) -> Optional[dict]:
         data, "Sample record — click a bar or point to load", ["depth", "quality-scatter"])
 
 
+# ---------------------------------------------------------------------------
+# Generic "explore" template (the fallback for any numeric + factor table)
+# ---------------------------------------------------------------------------
+
+_MIN_FACTOR_LEVELS = 2
+_MAX_FACTOR_LEVELS = 12
+_COUNT_FIELD = "n"
+
+
+def _explore_columns(data: dict) -> Optional[dict]:
+    """The numeric measures (``y`` variables) and factor columns (``x`` annotations) of a
+    standard-orientation table, with each factor's non-missing levels. None when it lacks
+    two measures or a usable factor."""
+    y = data.get("y") or {}
+    annotations = data.get("x") or {}
+    measures = []
+    for r, name in enumerate(y.get("vars") or []):
+        row = (y.get("data") or [[]] * (r + 1))[r] or []
+        values = {v for v in row if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        if len(values) >= 2:
+            measures.append(str(name))
+    factors = []
+    for name, values in annotations.items():
+        # A missing cell is its own "NA" level, as the filter and the count bar show it.
+        levels = {"NA" if _is_missing(v) else _js_str(v) for v in (values or [])}
+        if _MIN_FACTOR_LEVELS <= len(levels) <= _MAX_FACTOR_LEVELS:
+            factors.append({"name": str(name), "levels": len(levels)})
+    if len(measures) < 2 or not factors:
+        return None
+    return {"measures": measures, "factors": factors}
+
+
+def _separation(data: dict, measure: str, factor: str) -> float:
+    """Between-group share of the variance (eta squared) of a measure across a factor's
+    levels: scale-free, so grams and millimetres compare."""
+    y = data["y"]
+    row = y["data"][y["vars"].index(measure)]
+    labels = data["x"][factor]
+    groups: dict = {}
+    for value, label in zip(row, labels):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            # A missing label is its own "NA" group: no row is dropped.
+            groups.setdefault("NA" if _is_missing(label) else _js_str(label), []).append(float(value))
+    everything = [v for g in groups.values() for v in g]
+    if len(groups) < 2 or len(everything) < 2:
+        return 0.0
+    mean = sum(everything) / len(everything)
+    total = sum((v - mean) ** 2 for v in everything)
+    if total == 0:
+        return 0.0
+    between = sum(len(g) * (sum(g) / len(g) - mean) ** 2 for g in groups.values())
+    return between / total
+
+
+_TIME_NAME_RE = re.compile(r"(^|[\s._-])(year|yr|date|time|datetime|timestamp|month|day|week|quarter)($|[\s._-])", re.I)
+
+
+def _is_time_like(name: str, values: list) -> bool:
+    """A year / date column: a poor thing to colour or group by, though fine as a filter."""
+    present = [_js_str(v).strip() for v in values if not _is_missing(v)]
+    return bool(_TIME_NAME_RE.search(name)) or (
+        bool(present) and all(_DATE_RE.match(v) for v in present))
+
+
+def _association(first: list, second: list) -> float:
+    """Cramer's V between two factors (0 = independent, 1 = one determines the other); a missing
+    cell is its own "NA" level."""
+    a = ["NA" if _is_missing(v) else _js_str(v) for v in first]
+    b = ["NA" if _is_missing(v) else _js_str(v) for v in second]
+    rows, cols = sorted(set(a)), sorted(set(b))
+    n = len(a)
+    if n == 0 or len(rows) < 2 or len(cols) < 2:
+        return 0.0
+    counts: dict = {}
+    for x, y in zip(a, b):
+        counts[(x, y)] = counts.get((x, y), 0) + 1
+    row_totals = {r: a.count(r) for r in rows}
+    col_totals = {c: b.count(c) for c in cols}
+    chi = sum((counts.get((r, c), 0) - row_totals[r] * col_totals[c] / n) ** 2
+              / (row_totals[r] * col_totals[c] / n) for r in rows for c in cols)
+    return (chi / (n * (min(len(rows), len(cols)) - 1))) ** 0.5
+
+
+def _pick_main_and_second(data: dict, factors: list, measures: list) -> "tuple[Optional[str], Optional[str]]":
+    """Main factor: fewest levels (NA counts as a level), ties to the one that separates the
+    numeric columns most. Second: the next fewest levels, ties to the one least tied to the main
+    factor (an independent factor adds a second view; one nested in the main factor repeats it).
+    Year / date columns are never chosen."""
+    candidates = [f for f in factors if not _is_time_like(f["name"], data["x"][f["name"]])]
+    if not candidates:
+        return None, None
+
+    def spread(f: dict) -> float:
+        return sum(_separation(data, m, f["name"]) for m in measures) / len(measures)
+
+    fewest = min(f["levels"] for f in candidates)
+    main = max((f for f in candidates if f["levels"] == fewest), key=spread)
+    rest = [f for f in candidates if f is not main]
+    if not rest:
+        return main["name"], None
+    fewest = min(f["levels"] for f in rest)
+    second = min((f for f in rest if f["levels"] == fewest),
+                 key=lambda f: _association(data["x"][main["name"]], data["x"][f["name"]]))
+    return main["name"], second["name"]
+
+
+def _explore_template(data: dict) -> Optional[dict]:
+    found = _explore_columns(data)
+    if found is None:
+        return None
+    main, second = _pick_main_and_second(data, found["factors"], found["measures"])
+    if main is None:
+        return None
+    ranked = sorted(found["measures"], key=lambda m: -_separation(data, m, main))
+    scatter_x, scatter_y = ranked[0], ranked[1]
+    rest = [m for m in ranked if m not in (scatter_x, scatter_y)]
+    spread = rest[0] if rest else ranked[0]
+    distribution = rest[1] if len(rest) > 1 else (rest[0] if rest else ranked[1])
+    fields = [f["name"] for f in found["factors"]]
+
+    panels: list = [{"id": "filters", "type": "filters", "title": "Filters", "fields": fields,
+                     "x": 0, "y": 0, "w": 3, "h": _GRID_H * 2}]
+    panels.append({
+        "id": "scatter", "title": scatter_x + " vs " + scatter_y,
+        "config": _without_title(_build_chart_config(
+            "Scatter2D", {"x": scatter_x, "y": scatter_y, "color": main},
+            {"dataPointSize": "auto"}, data)),
+        "x": 3, "y": 0, "w": 5, "h": _GRID_H})
+    panels.append({
+        "id": "compare", "title": spread + " by " + main + (" and " + second if second else ""),
+        "config": _without_title(_build_chart_config(
+            "Boxplot", {"x": spread, "group": main, "color": second or main},
+            {"graphOrientation": "vertical", "showBoxplotOriginalData": True}, data)),
+        "x": 8, "y": 0, "w": 4, "h": _GRID_H})
+    panels.append({
+        "id": "distribution", "title": distribution + " distribution",
+        "config": _without_title(_build_chart_config(
+            "Histogram", {"x": distribution, "group": main, "color": main},
+            {"groupingFactors": [main]}, data)),
+        # A Histogram draws one series per column of its data and takes rows as the values, so the
+        # panel keeps only its measure and flips a COPY of the data (panel.transpose); the
+        # engine's transposeData would flip the one data object every sibling panel shares.
+        "measures": [distribution], "transpose": True,
+        "x": 3, "y": _GRID_H, "w": 4, "h": _GRID_H})
+    panels.append({
+        "id": "counts", "title": "Count by " + (second or main),
+        "config": _without_title({
+            "graphType": "Stacked", "graphOrientation": "vertical", "xAxis": [_COUNT_FIELD],
+            "groupingFactors": [second or main], "stackBy": main, "colorBy": main}),
+        # The source's calculated field n = 1 sums to a row count per bar; the panel keeps only it.
+        "measures": [_COUNT_FIELD],
+        "x": 7, "y": _GRID_H, "w": 5, "h": _GRID_H})
+    for panel in panels:
+        if panel.get("transpose"):
+            panel["config"].pop("transposeData", None)
+    return {
+        "template": "explore", "label": "Data explorer",
+        "panels": _with_dashboard_configs(panels, data),
+        "calculatedFields": [{"name": _COUNT_FIELD, "formula": "1"}],
+        "reason": 'Table with %d numeric columns and %d factors: filters, "%s" against "%s", "%s" by "%s"%s, '
+                  'the spread of "%s" and counts by "%s" -- all coloured by "%s".' % (
+                      len(found["measures"]), len(found["factors"]), scatter_x, scatter_y, spread, main,
+                      (' and "%s"' % second) if second else "", distribution, second or main, main)}
+
+
+def _is_standard_orientation(data: Any) -> bool:
+    """A table whose variables are the measures and whose rows are the samples."""
+    y = data.get("y") if isinstance(data, dict) else None
+    return isinstance(y, dict) and bool(y.get("vars")) and len(y["vars"]) <= len(y.get("smps") or [])
+
+
 def suggest_dashboard(data: Any) -> Optional[dict]:
     """Suggest a whole linked dashboard for a dataset, if it matches a known analysis shape.
 
@@ -509,6 +680,8 @@ def dashboard_spec(suggestion: dict, dashboard_id: str, data: dict, title: Optio
     }
     if theme in ("light", "dark", "auto"):
         spec["theme"] = theme
+    if suggestion.get("calculatedFields"):
+        spec["data"]["data"]["calculatedFields"] = copy.deepcopy(suggestion["calculatedFields"])
     drill = suggestion.get("drill")
     if drill:
         # A second source of the same data, narrowed (browser-side pushdown on the row id) to
@@ -525,6 +698,10 @@ def dashboard_spec(suggestion: dict, dashboard_id: str, data: dict, title: Optio
                      "fields": list(panel.get("fields") or [])}
         else:
             entry["config"] = copy.deepcopy(panel.get("dashboardConfig") or panel["config"])
+            if panel.get("transpose") is not None:
+                entry["transpose"] = panel["transpose"]
+            if panel.get("measures"):
+                entry["measures"] = list(panel["measures"])
             if panel.get("actions"):
                 entry["actions"] = copy.deepcopy(panel["actions"])
         spec["panels"][panel["id"]] = entry
@@ -537,16 +714,44 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-") or "dashboard"
 
 
-def suggest(data: Any, title: Optional[str] = None, theme: Optional[str] = None,
-            thresholds: Optional[list] = None) -> dict:
+def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], Optional[str]]":
+    """The data object for a ``suggest`` call, or an error message. Exactly one of ``data``
+    (a ``{y, x}`` object or a headers+rows array) and ``dataset`` (a bundled name) is required."""
+    import cx_datasets  # local import: keeps the template module importable on its own
+
+    if (data is None) == (dataset is None):
+        return None, ("Pass exactly one of data (an object {y, x} or a headers+rows array) or "
+                      "dataset (one of: %s)." % ", ".join(cx_datasets.available_datasets()))
+    try:
+        if dataset is not None:
+            return cx_datasets.load_dataset(dataset), None
+        if isinstance(data, list):
+            return cx_datasets.table_to_data(data), None
+    except KeyError as exc:
+        return None, str(exc.args[0])
+    except ValueError as exc:
+        return None, str(exc)
+    return data, None
+
+
+def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] = None,
+            thresholds: Optional[list] = None, dataset: Optional[str] = None) -> dict:
     """The MCP-facing result: the suggestion, the validated spec, and a usage snippet — or a
-    plain "nothing fits" answer pointing at the composing tools."""
+    plain "nothing fits" answer pointing at the composing tools. ``dataset`` names a bundled
+    sample (see ``cx_datasets``); ``data`` may be a data object or a headers+rows array."""
+    data, error = _resolve_input(data, dataset)
+    if error:
+        return {"suggested": False, "error": error, "reason": error}
+    # The wizard-parity templates first (cohort, ngs-qc); the generic explorer is only the fallback.
     suggestion = suggest_dashboard(data)
+    if suggestion is None and _is_standard_orientation(data):
+        suggestion = _explore_template(data)
     if suggestion is None:
         return {
             "suggested": False,
-            "reason": ("No known analysis shape matched (a survival cohort table, or a per-sample "
-                       "sequencing QC table). Choose charts with select_canvasxpress_chart and "
+            "reason": ("No dashboard template fits: not a survival cohort table, a per-sample "
+                       "sequencing QC table, or a table with at least two numeric columns and one "
+                       "factor column. Choose charts with select_canvasxpress_chart and "
                        "assemble them with compose_canvasxpress_dashboard."),
         }
     from cx_dashboard import _usage_snippet  # local import: cx_dashboard owns the snippet text

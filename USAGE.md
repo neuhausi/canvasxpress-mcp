@@ -252,6 +252,24 @@ CX_DEBUG=1 python src/server.py
 
 ---
 
+## Dashboards in one call
+
+From an MCP client (Claude Desktop, claude.ai with the connector on), ask for a dashboard in plain words:
+*"use the penguins data set to create a canvasxpress dashboard"*. The client calls
+`suggest_canvasxpress_dashboard` once and the linked dashboard renders inline.
+
+```jsonc
+{ "dataset": "penguins" }                      // bundled: penguins, iris, mtcars (case-insensitive)
+{ "data": [["species","mass"],["a",1.5],...] } // your table: headers + rows (NA = missing)
+{ "data": { "y": {...}, "x": {...} } }         // or a CanvasXpress data object
+```
+
+Exactly one of `dataset` or `data` is required; an unknown dataset name returns an error listing the
+available ones. Survival cohorts and sequencing-QC tables get their dedicated dashboards; any other
+table with two numeric columns and a factor gets the generic explorer (filters, scatter, boxplot,
+histogram, counts). Use `compose_canvasxpress_dashboard` only when you need to choose the charts
+yourself or combine different datasets. Details: [README](README.md#suggest_canvasxpress_dashboard).
+
 ## API reference
 
 ### GET /generate
