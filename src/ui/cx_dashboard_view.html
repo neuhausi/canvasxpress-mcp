@@ -20,25 +20,15 @@
     /* Compact filter search boxes (the bundle's default is a 32px field). */
     .cxd-filters input.cX-DataFilter-Search { height: 24px; font-size: 12px; padding: 0 0 0 6px; margin-bottom: 3px; }
     .cxd-filters input.cxd-filters-find { margin-bottom: 6px; }
-    .cxv-resize {
-      position: absolute; right: 0; bottom: 0; width: 20px; height: 20px; z-index: 10000;
-      cursor: nwse-resize; touch-action: none; opacity: .45;
-      background: linear-gradient(135deg, transparent 50%, currentColor 50%, currentColor 58%,
-        transparent 58%, transparent 72%, currentColor 72%, currentColor 80%, transparent 80%);
+    #cx-toolbar { display: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 8px 0; }
+    #cx-status { font-size: 12px; opacity: .8; margin-right: auto; }
+    #cx-status.err { color: #b91c1c; opacity: 1; }
+    .cx-btn {
+      font: inherit; font-size: 12px; color: inherit; background: transparent; opacity: .85;
+      border: 1px solid currentColor; border-radius: 4px; padding: 2px 10px; cursor: pointer;
     }
-    .cxv-drag {
-      position: absolute; right: 6px; top: 6px; width: 20px; height: 20px; z-index: 10000;
-      cursor: grab; touch-action: none; opacity: .45; border-radius: 4px;
-      background: radial-gradient(currentColor 1.6px, transparent 2px) 0 0 / 7px 7px;
-    }
-    .cxv-drag:active { cursor: grabbing; }
-    .cxv-drag:hover, .cxv-resize:hover, .cxv-resizing .cxv-resize, .cxv-resizing .cxv-drag { opacity: 1; }
-    #cx-toolbar { display: none; justify-content: flex-end; padding: 4px 8px 0; }
-    #cx-builder {
-      font-size: 12px; color: inherit; opacity: .75; text-decoration: none;
-      border: 1px solid currentColor; border-radius: 4px; padding: 2px 8px; cursor: pointer;
-    }
-    #cx-builder:hover { opacity: 1; }
+    .cx-btn:hover:not(:disabled) { opacity: 1; }
+    .cx-btn:disabled { opacity: .4; cursor: default; }
     #cx-error {
       display: none;
       position: fixed;
@@ -69,7 +59,11 @@
 </head>
 <body>
   <div id="cx-error"></div>
-  <div id="cx-toolbar"><a id="cx-builder" href="#" role="button">Open in Builder</a></div>
+  <div id="cx-toolbar">
+    <span id="cx-status"></span>
+    <button id="cx-save" class="cx-btn" type="button">Save</button>
+    <button id="cx-builder" class="cx-btn" type="button">Open in Builder</button>
+  </div>
   <div id="cx-dashboard"></div>
 
   <script>
@@ -145,8 +139,6 @@
         lastWidth = window.innerWidth || document.documentElement.clientWidth || 0;
         clearError();
         initResizeHandling();
-        addResizeHandles();
-        if (!panelsWatched) { panelsWatched = true; watchForPanels(); }
       } catch (err) {
         showError(err.message || String(err));
       }
@@ -165,7 +157,6 @@
       renderDashboardSpec(lastSpec);
     }
 
-    let panelsWatched = false;
     let resizeBound = false;
     /** Debounced resize handling, bound once. */
     function initResizeHandling() {
@@ -200,135 +191,82 @@
     }
 
     /**
-     * Panel move + resize. Every panel gets a grip (top right, drag to move) and a corner handle
-     * (drag to resize). Both snap to the grid; panels that collide are pushed down and the rest
-     * float back up, so nothing overlaps. The charts follow through the renderer's resize
-     * observers, and the new layout is written to the remembered spec so a width re-render keeps it.
+     * Save + Open in Builder. Save publishes the spec to the configured dashboards install
+     * (the server's publish_canvasxpress_dashboard tool, called through the host). Open in
+     * Builder opens the saved dashboard there; when no install is configured it opens the Builder
+     * at canvasxpress.org instead (that site cannot receive an unsaved spec).
      */
-    function readLayout(grid) {
-      return Array.prototype.map.call(grid.querySelectorAll(':scope > .cxd-panel'), function (cell, index) {
-        const a = cell.style.gridArea.split('/').map(function (t) { return parseInt(t.replace('span', ''), 10); });
-        return { cell: cell, index: index, row: a[0], col: a[1], h: a[2], w: a[3] };
+    let currentPayload = null;   // the last tool result (spec + builder_url)
+    let saved = null;            // the publish result once the spec was saved
+
+    function setStatus(text, isError) {
+      const el = document.getElementById('cx-status');
+      el.textContent = text || '';
+      el.className = isError ? 'err' : '';
+    }
+
+    function setBusy(busy) {
+      document.getElementById('cx-save').disabled = busy;
+      document.getElementById('cx-builder').disabled = busy;
+    }
+
+    /** Publish the spec; resolves to the server's result ({published, builder_url, errors}). */
+    function publishSpec() {
+      return sendRequest('tools/call', {
+        name: 'publish_canvasxpress_dashboard',
+        arguments: { spec: currentPayload.spec },
+      }).then(function (result) {
+        const block = result && result.content && result.content.find(function (c) { return c.type === 'text'; });
+        let out = null;
+        try { out = JSON.parse(block.text); } catch (e) { /* fall through */ }
+        if (!out) throw new Error((result && result.isError) ? 'the save tool returned an error' : 'unreadable save result');
+        return out;
       });
     }
 
-    function overlaps(a, b) {
-      return a.col < b.col + b.w && b.col < a.col + a.w && a.row < b.row + b.h && b.row < a.row + a.h;
-    }
-
-    /** Place `moved` where it is, then every other panel top-down: pushed below what it hits, then lifted. */
-    function settleLayout(items, moved) {
-      const placed = [moved];
-      items.filter(function (it) { return it !== moved; })
-        .sort(function (a, b) { return a.row - b.row || a.col - b.col; })
-        .forEach(function (it) {
-          it.row = 1;
-          let hit = true;
-          while (hit) {
-            hit = placed.find(function (o) { return overlaps(it, o); });
-            if (hit) it.row = hit.row + hit.h;
-          }
-          placed.push(it);
-        });
-    }
-
-    function applyLayout(grid, items, rowHeight) {
-      grid.style.gridAutoRows = rowHeight + 'px';
-      const specItems = lastSpec && lastSpec.layout && lastSpec.layout.items;
-      items.forEach(function (it) {
-        it.cell.style.gridArea = it.row + ' / ' + it.col + ' / span ' + it.h + ' / span ' + it.w;
-        if (specItems && specItems[it.index]) {
-          specItems[it.index].x = it.col - 1; specItems[it.index].y = it.row - 1;
-          specItems[it.index].w = it.w; specItems[it.index].h = it.h;
-        }
-      });
-    }
-
-    function addResizeHandles() {
-      const grid = document.querySelector('#cx-dashboard .cxd-grid');
-      if (!grid) return;
-      grid.querySelectorAll(':scope > .cxd-panel').forEach(function (cell, index) {
-        if (cell.querySelector(':scope > .cxv-resize')) return;
-        const grip = document.createElement('div');
-        grip.className = 'cxv-drag';
-        grip.title = 'Drag to move';
-        grip.addEventListener('pointerdown', function (e) { startDrag(e, grid, cell, index, grip, 'move'); });
-        const handle = document.createElement('div');
-        handle.className = 'cxv-resize';
-        handle.title = 'Drag to resize';
-        handle.addEventListener('pointerdown', function (e) { startDrag(e, grid, cell, index, handle, 'size'); });
-        cell.appendChild(grip);
-        cell.appendChild(handle);
-      });
-    }
-
-    function startDrag(e, grid, cell, index, handle, mode) {
-      e.preventDefault();
-      e.stopPropagation();
-      handle.setPointerCapture(e.pointerId);
-      const style = getComputedStyle(grid);
-      const gap = parseFloat(style.columnGap) || 0;
-      const rowGap = parseFloat(style.rowGap) || 0;
-      const cols = style.gridTemplateColumns.split(' ').length;
-      const colStep = (grid.clientWidth - gap * (cols - 1)) / cols + gap;
-      const rowHeight = parseFloat(style.gridTemplateRows.split(' ')[0]) || 30;
-      const rowStep = rowHeight + rowGap;
-      const items = readLayout(grid);
-      const moved = items[index];
-      const start = { row: moved.row, col: moved.col, w: moved.w, h: moved.h };
-      const startX = e.clientX, startY = e.clientY;
-      cell.classList.add('cxv-resizing');
-      cell.style.zIndex = 20;
-
-      function move(ev) {
-        const dCol = Math.round((ev.clientX - startX) / colStep);
-        const dRow = Math.round((ev.clientY - startY) / rowStep);
-        if (mode === 'move') {
-          moved.col = Math.max(1, Math.min(cols - start.w + 1, start.col + dCol));
-          moved.row = Math.max(1, start.row + dRow);
+    function saveDashboard() {
+      if (!currentPayload) return Promise.resolve(null);
+      setBusy(true);
+      setStatus('Saving...');
+      return publishSpec().then(function (out) {
+        if (out.published) {
+          saved = out;
+          setStatus('Saved (' + out.id + ')');
         } else {
-          moved.w = Math.max(1, Math.min(cols - start.col + 1, start.w + dCol));
-          moved.h = Math.max(2, start.h + dRow);
+          setStatus('Not saved: ' + ((out.errors || ['unknown error']).join('; ')), true);
         }
-        settleLayout(items, moved);
-        applyLayout(grid, items, rowHeight);
-      }
-      function done() {
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', done);
-        handle.removeEventListener('pointercancel', done);
-        cell.classList.remove('cxv-resizing');
-        cell.style.zIndex = '';
-        window.dispatchEvent(new Event('resize'));
-      }
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', done);
-      handle.addEventListener('pointercancel', done);
+        return out;
+      }, function (err) {
+        setStatus('Not saved: ' + (err.message || err), true);
+        return null;
+      }).then(function (out) { setBusy(false); return out; });
     }
 
-    /** Panels draw their contents asynchronously; keep a handle on each cell. */
-    let handleTimer = null;
-    function watchForPanels() {
-      new MutationObserver(function () {
-        if (handleTimer !== null) clearTimeout(handleTimer);
-        handleTimer = setTimeout(function () { handleTimer = null; addResizeHandles(); }, 100);
-      }).observe(document.getElementById('cx-dashboard'), { childList: true, subtree: true });
+    function openLink(url) {
+      return sendRequest('ui/open-link', { url: url }).catch(function () { window.open(url, '_blank'); });
     }
 
-    /**
-     * "Open in Builder": the configured dashboards install, else canvasxpress.org. The host
-     * opens the link (ui/open-link); a plain new-tab link is the fallback.
-     */
-    function showBuilderLink(url) {
-      if (!url) return;
-      const link = document.getElementById('cx-builder');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      link.onclick = function (e) {
-        e.preventDefault();
-        sendRequest('ui/open-link', { url: url }).catch(function () { window.open(url, '_blank'); });
-      };
+    function openInBuilder() {
+      if (!currentPayload) return;
+      const fallback = currentPayload.builder_url_public || currentPayload.builder_url;
+      const target = saved ? Promise.resolve(saved) : saveDashboard();
+      target.then(function (out) {
+        if (out && out.published) {
+          openLink(out.builder_url);
+        } else if (fallback) {
+          // Nothing configured to save into: open the Builder itself.
+          openLink(fallback);
+          setStatus('Opened the Builder. Saving needs a configured dashboards server.', false);
+        }
+      });
+    }
+
+    function showToolbar(payload) {
+      currentPayload = payload;
+      saved = null;
+      setStatus('');
+      document.getElementById('cx-save').onclick = saveDashboard;
+      document.getElementById('cx-builder').onclick = openInBuilder;
       document.getElementById('cx-toolbar').style.display = 'flex';
     }
 
@@ -382,7 +320,7 @@
           return;
         }
         renderDashboardSpec(spec);
-        showBuilderLink(payload && payload.builder_url);
+        if (payload && payload.spec) showToolbar(payload);
       } catch (err) {
         showError(err.message || String(err));
       }
