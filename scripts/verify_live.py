@@ -41,6 +41,9 @@ def main():
         ("suggest tool points at the dashboard view",
          (tools["suggest_canvasxpress_dashboard"].meta or {}).get("ui", {}).get("resourceUri")
          == "ui://canvasxpress/dashboard"),
+        ("suggest tool also carries the flat ui/resourceUri key",
+         (tools["suggest_canvasxpress_dashboard"].meta or {}).get("ui/resourceUri")
+         == "ui://canvasxpress/dashboard"),
         ("view has Save + Open in Builder", "cx-save" in view and "cx-builder" in view),
         ("result has no render_inline recipe", "render_inline" not in result),
         ("result has builder_url", bool(result.get("builder_url"))),

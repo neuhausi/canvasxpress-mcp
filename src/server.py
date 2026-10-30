@@ -1540,6 +1540,8 @@ _META_FOR_CHART = {
     "ui": {
         "resourceUri": _CX_APP_RESOURCE_URI,
     },
+    # Earlier MCP Apps hosts read the flat key; send both so either kind shows the view.
+    "ui/resourceUri": _CX_APP_RESOURCE_URI,
 }
 
 # Per MCP Apps spec (2026-01-26) lines 243-250 and example lines 303-314:
@@ -1600,6 +1602,7 @@ _META_FOR_DASHBOARD = {
     "ui": {
         "resourceUri": _CX_DASH_RESOURCE_URI,
     },
+    "ui/resourceUri": _CX_DASH_RESOURCE_URI,
 }
 
 
