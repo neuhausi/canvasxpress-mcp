@@ -29,6 +29,12 @@
     }
     .cx-btn:hover:not(:disabled) { opacity: 1; }
     .cx-btn:disabled { opacity: .4; cursor: default; }
+    #cx-json { display: none; padding: 6px 8px 0; }
+    #cx-json textarea {
+      width: 100%; height: 150px; box-sizing: border-box; font: 11px monospace;
+      background: var(--cx-chrome-bg, #fff); color: var(--cx-chrome-fg, #111); border: 1px solid currentColor; border-radius: 4px;
+    }
+    #cx-json .row { display: flex; gap: 8px; align-items: center; margin-top: 4px; font-size: 12px; }
     #cx-error {
       display: none;
       position: fixed;
@@ -65,6 +71,12 @@
     <span id="cx-status"></span>
     <button id="cx-save" class="cx-btn" type="button">Save</button>
     <button id="cx-builder" class="cx-btn" type="button">Open in Builder</button>
+  </div>
+  <div id="cx-json">
+    <textarea id="cx-json-text" readonly spellcheck="false"></textarea>
+    <div class="row"><button id="cx-json-copy" class="cx-btn" type="button">Copy JSON</button>
+      <button id="cx-json-close" class="cx-btn" type="button">Close</button>
+      <span id="cx-json-note"></span></div>
   </div>
   <div id="cx-dashboard"></div>
 
@@ -284,7 +296,7 @@
       });
     }
 
-    function saveDashboard() {
+    function publishWithStatus() {
       if (!currentPayload) return Promise.resolve(null);
       setBusy(true);
       setStatus('Saving...');
@@ -302,6 +314,61 @@
       }).then(function (out) { setBusy(false); return out; });
     }
 
+    /**
+     * Save = download the dashboard spec as JSON to the user's machine (nothing is sent to a
+     * server). The sandboxed iframe cannot download directly, so the host is asked through
+     * ui/download-file (MCP Apps draft); if the host lacks it or refuses, the JSON is shown in a
+     * box with a Copy button, so the spec can always be kept and loaded into any dashboards server.
+     */
+    function withTimeout(promise, ms) {
+      return new Promise(function (resolve, reject) {
+        const timer = setTimeout(function () { reject(new Error('the host did not answer')); }, ms);
+        promise.then(function (v) { clearTimeout(timer); resolve(v); },
+                     function (e) { clearTimeout(timer); reject(e); });
+      });
+    }
+
+    function showJsonPanel(text, note) {
+      const box = document.getElementById('cx-json');
+      const area = document.getElementById('cx-json-text');
+      area.value = text;
+      document.getElementById('cx-json-note').textContent = note || '';
+      box.style.display = 'block';
+      area.focus();
+      area.select();
+      document.getElementById('cx-json-close').onclick = function () { box.style.display = 'none'; };
+      document.getElementById('cx-json-copy').onclick = function () {
+        area.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { /* ignore */ }
+        const done = function (good) {
+          document.getElementById('cx-json-note').textContent = good ? 'Copied.' : 'Select all and copy (Ctrl/Cmd+C).';
+        };
+        if (!ok && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+        } else {
+          done(ok);
+        }
+      };
+    }
+
+    function downloadSpec() {
+      if (!currentPayload || !currentPayload.spec) return;
+      const spec = currentPayload.spec;
+      const filename = String(spec.id || 'dashboard').replace(/[^A-Za-z0-9._-]+/g, '-') + '.spec.json';
+      const text = JSON.stringify(spec, null, 2);
+      setStatus('Saving ' + filename + '...');
+      withTimeout(sendRequest('ui/download-file', {
+        contents: [{ type: 'resource', resource: { uri: 'file:///' + filename, mimeType: 'application/json', text: text } }],
+      }), 4000).then(function () {
+        setStatus('Saved ' + filename);
+      }, function (err) {
+        console.warn('[cx-dashboard-view] ui/download-file failed:', err);
+        setStatus('Download not available here. Copy the JSON below.', false);
+        showJsonPanel(text, filename);
+      });
+    }
+
     function openLink(url) {
       return sendRequest('ui/open-link', { url: url }).catch(function () { window.open(url, '_blank'); });
     }
@@ -309,7 +376,7 @@
     function openInBuilder() {
       if (!currentPayload) return;
       const fallback = currentPayload.builder_url_public || currentPayload.builder_url;
-      const target = saved ? Promise.resolve(saved) : saveDashboard();
+      const target = saved ? Promise.resolve(saved) : publishWithStatus();
       target.then(function (out) {
         if (out && out.published) {
           openLink(out.builder_url);
@@ -325,7 +392,7 @@
       currentPayload = payload;
       saved = null;
       setStatus('');
-      document.getElementById('cx-save').onclick = saveDashboard;
+      document.getElementById('cx-save').onclick = downloadSpec;
       document.getElementById('cx-builder').onclick = openInBuilder;
       document.getElementById('cx-toolbar').style.display = 'flex';
     }
