@@ -5,7 +5,8 @@ dashboard view draws from the endpoint's own tool result.
     .venv/bin/python scripts/verify_live.py [https://canvasxpress.org/mcp] [out.png]
 
 Needs fastmcp; the screenshot also needs playwright (`pip install playwright && playwright install chromium`).
-The "host" is a stand-in page that answers the view's ui/initialize and delivers the tool result.
+The "host" is a stand-in page that, like the spec, sends the tool result only after the view's
+ui/notifications/initialized.
 This shows what the SERVER sends and what the VIEW draws; it cannot show what a given chat client
 (claude.ai etc.) chooses to display.
 """
@@ -17,9 +18,10 @@ URL = sys.argv[1] if len(sys.argv) > 1 else "https://canvasxpress.org/mcp"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "verify_live.png"
 HOST = """<body style="margin:0"><iframe id=f style="width:700px;height:1000px;border:0"></iframe><script>
 addEventListener('message',function(e){var m=e.data;if(!m||!m.method)return;
- if(m.method==='ui/initialize'){e.source.postMessage({jsonrpc:'2.0',id:m.id,result:{}},'*');
-  setTimeout(function(){e.source.postMessage({method:'ui/notifications/tool-result',
-   params:{content:[{type:'text',text:window.PAYLOAD}]}},'*')},500);}});</script></body>"""
+ if(m.method==='ui/initialize'){e.source.postMessage({jsonrpc:'2.0',id:m.id,result:{}},'*');}
+ else if(m.method==='ui/notifications/initialized'){   // strict: nothing is sent before this
+  e.source.postMessage({method:'ui/notifications/tool-result',
+   params:{content:[{type:'text',text:window.PAYLOAD}]}},'*');}});</script></body>"""
 
 
 async def fetch():

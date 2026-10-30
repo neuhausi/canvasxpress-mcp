@@ -348,16 +348,22 @@
 
     /**
      * On load: send ui/initialize to the host.
-     * Per spec §Lifecycle: the host replies with McpUiInitializeResult, then sends
-     * ui/notifications/initialized, tool-input and tool-result.
+     * Per spec §Lifecycle: the host replies with McpUiInitializeResult, then THE VIEW sends
+     * ui/notifications/initialized. The host MUST NOT send tool-input / tool-result before it
+     * has received that notification, so without it nothing is ever rendered.
      */
     document.addEventListener('DOMContentLoaded', function () {
       sendRequest('ui/initialize', {
         // Only inline is declared: the dashboard is sized to the iframe width and
         // scrolls vertically; modal/fullscreen would need extra layout logic.
         appCapabilities: { availableDisplayModes: ['inline'] },
+        appInfo: { name: 'canvasxpress-dashboard-view', version: '1.0.0' },
         clientInfo: { name: 'canvasxpress-dashboard-view', version: '1.0.0' },
         protocolVersion: '2026-01-26',
+      }).then(function () {
+        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
+        const wait = document.getElementById('cx-wait');
+        if (wait) wait.textContent = 'Connected to the host. Waiting for the dashboard...';
       }).catch(function (err) {
         // Host may not support MCP Apps; the dashboard still renders if a
         // tool-result postMessage arrives.
