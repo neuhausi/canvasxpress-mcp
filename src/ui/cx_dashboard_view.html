@@ -12,16 +12,15 @@
     body {
       overflow-x: hidden;
       overflow-y: auto;
-      color-scheme: light dark;
-      background: transparent;   /* follow the host's own background in light and dark */
-      color: CanvasText;
+      background: var(--cx-chrome-bg, #ffffff);
+      color: var(--cx-chrome-fg, #111827);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #cx-dashboard { width: 100%; }
     /* Compact filter search boxes (the bundle's default is a 32px field). */
     #cx-dashboard .cxd-filters input.cX-DataFilter-Search { height: 24px; font-size: 12px; padding: 0 0 0 6px; margin-bottom: 3px; }
     #cx-dashboard .cxd-filters input.cxd-filters-find { margin-bottom: 6px; }
-    #cx-toolbar { display: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 8px 0; }
+    #cx-toolbar { background: var(--cx-chrome-bg, #ffffff); color: var(--cx-chrome-fg, #111827); display: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 8px 0; }
     #cx-status { font-size: 12px; opacity: .8; margin-right: auto; }
     #cx-status.err { color: #b91c1c; opacity: 1; }
     .cx-btn {
@@ -139,6 +138,7 @@
         }
         handle = CanvasXpressDashboards.renderDashboard(spec, 'cx-dashboard');
         lastSpec = spec;
+        setTimeout(matchChromeToDashboard, 50); setTimeout(matchChromeToDashboard, 800);
         lastWidth = window.innerWidth || document.documentElement.clientWidth || 0;
         clearError();
         initResizeHandling();
@@ -191,6 +191,35 @@
         }
         window.addEventListener('message', listener);
       });
+    }
+
+    /**
+     * The toolbar and page take the dashboard's own background (and a readable text colour), so
+     * the Save / Open in Builder buttons are visible whether the dashboard resolved to its light
+     * or dark theme, whatever colour scheme the host reports to the iframe.
+     */
+    function parseRgb(css) {
+      const m = /rgba?\(([^)]+)\)/.exec(css || '');
+      if (!m) return null;
+      const p = m[1].split(',').map(function (t) { return parseFloat(t); });
+      return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+    }
+
+    function matchChromeToDashboard() {
+      const host = document.getElementById('cx-dashboard');
+      if (!host) return;
+      let node = host.querySelector('.cxd-grid') || host;
+      let color = null;
+      while (node && node !== document.documentElement) {
+        const c = parseRgb(getComputedStyle(node).backgroundColor);
+        if (c && c.a > 0.5) { color = c; break; }
+        node = node.parentElement;
+      }
+      if (!color) return;
+      const luminance = (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) / 255;
+      const root = document.documentElement.style;
+      root.setProperty('--cx-chrome-bg', 'rgb(' + color.r + ',' + color.g + ',' + color.b + ')');
+      root.setProperty('--cx-chrome-fg', luminance < 0.5 ? '#e5e7eb' : '#111827');
     }
 
     /**
