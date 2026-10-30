@@ -1567,6 +1567,9 @@ python -m pytest               # offline; the render test skips itself without P
 
 `tests/test_generate_few_shots.py` also runs the real generator when `CX_TEST_ENGINE` points at a
 `canvasXpress.min.js` (URL or path); without it those tests skip, so CI needs no network for them.
+`tests/test_chart_view_host.py` loads the chart view in a stand-in strict MCP Apps host (one that delivers the tool result
+only after the view sends `ui/notifications/initialized`, as Claude does); it needs Playwright and `CX_TEST_ENGINE` set to
+a `canvasXpress.min.js` file, which it serves in place of the CDN copy.
 
 **CI.** `.github/workflows/ci.yml` installs the package, builds the vector index as a smoke test and runs the tests on
 every push and pull request. `pyproject.toml` allows `fastmcp>=3.2.3,<3.4`, so CI runs on the newest allowed version

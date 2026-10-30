@@ -1599,6 +1599,9 @@ _CX_APP_RESOURCE_META = {
     "ui": {
         "csp": {
             "resourceDomains": ["https://www.canvasxpress.org"],
+            # Map charts fetch their topology from https://www.canvasxpress.org/data/maps/<id>.json
+            # with fetch/XHR; the host applies connect-src 'none' unless the origin is declared here.
+            "connectDomains": ["https://www.canvasxpress.org"],
         },
     },
 }

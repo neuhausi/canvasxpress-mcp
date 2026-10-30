@@ -233,6 +233,25 @@ def test_resource_read_response_has_csp_resource_domains():
     )
 
 
+def test_resource_declares_connect_domains_for_map_data():
+    """Map charts fetch https://www.canvasxpress.org/data/maps/<id>.json with fetch/XHR. A host applies
+    connect-src 'none' unless the origin is in _meta.ui.csp.connectDomains."""
+    r = _get_resource(_RESOURCE_URI)
+    domains = r.meta["ui"]["csp"].get("connectDomains")
+    assert isinstance(domains, list) and "https://www.canvasxpress.org" in domains, domains
+    read = _run(_mcp._read_resource_mcp(_RESOURCE_URI))
+    read_domains = (read.contents[0].meta or {}).get("ui", {}).get("csp", {}).get("connectDomains")
+    assert isinstance(read_domains, list) and "https://www.canvasxpress.org" in read_domains, read_domains
+
+
+def test_dashboard_resource_also_declares_connect_domains():
+    """The dashboard view draws map panels too, so its resource carries the same CSP."""
+    r = _get_resource("ui://canvasxpress/dashboard")
+    assert r is not None
+    domains = r.meta["ui"]["csp"].get("connectDomains")
+    assert isinstance(domains, list) and "https://www.canvasxpress.org" in domains, domains
+
+
 # ---------------------------------------------------------------------------
 # Chart tools must echo `data` in their return dicts so the MCP App iframe
 # can render the chart from the tool result alone (per CanvasXpress object-form

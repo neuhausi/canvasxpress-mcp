@@ -4,6 +4,15 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 
 ## [Unreleased]
 
+### Fixed
+- **Chart view in strict MCP Apps hosts (Claude).** `ui://canvasxpress/chart` never sent `ui/notifications/initialized`
+  after `ui/initialize`, so a strict host never delivered the tool result and charts from `generate_canvasxpress_config`,
+  `modify_canvasxpress_config`, `generate_km_config` and `create_map_config` did not render. The dashboard view already
+  did this; the chart view now matches. A stand-in strict host in `tests/test_chart_view_host.py` reproduces the failure.
+- **Map charts.** The view resources now declare `connectDomains: ["https://www.canvasxpress.org"]` (CSP `connect-src`)
+  alongside `resourceDomains`; map topology is fetched from `https://www.canvasxpress.org/data/maps/<id>.json`, which a
+  host blocks otherwise. Applies to both the chart and the dashboard view.
+
 ### Changed
 - `pyproject.toml` allows `fastmcp>=3.2.3,<3.4`. FastMCP 3.3.1 passes the test suite and `scripts/verify_live.py` with
   output identical to 3.2.3; `requirements.txt` still pins 3.2.3. FastMCP 4.x is not supported yet.

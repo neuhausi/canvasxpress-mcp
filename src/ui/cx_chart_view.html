@@ -339,12 +339,12 @@
      * Per spec §Lifecycle §App Capabilities in ui/initialize:
      *   method: "ui/initialize"
      *   params: { appCapabilities: { availableDisplayModes: ["inline"] }, clientInfo, protocolVersion }
-     * Host responds with McpUiInitializeResult then sends ui/notifications/initialized.
-     * Host then sends ui/notifications/tool-input and ui/notifications/tool-result.
+     * Host responds with McpUiInitializeResult; THE VIEW then sends ui/notifications/initialized.
+     * The host must not send ui/notifications/tool-input or tool-result before it has received
+     * that notification, so a view that never sends it renders nothing in a strict host (Claude).
      */
     document.addEventListener('DOMContentLoaded', function() {
       // TODO: act on host capabilities returned in McpUiInitializeResult (e.g. supported display modes, theme).
-      // TODO: handle 'ui/notifications/initialized' notification from host once any feature depends on knowing initialization completed.
       sendRequest('ui/initialize', {
         // Only inline declared: the chart is sized to the iframe viewport and kept in sync on resize (see initResizeHandling); modal/fullscreen would require additional layout logic.
         appCapabilities: {
@@ -352,6 +352,8 @@
         },
         clientInfo: { name: 'canvasxpress-chart-view', version: '1.0.0' },
         protocolVersion: '2026-01-26',
+      }).then(function() {
+        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
       }).catch(function(err) {
         // If host doesn't support MCP Apps, this will fail silently.
         // Chart will still render if tool-result postMessage arrives.
