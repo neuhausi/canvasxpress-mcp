@@ -3609,7 +3609,14 @@ def compose_canvasxpress_dashboard(
         "dashboard view. "
         "The result renders itself as a live interactive dashboard (with Save and Open in Builder) in "
         "the dashboard view: do not show the JSON, do not redraw it in an HTML widget, do not change "
-        "its layout. If a call returns an error or suggested: false, read the message, correct the "
+        "its layout. ALWAYS build the dashboard from the COMPLETE table: send every row when it has up "
+        "to 200 rows. A larger table is too slow to write into a tool call, so send a representative "
+        "sample of about 15-20% of the rows (never fewer than 200; keep every outlier, fill the rest at "
+        "random) ONLY to explore which dashboard to build, and set total_rows to the number of rows in "
+        "the full table. The dashboard is never drawn from the sample: the view asks the user for their "
+        "complete file and draws it from all of their data. Tell the user that, and never describe sample "
+        "numbers as results. Never truncate to the first rows. "
+        "If a call returns an error or suggested: false, read the message, correct the "
         "arguments and call this tool again, up to 5 attempts. If the 5th attempt still fails, call it "
         "once more with force=true, which builds a filter panel and bar charts from the table. "
         "Never build the dashboard yourself in an HTML widget. "
@@ -3633,6 +3640,7 @@ def suggest_canvasxpress_dashboard(
     thresholds: list | None = None,
     dataset: str | None = None,
     force: bool = False,
+    total_rows: int | None = None,
 ) -> dict:
     """
     Args:
@@ -3648,6 +3656,9 @@ def suggest_canvasxpress_dashboard(
         dataset: A bundled sample dataset instead of data: "penguins", "iris" or "mtcars"
                  (case-insensitive; e.g. "palmer penguins" works). Exactly one of data or
                  dataset is required.
+        total_rows: Set ONLY when data is a sample used to explore which dashboard to build: the number
+                    of rows in the FULL table. The sample is never drawn: the view waits for the user's
+                    complete file. Rows are never dropped or refused.
         force: Use only after 5 failed attempts: skips the templates and builds a filter panel plus
                bar charts: a Bar of the first numeric column or, when no column is numeric, a count
                bar for each discrete column (up to 4).
@@ -3659,7 +3670,8 @@ def suggest_canvasxpress_dashboard(
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
     return cx_dashboard_suggest.suggest(
-        data, title=title, theme=theme, thresholds=thresholds, dataset=dataset, force=force)
+        data, title=title, theme=theme, thresholds=thresholds, dataset=dataset, force=force,
+        total_rows=total_rows)
 
 
 @mcp.tool(

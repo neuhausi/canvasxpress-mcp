@@ -699,6 +699,102 @@ def _force_template(data: dict, count_only: bool = False) -> Optional[dict]:
     return suggestion
 
 
+# ---------------------------------------------------------------------------
+# KPI row: ONE row of round (ring) cards across the top, added after a template is chosen.
+# It never takes part in choosing the template (suggest_dashboard is untouched), so the survival /
+# sequencing-QC recognition and its JavaScript parity are unaffected.
+# ---------------------------------------------------------------------------
+_KPI_H = 6                      # grid rows the single KPI row occupies
+_KPI_MAX_METRICS = 3            # Row Count + up to three metrics = at most four cards, all on one row
+_KPI_CARD_W = 3                 # four cards fill the 12 columns
+_KPI_ROWS_NAME = "Rows"
+_KPI_QC_FAMILIES = ("reads", "coverage", "mapping", "quality")
+
+
+def _column_mean(data: dict, name: str) -> Optional[float]:
+    y = data.get("y") or {}
+    if name not in (y.get("vars") or []):
+        return None
+    row = (y.get("data") or [])[y["vars"].index(name)] or []
+    values = [v for v in row if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    return sum(values) / len(values) if values else None
+
+
+def _kpi_metric_columns(suggestion: dict, columns: list, data: dict) -> list:
+    """The measures to show as average cards. A recognised template keeps its own vocabulary
+    (sequencing QC: depth, mapping, quality; survival: follow-up time, then the first other
+    measure); anything else takes the numeric columns in order. Columns whose average rounds to
+    nothing on a whole-number ring (|mean| < 1) are used only when nothing larger exists."""
+    numeric = [c["name"] for c in columns if c["type"] == "numeric" and c["name"] != _COUNT_FIELD]
+    preferred: list = []
+    template = suggestion.get("template")
+    if template == "ngs-qc":
+        found = _qc_metric_columns(columns)
+        preferred = [found[f] for f in _KPI_QC_FAMILIES if f in found]
+    elif template == "cohort":
+        survival = _detect_survival(data)
+        if survival:
+            preferred = [survival["time"]] + [n for n in numeric if n not in (survival["time"], survival["event"])]
+    ordered = preferred + [n for n in numeric if n not in preferred]
+    big = [n for n in ordered if abs(_column_mean(data, n) or 0) >= 1]
+    chosen = big if big else ordered
+    return chosen[:_KPI_MAX_METRICS]
+
+
+_ACRONYMS = frozenset(("gc", "os", "pfs", "dfs", "efs", "bmi", "id", "dna", "rna", "qc", "umi", "snp", "tpm", "cpm", "fpkm"))
+
+
+def _humanize(name: str) -> str:
+    """A column name as a reader would write it: ``total_reads`` -> ``Total Reads``, ``pct_q30`` ->
+    ``% Q30``, ``humidity_pct`` -> ``Humidity %``, ``OS_months`` -> ``OS Months``, ``gcContent`` ->
+    ``GC Content``. Words split on ``_``, ``.``, ``-``, spaces and camelCase; all-caps words and known
+    acronyms stay upper case. Only for display: panels always bind to the real column name."""
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
+    words = []
+    for token in re.split(r"[\s._\-]+", text):
+        if not token:
+            continue
+        low = token.lower()
+        if low in ("pct", "percent", "perc"):
+            words.append("%")
+        elif token.isupper() or low in _ACRONYMS:
+            words.append(token.upper())
+        else:
+            words.append(token[:1].upper() + token[1:])
+    return " ".join(words) or str(name)
+
+
+def _ring_card(card_id: str, measure: str, summary: str, digits: int, x: int) -> dict:
+    """One round KPI card: a ring with the aggregate in the middle. The card's header is the column's
+    name, humanized (the row count's is "Rows"); the ring itself is bound to the real column."""
+    return {
+        "id": card_id, "title": _humanize(measure),
+        "config": _without_title({
+            "graphType": "Meter", "meterType": "ring", "meterCard": True,
+            "xAxis": [measure], "summaryType": summary, "meterRingValueDigits": digits}),
+        "measures": [measure], "x": x, "y": 0, "w": _KPI_CARD_W, "h": _KPI_H}
+
+
+def _with_kpi_row(suggestion: dict, data: dict) -> dict:
+    """Prepend the single KPI row: Row Count first, then up to three averages. Every other panel
+    moves down by the row's height. The row count is a calculated field of 1s summed by the ring,
+    so the cards follow the filters like every other panel."""
+    columns = _describe_columns(data)
+    existing = {c["name"] for c in columns}
+    rows_name = _KPI_ROWS_NAME if _KPI_ROWS_NAME not in existing else "Row count"
+    row_total = len((data.get("y") or {}).get("smps") or [])
+    cards = [_ring_card("kpi-rows", rows_name, "sum", max(4, len(str(row_total)) + 1), 0)]
+    for index, name in enumerate(_kpi_metric_columns(suggestion, columns, data), start=1):
+        digits = max(3, len(str(int(abs(_column_mean(data, name) or 0)))) + 1)
+        cards.append(_ring_card("kpi-%d" % index, name, "average", digits, index * _KPI_CARD_W))
+    for panel in suggestion["panels"]:
+        panel["y"] = panel["y"] + _KPI_H
+    suggestion["panels"] = cards + suggestion["panels"]
+    suggestion["calculatedFields"] = list(suggestion.get("calculatedFields") or []) + [
+        {"name": rows_name, "formula": "1"}]
+    return suggestion
+
+
 def _is_standard_orientation(data: Any) -> bool:
     """A table whose variables are the measures and whose rows are the samples."""
     y = data.get("y") if isinstance(data, dict) else None
@@ -829,12 +925,14 @@ def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], 
 
 def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] = None,
             thresholds: Optional[list] = None, dataset: Optional[str] = None,
-            force: bool = False) -> dict:
+            force: bool = False, total_rows: Optional[int] = None) -> dict:
     """The MCP-facing result: the suggestion, the validated spec, and a usage snippet — or a
     plain "nothing fits" answer pointing at the composing tools. ``dataset`` names a bundled
     sample (see ``cx_datasets``); ``data`` may be a data object or a headers+rows array.
     ``force`` skips the templates and builds the minimal dashboard (see ``_force_template``); a
-    caller uses it only after its corrected attempts have failed."""
+    caller uses it only after its corrected attempts have failed. ``total_rows`` declares that ``data``
+    is a sample of a larger table: the result then carries ``sample`` and the title says so (rows are
+    never dropped or refused here)."""
     count_only = False
     if force and isinstance(data, list) and len(data) >= 2 and all(isinstance(r, (list, tuple)) for r in data):
         import cx_datasets  # local import, as in _resolve_input
@@ -845,6 +943,13 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
                 # A table of discrete columns only: add a column of 1s so there is something to sum.
                 data = [list(data[0]) + [_COUNT_FIELD]] + [list(r) + [1] for r in data[1:]]
                 count_only = True
+    if total_rows is not None:
+        if isinstance(total_rows, bool) or not isinstance(total_rows, int) or total_rows < 1:
+            message = "total_rows must be a whole number: the number of rows in the full table."
+            return {"suggested": False, "error": message, "reason": message}
+        if dataset is not None:
+            message = "total_rows only applies to data you send; a bundled dataset is always complete."
+            return {"suggested": False, "error": message, "reason": message}
     data, error = _resolve_input(data, dataset)
     if error:
         if "no numeric columns" in error and not force:
@@ -877,6 +982,21 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
         }
     from cx_dashboard import _usage_snippet, builder_base_url  # local import: cx_dashboard owns the snippet text
 
+    rows_received = max(len(_table_from_data(data)) - 1, 0)
+    sample = None
+    if total_rows is not None:
+        if total_rows < rows_received:
+            message = ("total_rows (%d) is smaller than the %d rows you sent: it is the number of rows in "
+                       "the FULL table." % (total_rows, rows_received))
+            return {"suggested": False, "error": message, "reason": message}
+        if total_rows > rows_received:
+            sample = {"rows": rows_received, "total_rows": total_rows,
+                      "percent": round(100.0 * rows_received / total_rows, 1),
+                      "note": "Designed from a sample of %s of %s rows (%.0f%%). The dashboard is never drawn from "
+                              "the sample: it appears when the user loads the complete file in the view." % (
+                                  format(rows_received, ","), format(total_rows, ","),
+                                  100.0 * rows_received / total_rows)}
+    suggestion = _with_kpi_row(suggestion, data)
     dash_id = _slug(title or suggestion["label"])
     spec = dashboard_spec(suggestion, dash_id, data, title=title, theme=theme, thresholds=thresholds)
     result = validate_spec(spec)
@@ -894,6 +1014,9 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
         "usage": _usage_snippet(dash_id),
         "builder_url": builder_base_url(),
     }
+    if sample:
+        out["sample"] = sample
+        out["reason"] = out["reason"] + " " + sample["note"]
     if result.get("warnings"):
         out["warnings"] = result["warnings"]
     return out

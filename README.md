@@ -1090,6 +1090,30 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 | Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
 | Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
 
+**Always the complete data.** A dashboard is never drawn from a sample. A table of up to 200 rows is sent whole and
+drawn at once. A larger table is too slow to write into a tool call (1,500 rows is about 37,000 tokens, roughly ten
+minutes), so the model sends a representative sample of about 15-20% of the rows (never fewer than 200: every outlier
+plus a random fill) **only to explore which dashboard to build**, and passes `total_rows`, the size of the full table.
+The view then draws **nothing** from the sample: it says the dashboard is designed and asks for the complete file, with
+Save and Open in Builder off. The user picks the file with **Load full file...** (or drops it on the view); it is parsed
+in the page, so it never goes through the model, shaped like the sample (the same numeric and annotation columns, rows
+numbered 1 to N) and swapped into the same dashboard, so every panel keeps its configuration. The dashboard is drawn
+only then, from all the rows, and Save works with the full table in the saved spec. A file that lacks a column the
+dashboard uses is refused with the names. Rows are never dropped or refused by the server; `total_rows` only says that
+`data` is a sample.
+
+**KPI row.** Every suggested dashboard starts with ONE row of up to four round (ring) cards: **Rows** (the count) and
+the average of up to three measures: for sequencing QC the depth, mapping and quality columns; for a survival cohort
+the follow-up time, then the first other measure; otherwise the numeric columns in order (a column whose average
+rounds to nothing on a whole-number ring is used only when nothing larger exists). Card headers are the humanized column
+names (`pct_q30` is "% Q30"); the ring is bound to the real column. The cards follow the filters like every other panel
+(the row count is a calculated field of 1s). The row is added after the template is chosen, so the survival and
+sequencing-QC recognition below is unaffected.
+
+**The recognition is pinned.** `tests/test_detection_pinned.py` fails if the survival / QC / batch / group vocabulary,
+the thresholds, or the template chosen for the reference tables (the cohort, QC, generic and edge cases of the MCP app
+test set) change by accident; the JavaScript parity test covers the template chooser itself.
+
 An input that is not a table at all (for example an object with `headers` and `rows`, or a list of row
 objects) gets an error that names the accepted shapes: a list of lists with the column names first, or a
 `{y, x}` CanvasXpress object. A table with no numeric columns gets an error that points straight at
@@ -1104,8 +1128,8 @@ inferred, only the ones you declare are checked, e.g.
 
 **Input:** `data?` (CanvasXpress data object or headers+rows array), `dataset?` (`penguins` | `iris` |
 `mtcars`), `title?`, `theme?` (`light` | `dark` | `auto`), `thresholds?` (limits to flag in the
-insights strip), `force?` (only after 5 failed attempts: the filter-plus-bars dashboard above). Exactly one of
-`data` / `dataset`.
+insights strip), `total_rows?` (only when `data` is a sample used to explore: the rows in the full table),
+`force?` (only after 5 failed attempts: the filter-plus-bars dashboard above). Exactly one of `data` / `dataset`.
 
 **Response:** `{"suggested": true, "template": "cohort" | "ngs-qc" | "explore" | "minimal", "label", "reason",
 "panels": [{id, title, graphType}], "spec": {...}, "valid": true, "errors": [], "usage": "<html snippet>"}`.

@@ -29,6 +29,13 @@
     }
     .cx-btn:hover:not(:disabled) { opacity: 1; }
     .cx-btn:disabled { opacity: .4; cursor: default; }
+    /* Sample banner: "Showing a sample: N of M rows" + Load full file. In flow (not fixed), so the
+       iframe height the view reports includes it. */
+    #cx-sample { display: none; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; padding: 6px 8px 0; }
+    #cx-sample.on { display: flex; }
+    #cx-sample .msg { margin-right: auto; }
+    #cx-sample .msg.err { color: #b91c1c; }
+    #cx-sample.drop { outline: 2px dashed currentColor; outline-offset: -3px; }
     #cx-json { display: none; padding: 6px 8px 0; }
     #cx-json textarea {
       width: 100%; height: 150px; box-sizing: border-box; font: 11px monospace;
@@ -71,6 +78,11 @@
     <span id="cx-status"></span>
     <button id="cx-save" class="cx-btn" type="button">Save</button>
     <button id="cx-builder" class="cx-btn" type="button">Open in Builder</button>
+  </div>
+  <div id="cx-sample">
+    <span class="msg" id="cx-sample-msg"></span>
+    <button id="cx-load" class="cx-btn" type="button">Load full file...</button>
+    <input id="cx-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" style="display:none">
   </div>
   <div id="cx-json">
     <textarea id="cx-json-text" readonly spellcheck="false"></textarea>
@@ -410,6 +422,183 @@
       });
     }
 
+    // ------------------------------------------------------------------------------------------
+    // Sample -> full file. When the tool result says it is a SAMPLE of a larger table, the user can
+    // load the whole file here: it is parsed in this page (the file never goes through the model),
+    // shaped like the sample (same numeric columns, same annotation columns, rows numbered 1..N) and
+    // swapped into the same spec, so every panel keeps its configuration.
+    // ------------------------------------------------------------------------------------------
+    let sampleInfo = null;        // payload.sample while the dashboard shows a sample or a loaded file
+
+    const NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+    const MISSING_RE = /^(na|n\/a|nan|null|-)?$/i;
+
+    function sampleData(spec) {
+      const src = spec && spec.data && spec.data.data;
+      const value = src && src.kind === 'inline' ? src.value : null;
+      return value && value.y && Array.isArray(value.y.vars) && Array.isArray(value.y.smps) ? value : null;
+    }
+
+    /** Only a table with rows as samples (not more columns than rows) can be reloaded in place. */
+    function canLoadFull(spec) {
+      const d = sampleData(spec);
+      return !!d && d.y.vars.length <= d.y.smps.length;
+    }
+
+    function setSampleMessage(text, isError) {
+      const el = document.getElementById('cx-sample-msg');
+      el.textContent = text;
+      el.className = 'msg' + (isError ? ' err' : '');
+      if (typeof reportSize === 'function') setTimeout(reportSize, 30);
+    }
+
+    function fmt(n) { return Number(n).toLocaleString('en-US'); }
+
+    /** Waiting for the complete file: nothing is drawn, and Save / Open in Builder are off. */
+    function setPending(on) {
+      ['cx-save', 'cx-builder'].forEach(function (id) {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = on;
+        b.title = on ? 'Load your complete file first.' : '';
+      });
+    }
+
+    /** Empty the dashboard area (closing the previous instance), so nothing from an earlier result stays. */
+    function clearDashboard() {
+      if (handle && typeof handle.close === 'function') { try { handle.close(); } catch (e) { /* ignore */ } }
+      handle = null;
+      lastSpec = null;
+      const el = document.getElementById('cx-dashboard');
+      if (el) el.innerHTML = '';
+    }
+
+    function hideSample() {
+      sampleInfo = null;
+      document.getElementById('cx-sample').className = '';
+      setPending(false);
+    }
+
+    function showSample(info, spec, payload) {
+      sampleInfo = info;
+      const box = document.getElementById('cx-sample');
+      box.className = 'on';
+      const load = document.getElementById('cx-load');
+      const ok = canLoadFull(spec);
+      load.style.display = ok ? '' : 'none';
+      setPending(true);
+      const design = (payload && payload.label ? payload.label : 'Your dashboard') +
+        ((payload && payload.panels) ? ' (' + payload.panels.length + ' panels)' : '');
+      setSampleMessage(design + ' is designed, and it is never drawn from a sample. ' + (ok ?
+        'Load your complete file (' + fmt(info.total_rows) + ' rows) to build it from all of your data.' :
+        'This table cannot be completed here: ask for the dashboard again with every row.'));
+      load.onclick = function () { document.getElementById('cx-file').click(); };
+      document.getElementById('cx-file').onchange = function (e) {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (file) loadFullFile(file);
+      };
+    }
+
+    /** Split delimited text into rows of cells: quotes, doubled quotes, CRLF and a BOM are handled. */
+    function parseDelimited(text, delim) {
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const rows = []; let row = []; let cell = ''; let quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (quoted) {
+          if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
+          else cell += ch;
+        } else if (ch === '"') quoted = true;
+        else if (ch === delim) { row.push(cell); cell = ''; }
+        else if (ch === '\n' || ch === '\r') {
+          if (ch === '\r' && text[i + 1] === '\n') i++;
+          row.push(cell); cell = ''; rows.push(row); row = [];
+        } else cell += ch;
+      }
+      if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+      return rows.filter(function (r) { return r.some(function (c) { return c.trim() !== ''; }); });
+    }
+
+    /** The sample's data object rebuilt from the full table; {error} when a column it uses is absent. */
+    function buildFullData(rows, sample) {
+      const header = rows[0].map(function (h) { return h.trim(); });
+      const index = {};
+      header.forEach(function (h, i) { if (!(h in index)) index[h] = i; });
+      const vars = sample.y.vars.map(String);
+      const notes = sample.x ? Object.keys(sample.x) : [];
+      const missing = vars.concat(notes).filter(function (n) { return !(n in index); });
+      if (missing.length) {
+        return { error: 'That file has no column ' + missing.join(', ') + '. The dashboard uses: ' +
+          vars.concat(notes).join(', ') + '.' };
+      }
+      const body = rows.slice(1);
+      const out = JSON.parse(JSON.stringify(sample));
+      out.y.smps = body.map(function (_, i) { return String(i + 1); });
+      out.y.data = vars.map(function (name) {
+        return body.map(function (r) {
+          const v = (r[index[name]] || '').trim();
+          return MISSING_RE.test(v) || !NUMBER_RE.test(v) ? null : parseFloat(v);
+        });
+      });
+      if (notes.length) {
+        out.x = {};
+        notes.forEach(function (name) {
+          out.x[name] = body.map(function (r) {
+            const v = (r[index[name]] || '').trim();
+            return MISSING_RE.test(v) ? 'NA' : v;
+          });
+        });
+      }
+      return { data: out, rows: body.length };
+    }
+
+    function loadFullFile(file) {
+      if (!currentPayload || !currentPayload.spec) return;
+      const reader = new FileReader();
+      reader.onerror = function () { setSampleMessage('Could not read that file.', true); };
+      reader.onload = function () {
+        try {
+          const text = String(reader.result || '');
+          const first = text.split(/\r?\n/, 1)[0] || '';
+          const delim = (first.split('\t').length > first.split(',').length) ? '\t' : ',';
+          const rows = parseDelimited(text, delim);
+          if (rows.length < 2) { setSampleMessage('That file has no data rows.', true); return; }
+          const sample = sampleData(currentPayload.spec);
+          if (!sample) { setSampleMessage('This dashboard has no inline table to replace.', true); return; }
+          const built = buildFullData(rows, sample);
+          if (built.error) { setSampleMessage(built.error, true); return; }
+          const spec = JSON.parse(JSON.stringify(currentPayload.spec));
+          spec.data.data.value = built.data;
+          if (spec.data.case && spec.data.case.kind === 'inline') spec.data.case.value = built.data;
+          spec.title = String(spec.title || '').replace(/ \u2014 sample of .*$/, '');
+          renderDashboardSpec(spec);
+          // Save / Open in Builder must carry the full table, not the sample.
+          currentPayload = Object.assign({}, currentPayload, { spec: spec });
+          saved = null;
+          setPending(false);
+          setSampleMessage('Showing all ' + fmt(built.rows) + ' rows from ' + file.name + '.', false);
+        } catch (err) {
+          setSampleMessage('Could not load that file: ' + (err.message || err), true);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    document.addEventListener('dragover', function (e) {
+      if (!sampleInfo || !canLoadFull(currentPayload && currentPayload.spec)) return;
+      e.preventDefault();
+      document.getElementById('cx-sample').classList.add('drop');
+    });
+    document.addEventListener('dragleave', function () { document.getElementById('cx-sample').classList.remove('drop'); });
+    document.addEventListener('drop', function (e) {
+      document.getElementById('cx-sample').classList.remove('drop');
+      if (!sampleInfo || !canLoadFull(currentPayload && currentPayload.spec)) return;
+      e.preventDefault();
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) loadFullFile(file);
+    });
+
     function showToolbar(payload) {
       currentPayload = payload;
       saved = null;
@@ -468,6 +657,15 @@
           skipResult('Dashboard spec is invalid:\n  - ' + payload.errors.join('\n  - '));
           return;
         }
+        if (payload && payload.sample && payload.spec) {
+          // Designed from a SAMPLE: never drawn from it. The dashboard appears once the complete file is loaded.
+          clearDashboard();
+          const waiting = document.getElementById('cx-wait'); if (waiting) waiting.remove();
+          showToolbar(payload);
+          showSample(payload.sample, payload.spec, payload);
+          return;
+        }
+        hideSample();
         renderDashboardSpec(spec);
         const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
         if (payload && payload.spec) showToolbar(payload);

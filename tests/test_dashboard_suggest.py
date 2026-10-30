@@ -23,6 +23,11 @@ with open(os.path.join(os.path.dirname(__file__), "fixtures", "suggest-dashboard
     FIXTURE = json.load(fh)["cases"]
 
 
+def _template_panels(panels):
+    """A suggestion's own panels: everything except the KPI row, which is added after the template is chosen."""
+    return [p for p in panels if not p["id"].startswith("kpi-")]
+
+
 @pytest.mark.parametrize("case", FIXTURE, ids=[c["name"] for c in FIXTURE])
 def test_matches_the_javascript_reference(case):
     assert sg.suggest_dashboard(copy.deepcopy(case["data"])) == case["expected"]
@@ -48,10 +53,10 @@ def test_cohort_spec_is_valid_linked_and_inline():
     assert spec["data"]["data"]["kind"] == "inline"
     # The case card reads a second source of the same data, narrowed to the clicked case.
     assert all(p["dataRef"] == ("case" if pid == "case" else "data") for pid, p in spec["panels"].items())
-    assert [p["id"] for p in out["panels"]] == ["filters", "km", "compare", "vs-time", "case"]
+    assert [p["id"] for p in _template_panels(out["panels"])] == ["filters", "km", "compare", "vs-time", "case"]
     assert spec["panels"]["filters"]["type"] == "filters"
     assert spec["panels"]["km"]["config"]["graphType"] == "KaplanMeier"
-    assert len(spec["layout"]["items"]) == 5
+    assert len([i for i in spec["layout"]["items"] if not i["panel"].startswith("kpi-")]) == 5
     assert cx_dashboard_validate.validate_spec(spec)["valid"]
 
 
@@ -214,10 +219,12 @@ def test_dataset_penguins_is_a_valid_five_panel_explorer():
     out = sg.suggest(dataset="penguins")
     assert out["suggested"] is True and out["template"] == "explore"
     assert out["valid"], out["errors"]
-    assert len(out["panels"]) == 5 and len(out["spec"]["panels"]) == 5
+    assert len(_template_panels(out["panels"])) == 5
+    assert len([i for i in out["spec"]["panels"] if not i.startswith("kpi-")]) == 5
     assert list(out["spec"]["data"]) == ["data"]
     assert {p["dataRef"] for p in out["spec"]["panels"].values()} == {"data"}
-    assert [p["graphType"] for p in out["panels"]] == ["filters", "Scatter2D", "Boxplot", "Histogram", "Stacked"]
+    assert [p["graphType"] for p in _template_panels(out["panels"])] == [
+        "filters", "Scatter2D", "Boxplot", "Histogram", "Stacked"]
     assert out["spec"]["panels"]["filters"]["fields"] == ["species", "island", "sex", "year"]
     assert cx_dashboard_validate.validate_spec(out["spec"])["valid"]
 
@@ -242,7 +249,7 @@ def test_explore_panels_follow_the_main_factor():
     # The count bar reads the source's calculated n = 1; the histogram flips a copy of its data.
     assert spec["counts"]["measures"] == ["n"]
     assert sg.suggest(dataset="penguins")["spec"]["data"]["data"]["calculatedFields"] == [
-        {"name": "n", "formula": "1"}]
+        {"name": "n", "formula": "1"}, {"name": "Rows", "formula": "1"}]   # the template's n, then the KPI row's
     assert spec["distribution"]["transpose"] is True
     assert all("transposeData" not in p.get("config", {}) for p in spec.values())
 
@@ -273,7 +280,7 @@ def test_other_bundled_datasets_get_an_explorer():
     for name in ("iris", "mtcars"):
         out = sg.suggest(dataset=name)
         assert out["suggested"] and out["template"] == "explore" and out["valid"], (name, out.get("errors"))
-        assert len(out["panels"]) == 5
+        assert len(_template_panels(out["panels"])) == 5
 
 
 def test_cohort_and_qc_still_win_over_the_explorer():
@@ -318,8 +325,10 @@ def test_render_every_penguins_panel():
     data = cx_datasets.load_dataset("penguins")
     spec = sg.suggest(dataset="penguins")["spec"]
     source = copy.deepcopy(data)
-    source["y"]["vars"].append("n")
-    source["y"]["data"].append([1] * len(source["y"]["smps"]))      # calculatedFields: n = 1
+    for field in spec["data"]["data"]["calculatedFields"]:           # every calculated field here is "1"
+        assert field["formula"] == "1", field
+        source["y"]["vars"].append(field["name"])
+        source["y"]["data"].append([1] * len(source["y"]["smps"]))
 
     def prepare(panel):
         keep = panel.get("measures")
@@ -388,7 +397,7 @@ def _bars(result):
 def test_force_builds_a_filter_panel_and_a_bar_of_the_first_numeric_column():
     result = sg.suggest(copy.deepcopy(QC_TABLE), force=True)
     assert result["suggested"] and result["template"] == "minimal" and result["valid"], result
-    assert [p["id"] for p in result["panels"]] == ["filters", "bar"]
+    assert [p["id"] for p in _template_panels(result["panels"])] == ["filters", "bar"]
     bar = result["spec"]["panels"]["bar"]["config"]
     assert bar["graphType"] == "Bar" and bar["xAxis"] == ["total_reads"]
     assert result["spec"]["panels"]["filters"]["fields"]
@@ -455,3 +464,130 @@ def test_tool_description_gives_the_retry_then_force_instruction_and_no_widget_f
     assert "up to 5 attempts" in text and "force=true" in text
     assert "do not redraw it in an HTML widget" in text
     assert "inline_widget" not in text
+
+
+# ---------------------------------------------------------------------------
+# KPI row: ONE row of round cards, added after the template is chosen.
+# ---------------------------------------------------------------------------
+def _kpi_items(result):
+    return [i for i in result["spec"]["layout"]["items"] if i["panel"].startswith("kpi-")]
+
+
+@pytest.mark.parametrize("make", [
+    lambda: sg.suggest(dataset="penguins"),
+    lambda: sg.suggest(copy.deepcopy(QC_TABLE_BIG)),
+    lambda: sg.suggest(copy.deepcopy(QC_TABLE), force=True),
+    lambda: sg.suggest(_discrete_table(["lane", "batch"]), force=True),
+], ids=["explore", "ngs-qc", "forced-bar", "forced-discrete"])
+def test_kpi_is_a_single_row_of_at_most_four_round_cards(make):
+    result = make()
+    items = _kpi_items(result)
+    assert 1 <= len(items) <= 4, items
+    assert {i["y"] for i in items} == {0} and {i["h"] for i in items} == {6}      # one row
+    assert [i["x"] for i in items] == [3 * n for n in range(len(items))]          # left to right, no wrap
+    assert all(i["x"] + i["w"] <= 12 for i in items)
+    for item in items:
+        config = result["spec"]["panels"][item["panel"]]["config"]
+        assert config["graphType"] == "Meter" and config["meterType"] == "ring" and config["meterCard"] is True
+    # everything else sits below the KPI row
+    assert all(i["y"] >= 6 for i in result["spec"]["layout"]["items"] if not i["panel"].startswith("kpi-"))
+    assert result["valid"], result["errors"]
+
+
+def test_kpi_row_count_is_first_and_follows_the_filters_through_a_calculated_field():
+    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG))
+    first = result["spec"]["panels"]["kpi-rows"]
+    assert first["config"]["summaryType"] == "sum" and first["measures"] == ["Rows"]
+    assert {"name": "Rows", "formula": "1"} in result["spec"]["data"]["data"]["calculatedFields"]
+    assert [i["panel"] for i in _kpi_items(result)][0] == "kpi-rows"
+
+
+def test_kpi_card_headers_are_the_humanized_column_names_but_bind_to_the_real_ones():
+    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG))
+    panels = [result["spec"]["panels"][i["panel"]] for i in _kpi_items(result)]
+    assert [p["title"] for p in panels] == ["Rows", "Total Reads", "% Mapped", "% Q30"]
+    assert [p["measures"][0] for p in panels] == ["Rows", "total_reads", "pct_mapped", "pct_q30"]
+    assert [p["config"]["xAxis"][0] for p in panels] == ["Rows", "total_reads", "pct_mapped", "pct_q30"]
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("total_reads", "Total Reads"), ("pct_mapped", "% Mapped"), ("pct_q30", "% Q30"),
+    ("humidity_pct", "Humidity %"), ("OS_months", "OS Months"), ("gc_content", "GC Content"),
+    ("gcContent", "GC Content"), ("contamination_freemix", "Contamination Freemix"),
+    ("insert_size", "Insert Size"), ("GENE12", "GENE12"), ("bmi", "BMI"), ("age", "Age"),
+    ("unit.price", "Unit Price"), ("city_60_levels", "City 60 Levels"), ("Rows", "Rows"), ("_", "_"),
+])
+def test_humanize_column_names(name, expected):
+    assert sg._humanize(name) == expected
+
+
+def test_kpi_metrics_use_the_templates_own_vocabulary():
+    qc = sg.suggest(copy.deepcopy(QC_TABLE_BIG))
+    assert [qc["spec"]["panels"]["kpi-%d" % n]["measures"][0] for n in (1, 2, 3)] == [
+        "total_reads", "pct_mapped", "pct_q30"]
+    cohort = sg.suggest(copy.deepcopy(COHORT_TABLE))
+    assert cohort["spec"]["panels"]["kpi-1"]["measures"] == ["OS_months"]
+
+
+def test_kpi_never_exceeds_one_row_for_a_wide_table():
+    wide = [["sample", "group"] + ["G%d" % i for i in range(40)]]
+    for r in range(60):          # more rows than columns: the supported orientation
+        wide.append(["s%d" % r, ["a", "b"][r % 2]] + [10 + (r * j) % 7 for j in range(40)])
+    items = _kpi_items(sg.suggest(wide))
+    assert len(items) == 4 and {i["y"] for i in items} == {0}
+
+
+def test_kpi_skips_columns_that_round_to_nothing_on_a_whole_number_ring():
+    table = [["s", "g", "tiny", "big", "mid"]] + [["r%d" % i, ["a", "b"][i % 2], 0.01 * (i % 3), 100 + i, 20 + i % 5]
+                                                  for i in range(20)]
+    result = sg.suggest(table)
+    measures = [result["spec"]["panels"][i["panel"]]["measures"][0] for i in _kpi_items(result)[1:]]
+    assert "tiny" not in measures and set(measures) == {"big", "mid"}
+
+
+# ---------------------------------------------------------------------------
+# total_rows: the caller declares a sample; rows are never dropped or refused.
+# ---------------------------------------------------------------------------
+def test_total_rows_labels_the_sample_and_changes_nothing_else():
+    plain = sg.suggest(copy.deepcopy(QC_TABLE_BIG))
+    sampled = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=600)
+    assert sampled["sample"]["rows"] == 60 and sampled["sample"]["total_rows"] == 600
+    assert sampled["sample"]["percent"] == 10.0
+    assert sampled["sample"]["note"].startswith("Designed from a sample of 60 of 600 rows (10%)")
+    assert "never drawn from the sample" in sampled["sample"]["note"]
+    assert sampled["spec"]["title"] == plain["spec"]["title"]            # the saved dashboard is not labelled a sample
+    assert "Designed from a sample of 60 of 600 rows" in sampled["reason"]
+    assert [p["id"] for p in sampled["panels"]] == [p["id"] for p in plain["panels"]]
+    assert "sample" not in plain
+
+
+def test_total_rows_equal_to_the_rows_sent_is_not_a_sample():
+    assert "sample" not in sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=60)
+
+
+def test_total_rows_errors_are_specific():
+    too_small = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=10)
+    assert too_small["suggested"] is False and "smaller than the 60 rows you sent" in too_small["error"]
+    assert "whole number" in sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=0)["error"]
+    assert "bundled dataset" in sg.suggest(dataset="iris", total_rows=500)["error"]
+
+
+def test_tool_text_asks_for_a_15_to_20_percent_sample_and_the_total():
+    import asyncio
+    import server
+    text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
+    assert "COMPLETE table" in text and "15-20%" in text and "total_rows" in text and "up to 200 rows" in text
+    assert "ALWAYS build the dashboard from the COMPLETE table" in text and "ONLY to explore which dashboard to build" in text
+    assert "never drawn from the sample" in text and "never describe sample numbers as results" in text
+    assert "Never truncate to the first rows" in text
+
+
+def _qc_rows(n):
+    return [["sample", "lane", "batch", "total_reads", "pct_mapped", "pct_duplication", "pct_q30"]] + [
+        ["S%d" % i, "L%d" % (i % 4), ["A", "B", "C"][i % 3], 30000000 + i * 100000, 90 + i % 9, 10 + i % 7, 88 + i % 8]
+        for i in range(1, n + 1)]
+
+
+QC_TABLE_BIG = _qc_rows(60)
+COHORT_TABLE = ([["patient", "OS_months", "OS_event", "arm", "age", "bmi"]]
+                + [["P%d" % i, 5 + i % 40, i % 2, ["A", "B"][i % 2], 40 + i % 30, 20 + i % 15] for i in range(1, 61)])

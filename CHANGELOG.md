@@ -4,6 +4,20 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 
 ## [Unreleased]
 
+### Added
+- **KPI row.** Every suggested dashboard starts with one row of up to four round cards: Rows, then the average of up to
+  three measures (the template's own metrics for QC and survival tables). Headers are humanized column names; the
+  cards follow the filters. Added after the template is chosen, so the detection is unchanged.
+- **Always the complete data; a sample is only used to design.** New `total_rows` on `suggest_canvasxpress_dashboard`:
+  a table over 200 rows is explored with a 15-20% sample (never fewer than 200) and the dashboard view draws **nothing**
+  from it. It says the dashboard is designed, keeps Save and Open in Builder off, and asks for the complete file; the
+  view's **Load full file...** (or drag and drop) parses the complete CSV/TSV in the page, never through the model, and
+  the dashboard is drawn only then, from every row. Tool text: always the complete table; never truncate to the first
+  rows; never describe sample numbers as results.
+- `tests/test_detection_pinned.py` pins the survival / QC / batch / group vocabulary, the thresholds and the template
+  chosen for the reference tables. `tests/test_dashboard_view_sample.py` tests that a sample is never drawn and the full-file load in a
+  browser (set `CX_TEST_ENGINE` and `CX_TEST_DASHBOARDS`).
+
 ### Changed
 - **`suggest_canvasxpress_dashboard`: retry, then force.** The tool description no longer tells a model to fall back to
   an inline HTML widget (`inline_widget`) when the dashboard view is not shown. It now says: on an error or
