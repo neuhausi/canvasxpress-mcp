@@ -46,10 +46,20 @@ canvasxpress-mcp/
 │   └── cx_selector.py      — Chart type selection skill (deterministic scorer + optional LLM tiebreaker)
 │
 ├── data/
-│   ├── few_shot_examples.json  — RAG examples (add more to improve accuracy)
-│   └── embeddings.db           — sqlite-vec vector index (built by build_index.py)
+│   ├── few_shot_examples.json    — RAG examples (add more to improve accuracy)
+│   ├── few_shot_supplement.json  — curated examples appended when the corpus is regenerated
+│   ├── archive/                  — older corpus snapshots (not read by the server)
+│   └── embeddings.db             — sqlite-vec vector index (built by build_index.py)
 │
-├── build_index.py          — builds the vector index from few_shot_examples.json
+├── build_index.py          — builds the vector index (--examples, --output, --model)
+├── scripts/
+│   ├── generate_few_shots.py — regenerate the corpus with the engine's generateExamples
+│   ├── verify_live.py        — check a running endpoint and screenshot the dashboard view
+│   └── smoke_mcp_apps.sh     — MCP Apps smoke test
+├── tests/                  — offline test suite (pytest)
+├── pyproject.toml          — dependency metadata and extras (requirements.txt is the pinned reference)
+├── CHANGELOG.md
+├── .github/workflows/      — ci.yml (tests + index smoke build), release.yml (v* tags)
 │
 ├── test_client.py          — Python test client
 ├── test_client.pl          — Perl test client
@@ -163,6 +173,7 @@ for direct integration with CanvasXpress's `askLLM()` function.
 
 | Endpoint | Tool | Required params |
 |----------|------|----------------|
+| `GET /health` | Liveness and retrieval status (no LLM call, no fetch) | — |
 | `GET /generate` | Generate a new config | `description` |
 | `GET /modify` | Modify an existing config | `config`, `instruction` |
 | `GET /km` | Kaplan-Meier config | at least one of: `description`, `headers`, `data`, `config` |
@@ -174,9 +185,8 @@ for direct integration with CanvasXpress's `askLLM()` function.
 | `GET /explain-ggplot` | CanvasXpress ggplot2 bridge | none (optional: `topic`) |
 | `GET /minimal-params` | Minimal required parameters | `graph_type` |
 | `GET /map` | Map visualization config | `map_id` |
-| `GET /map` | Map visualization config | `map_id` |
 | `POST /feedback` | Rate a tool call thumbs up/down | `request_id`, `rating` |
-| `GET /feedback/export` | Export call log | — (optional: `tool`, `rated_only`, `limit`) |
+| `GET /feedback/export` | Export call log (**admin key required with `CX_STRICT_REST=1`**) | — (optional: `tool`, `rated_only`, `limit`) |
 | `POST /feedback/purge` | Delete call log rows (**admin key required**) | — (optional: `tool`, `rated_only`) |
 | `GET /ui` | Browser form UI | — |
 | `POST /embed` | Embed text(s) into vectors | `texts` (array) or `text` |
@@ -1177,6 +1187,9 @@ curl "http://localhost:8100/feedback/export?tool=select_canvasxpress_chart&rated
 | `rated_only` | `true` — return only rows that have a rating |
 | `limit` | Max rows to return (default `500`) |
 
+The export returns every logged request and response. With `CX_STRICT_REST=1` it requires the
+`X-Admin-Key` header like the purge endpoint (see [Hosting behind a firewall](#hosting-behind-a-firewall)).
+
 ### Purge call log (admin only)
 
 Requires the `X-Admin-Key` header. See [ADMIN_KEY](#environment-variables) below.
@@ -1202,8 +1215,9 @@ Omitting both deletes **all** rows. Returns `{"success": true, "deleted": N}`.
 
 > **Security** — without a correct `X-Admin-Key` header the endpoint returns
 > `403 Forbidden`. The comparison uses `hmac.compare_digest` to prevent
-> timing-based attacks. Set `ADMIN_KEY` in `.env` for a persistent key; if not
-> set, a random UUID is generated per restart and printed to the server log.
+> timing-based attacks. Set `ADMIN_KEY` in `.env` to enable the endpoint. If it is not
+> set, the admin endpoints are **disabled** and always answer `403`; no key is generated,
+> printed or logged.
 
 ### Manage the call log locally (CLI)
 
@@ -1280,6 +1294,11 @@ export AWS_REGION=us-east-1
 python src/server.py
 ```
 
+The server calls the Converse API, which needs `bedrock:InvokeModel` on the model (or inference profile)
+named by `LLM_MODEL`. Some newer Claude models reject an explicit `temperature`; the server retries the call
+once without it and remembers that model, so no configuration is needed. Install the SDK with
+`pip install -e ".[bedrock]"`.
+
 ### Ollama (local, no API key)
 
 ```bash
@@ -1323,13 +1342,58 @@ python src/server.py
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
 | `CX_KB_BASE_URL` | canvasxpress-LLM `main` on GitHub | Base URL for `SCHEMA.md` / `RULES.md` / `CONTEXT.md`. Point at a release tag or an internal mirror to pin the knowledge base |
-| `CX_STATE_DIR` | `data/` | Writable state directory. The knowledge-base cache lives in `$CX_STATE_DIR/kb_cache` (the old `data/kb_cache` is still read as a fallback; cache write failures are logged, not fatal) |
+| `CX_STATE_DIR` | `data/` | Writable state directory: the call log (`call_log.db`) and the knowledge-base cache (`$CX_STATE_DIR/kb_cache`; the old `data/kb_cache` is still read as a fallback, and cache write failures are logged, not fatal). The code directory can then be read-only |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model for vector search |
 | `CX_REQUIRE_VECTOR` | `0` | Set to `1` to refuse to start if vector retrieval is unavailable (default: fall back to text similarity). `GET /health` always reports `retrieval: vector\|fallback` |
 | `CX_DISABLED_TOOLS` | — | Comma-separated tool names to remove, e.g. `render_canvasxpress_config,publish_canvasxpress_dashboard` on hosts without Playwright or a dashboards install |
 | `CX_STRICT_TOOLS` | `0` | Set to `1` to fail startup if `CX_DISABLED_TOOLS` names an unknown tool |
 
 All variables can also be set in a `.env` file in the project root.
+
+---
+
+## Hosting behind a firewall
+
+Everything below is opt-in; the defaults suit local use and a public instance behind a proxy. These settings
+are for a shared or corporate deployment (for example an ALB in front of a container).
+
+| Setting | Effect |
+|---------|--------|
+| `GET /health` | Liveness for load balancers: `{"status":"ok","retrieval":"vector","examples":3783}`. Makes no LLM call and no network fetch. `retrieval` is `fallback` (with a `retrieval_reason`) when the vector index did not load. |
+| `CX_REQUIRE_VECTOR=1` | Refuse to start unless vector retrieval works. Without it a missing or broken index silently falls back to text similarity (lower quality). The index is probed with a real query at startup, so a broken DB or `sqlite-vec` is caught, not just a missing file. |
+| `CX_DISABLED_TOOLS` | Comma-separated tools to remove, e.g. `render_canvasxpress_config,publish_canvasxpress_dashboard` on a host with no Chromium and no dashboards install. |
+| `CX_STRICT_TOOLS=1` | Fail startup if `CX_DISABLED_TOOLS` names a tool that does not exist, so an upstream rename is not missed. |
+| `CX_STRICT_REST=1` | No CORS middleware and no `Access-Control-Allow-Origin` header on JSONP responses; `/feedback/export` requires `X-Admin-Key`. **It does not remove the REST routes** (`/generate`, `/ask`, `/ui`, ...): expose only `/mcp` and `/health` at your proxy or load balancer if that is what you want. `CORS_ORIGINS` is ignored in this mode. |
+| `ADMIN_KEY` | Enables `/feedback/purge` (and `/feedback/export` in strict mode). Unset means the admin endpoints are disabled. |
+| `CX_STATE_DIR` | Where the server writes (call log, knowledge-base cache). Point it at a writable volume and the application directory can be read-only. |
+| `CX_KB_BASE_URL` | Where `SCHEMA.md` / `RULES.md` / `CONTEXT.md` are fetched from (default: `canvasxpress-LLM` `main` on GitHub). Point at a tag or an internal mirror to pin the knowledge base. |
+| `CX_CONFIG_SCHEMA_URL` | Where the config JSON Schema is fetched from (default: `canvasxpress.org`). A bundled copy is the fallback. |
+| `CX_SKIP_FETCH=1` | Never fetch; use the cache and the bundled schema. This also drops the `SCHEMA.md` / `RULES.md` layer, so graph-type applicability is less detailed. |
+
+**Network.** At runtime the server reaches the LLM provider, GitHub (raw) for the knowledge base and
+`canvasxpress.org` for the config schema. Building the index downloads the embedding model from Hugging Face once;
+bake it into your image and set `HF_HUB_OFFLINE=1` to stop lookups at runtime. The knowledge base is refreshed on a
+one-hour TTL (`CX_SCHEMA_TTL`), so behaviour can change without a deploy unless you pin `CX_KB_BASE_URL`.
+
+**Container build.** Install the CPU build of PyTorch first (the default Linux wheel pulls several GB of CUDA
+libraries), then `pip install -e ".[bedrock]"` (or your provider's extra), then `python build_index.py` so the
+index is part of the image. `embeddings.db` is gitignored, so it is always built, never fetched.
+
+**Pinning.** Pin a release tag (`v0.1.0` and later) rather than a commit SHA; see [Releases](#development-and-releases).
+
+A typical hosted configuration:
+
+```bash
+LLM_PROVIDER=bedrock
+LLM_MODEL=us.anthropic.claude-sonnet-5-5
+AWS_REGION=us-east-1
+CX_REQUIRE_VECTOR=1
+CX_STRICT_REST=1
+CX_DISABLED_TOOLS=render_canvasxpress_config,publish_canvasxpress_dashboard
+CX_STRICT_TOOLS=1
+CX_STATE_DIR=/var/lib/canvasxpress-mcp
+HF_HUB_OFFLINE=1
+```
 
 ---
 
@@ -1492,6 +1556,30 @@ All existing REST endpoints (`/generate`, `/modify`, `/select`, `/km`, etc.) and
 ### CDN versioning note
 
 The HTML view loads CanvasXpress from `https://www.canvasxpress.org/dist/canvasXpress.min.js`. No versioned CDN URL is offered by CanvasXpress upstream (verified 2026-05-28). Users who require reproducibility should self-host a pinned copy of `canvasXpress.min.js` and update the `<script src>` in `src/ui/cx_chart_view.html`.
+
+## Development and releases
+
+```bash
+pip install -e ".[dev]"        # on Linux, install CPU torch first (see Setup)
+python -m pytest               # offline; the render test skips itself without Playwright
+```
+
+`tests/test_generate_few_shots.py` also runs the real generator when `CX_TEST_ENGINE` points at a
+`canvasXpress.min.js` (URL or path); without it those tests skip, so CI needs no network for them.
+
+**CI.** `.github/workflows/ci.yml` installs the package, builds the vector index as a smoke test and runs the tests on
+every push and pull request. `pyproject.toml` allows `fastmcp>=3.2.3,<3.4`, so CI runs on the newest allowed version
+while `requirements.txt` stays pinned to the version used in production.
+
+**Releases.** Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml` (tests, then a GitHub release with
+generated notes). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+**Regenerating the few-shot corpus** is described under [Setup](#2-build-the-vector-index-one-time):
+`scripts/generate_few_shots.py` runs the engine's own `generateExamples` with a seed and appends the curated
+`data/few_shot_supplement.json`. The shipped `few_shot_examples.json` cannot be reproduced byte for byte (the engine's
+generator has changed since it was made), so treat it as a frozen artifact and regenerate deliberately.
+
+---
 
 ## License
 

@@ -186,6 +186,10 @@ python build_index.py
 ```
 
 Re-run whenever `data/few_shot_examples.json` changes.
+Options: `--examples PATH`, `--output PATH`, `--model NAME` (default `$EMBEDDING_MODEL`). The index records its model,
+dimension, example count and a hash of the examples file, and the server warns when they disagree with its settings.
+To regenerate the examples themselves, see `scripts/generate_few_shots.py` in the README. Check a running server with
+`GET /health` (`retrieval` should be `vector`).
 
 ### Step 3 — Configure your LLM provider
 
