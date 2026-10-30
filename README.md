@@ -81,8 +81,9 @@ canvasxpress-mcp                   # same as: python src/server.py
 ```
 
 On Linux, install the CPU build of PyTorch first, or `sentence-transformers` pulls several GB of CUDA
-libraries: `pip install torch --index-url https://download.pytorch.org/whl/cpu`. `fastmcp` is capped below 3.3
-until the MCP App view has been verified there.
+libraries: `pip install torch --index-url https://download.pytorch.org/whl/cpu`. `fastmcp` 3.2.3 (the pin in
+`requirements.txt`) and 3.3.1 are both verified (test suite and `scripts/verify_live.py`); `pyproject.toml` allows
+`>=3.2.3,<3.4`. 4.x is not supported yet.
 
 ### 2. Build the vector index (one-time)
 

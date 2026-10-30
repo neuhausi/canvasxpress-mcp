@@ -4,8 +4,8 @@
 #
 # The modules are flat (src/server.py, src/cx_knowledge.py, ...) and resolve data/
 # relative to the checkout, so install EDITABLE from a clone (pip install -e .).
-# Floors are the versions the test suite runs against; fastmcp is capped below 3.3
-# until the MCP App view has been verified there.
+# Floors are the versions the test suite runs against. fastmcp 3.2.3 (pinned in requirements.txt)
+# and 3.3.1 both pass the suite and scripts/verify_live.py; 4.x is not yet supported.
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -19,7 +19,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-  "fastmcp>=3.2.3,<3.3",
+  "fastmcp>=3.2.3,<3.4",
   "starlette>=1.0.0",
   "uvicorn>=0.44.0",
   "jsonschema>=4.26.0",
