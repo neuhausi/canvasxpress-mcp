@@ -194,6 +194,34 @@
     }
 
     /**
+     * Tell the host how tall the view is (ui/notifications/size-changed). A host sizes the iframe
+     * from this; without it the dashboard is clipped to a short default height.
+     */
+    let lastReportedHeight = 0;
+    function reportSize() {
+      const height = Math.ceil(Math.max(
+        document.documentElement.scrollHeight, document.body.scrollHeight));
+      const width = Math.ceil(window.innerWidth || document.documentElement.clientWidth || 0);
+      if (!height || Math.abs(height - lastReportedHeight) < 2) return;
+      lastReportedHeight = height;
+      window.parent.postMessage(
+        { jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { width: width, height: height } }, '*');
+    }
+
+    let sizeTimer = null;
+    function watchSize() {
+      const schedule = function () {
+        if (sizeTimer !== null) clearTimeout(sizeTimer);
+        sizeTimer = setTimeout(function () { sizeTimer = null; reportSize(); }, 80);
+      };
+      if (typeof ResizeObserver === 'function') {
+        new ResizeObserver(schedule).observe(document.body);
+      }
+      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+      schedule();
+    }
+
+    /**
      * Save + Open in Builder. Save publishes the spec to the configured dashboards install
      * (the server's publish_canvasxpress_dashboard tool, called through the host). Open in
      * Builder opens the saved dashboard there; when no install is configured it opens the Builder
@@ -363,6 +391,7 @@
         protocolVersion: '2026-01-26',
       }).then(function () {
         window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
+        watchSize();
         const wait = document.getElementById('cx-wait');
         if (wait) wait.textContent = 'Connected to the host. Waiting for the dashboard...';
       }).catch(function (err) {

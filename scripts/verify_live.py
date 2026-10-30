@@ -16,9 +16,10 @@ import sys
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "https://canvasxpress.org/mcp"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "verify_live.png"
-HOST = """<body style="margin:0"><iframe id=f style="width:700px;height:1000px;border:0"></iframe><script>
+HOST = """<body style="margin:0"><iframe id=f style="width:700px;height:200px;border:0"></iframe><script>
 addEventListener('message',function(e){var m=e.data;if(!m||!m.method)return;
  if(m.method==='ui/initialize'){e.source.postMessage({jsonrpc:'2.0',id:m.id,result:{}},'*');}
+ else if(m.method==='ui/notifications/size-changed'){document.getElementById('f').style.height=m.params.height+'px';}
  else if(m.method==='ui/notifications/initialized'){   // strict: nothing is sent before this
   e.source.postMessage({method:'ui/notifications/tool-result',
    params:{content:[{type:'text',text:window.PAYLOAD}]}},'*');}});</script></body>"""
@@ -73,7 +74,8 @@ def main():
         page.evaluate("t=>{window.PAYLOAD=t}", payload)
         page.evaluate("v=>{document.getElementById('f').srcdoc=v}", view)
         page.wait_for_timeout(8000)
-        page.screenshot(path=OUT)
+        print("iframe height after size-changed:", page.evaluate("document.getElementById('f').style.height"))
+        page.screenshot(path=OUT, full_page=True)
     print("screenshot:", OUT)
 
 
