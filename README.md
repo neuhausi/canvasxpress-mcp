@@ -1394,6 +1394,24 @@ Two dashboard-composing tools carry `_meta.ui.resourceUri = "ui://canvasxpress/d
 
 These render the returned spec inline as a **live, interactive dashboard** — a grid of linked CanvasXpress panels — via [`ui://canvasxpress/dashboard`](src/ui/cx_dashboard_view.html), which loads the `canvasxpress-dashboards` UMD bundle and calls `renderDashboard(spec, element)`. Selections propagate across panels in the conversation, no server or sign-in needed. (To instead *persist* a dashboard into an install and open it in the no-code Builder, use `publish_canvasxpress_dashboard` above.)
 
+### The dashboard view: Save, Open in Builder, errors
+
+Above the rendered dashboard the view shows two buttons.
+
+- **Save** downloads the dashboard spec as `<id>.spec.json` (host `ui/download-file`). If the host does not allow downloads, a box shows the JSON with a **Copy JSON** button. The file can be put on any [canvasxpress-dashboards](https://github.com/neuhausi/canvasxpress-dashboards) install; in its Builder, drop it on the Data page and it opens at once.
+- **Open in Builder** opens the dashboard in the Builder at `CXD_DASHBOARDS_URL` (default `https://canvasxpress.org/dashboards`). When `CXD_DASHBOARDS_URL` and `CXD_DASHBOARDS_API_KEY` are both set it first saves through `publish_canvasxpress_dashboard`; saves land in the key's account (`CXD_API_USER`, or the first admin), so use that for private servers.
+
+The theme follows the chat (`auto`), a tool call that yields no dashboard shows no error banner (the reason goes to the browser console and the assistant retries), and the corner stamp `canvasxpress-mcp view <commit>/<hash>` identifies the build. Clients cache the tool list and view HTML: after a deploy, quit all chats and restart the client. The same walk-through is in the dashboards README ("Dashboards in Claude (MCP App)") and on the Builder Home.
+
+### The dashboard view: Save, Open in Builder, errors
+
+Above the rendered dashboard the view shows two buttons.
+
+- **Save** downloads the dashboard spec as `<id>.spec.json` (host `ui/download-file`). If the host does not allow downloads, a box shows the JSON with a **Copy JSON** button. The file can be put on any [canvasxpress-dashboards](https://github.com/neuhausi/canvasxpress-dashboards) install; in its Builder, drop it on the Data page and it opens at once.
+- **Open in Builder** opens the dashboard in the Builder at `CXD_DASHBOARDS_URL` (default `https://canvasxpress.org/dashboards`). When `CXD_DASHBOARDS_URL` and `CXD_DASHBOARDS_API_KEY` are both set it first saves through `publish_canvasxpress_dashboard`; saves land in the key's account (`CXD_API_USER`, or the first admin), so use that for private servers.
+
+The theme follows the chat (`auto`), a tool call that yields no dashboard shows no error banner (the reason goes to the browser console and the assistant retries), and the corner stamp `canvasxpress-mcp view <commit>/<hash>` identifies the build. Clients cache the tool list and view HTML: after a deploy, quit all chats and restart the client. The same walk-through is in the dashboards README ("Dashboards in Claude (MCP App)") and on the Builder Home.
+
 ### Known supporting hosts
 
 - Claude Desktop (Anthropic)
