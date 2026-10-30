@@ -6,7 +6,7 @@
   <title>CanvasXpress Dashboard View</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; min-height: 100%; }
+    html, body { width: 100%; }
     /* A dashboard is a grid of panels that can be taller than the iframe, so
        (unlike the single-chart view) the body scrolls rather than clipping. */
     body {
@@ -251,8 +251,19 @@
      */
     let lastReportedHeight = 0;
     function reportSize() {
-      const height = Math.ceil(Math.max(
-        document.documentElement.scrollHeight, document.body.scrollHeight));
+      // Measure the content itself. scrollHeight never drops below the iframe's current height,
+      // so a view that failed (nothing drawn) would keep the host's large default blank area.
+      let bottom = 0;
+      Array.prototype.forEach.call(document.body.children, function (el) {
+        const box = el.getBoundingClientRect();
+        if (el.id === 'cx-error' || el.id === 'cx-build') {
+          // fixed-position banner/stamp: count only the banner, and only while it shows
+          if (el.id === 'cx-error' && getComputedStyle(el).display !== 'none') bottom = Math.max(bottom, box.bottom);
+          return;
+        }
+        if (box.height > 0) bottom = Math.max(bottom, box.bottom + (window.pageYOffset || 0));
+      });
+      const height = Math.ceil(Math.max(bottom, 18));  // 18px keeps the build stamp visible
       const width = Math.ceil(window.innerWidth || document.documentElement.clientWidth || 0);
       if (!height || Math.abs(height - lastReportedHeight) < 2) return;
       lastReportedHeight = height;
