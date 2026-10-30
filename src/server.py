@@ -15,6 +15,7 @@ Runs at http://0.0.0.0:8100/mcp
 """
 
 import contextvars
+import hashlib
 import json
 import os
 import re
@@ -132,6 +133,7 @@ EXAMPLES: list[dict] = load_examples()
 
 _embed_model: Optional[SentenceTransformer] = None
 _use_vector_index: bool = False
+_retrieval_reason: str = ""  # why retrieval fell back to SequenceMatcher, if it did
 
 
 def _serialize(vector: list[float]) -> bytes:
@@ -139,9 +141,36 @@ def _serialize(vector: list[float]) -> bytes:
     return struct.pack(f"{len(vector)}f", *vector)
 
 
+def _check_index_metadata() -> None:
+    """Warn (never fail) when the index was built with different settings.
+
+    build_index.py records the model, dimension and a hash of the examples file in
+    a `meta` table. Indexes built before that existed have none, which is fine.
+    """
+    try:
+        db = _connect_with_sqlite_vec(str(DB_FILE))
+        try:
+            meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
+        finally:
+            db.close()
+    except Exception:
+        return  # no meta table: an older index
+    if meta.get("model") and meta["model"] != EMBEDDING_MODEL:
+        log.warning("Index was built with model %s but EMBEDDING_MODEL is %s; "
+                    "retrieval quality will suffer. Re-run build_index.py.",
+                    meta["model"], EMBEDDING_MODEL)
+    try:
+        current = hashlib.sha256(EXAMPLES_FILE.read_bytes()).hexdigest()
+    except OSError:
+        return
+    if meta.get("corpus_sha256") and meta["corpus_sha256"] != current:
+        log.warning("Index was built from a different few_shot_examples.json; "
+                    "re-run build_index.py to refresh it.")
+
+
 def _load_vector_index() -> bool:
     """Try to load the sqlite-vec index. Returns True if successful."""
-    global _embed_model, _use_vector_index
+    global _embed_model, _use_vector_index, _retrieval_reason
 
     if not DB_FILE.exists():
         log.warning(
@@ -149,16 +178,25 @@ def _load_vector_index() -> bool:
             "Run build_index.py to build it for faster/better retrieval. "
             "Falling back to SequenceMatcher.", DB_FILE
         )
+        _retrieval_reason = f"index not found at {DB_FILE}"
         return False
 
     try:
         log.info("Loading embedding model: %s", EMBEDDING_MODEL)
         _embed_model = SentenceTransformer(EMBEDDING_MODEL)
-        log.info("Vector index ready: %s", DB_FILE)
+        # Probe the index end to end: loading the model alone does not prove the
+        # DB opens, sqlite-vec loads, or the table returns rows.
         _use_vector_index = True
+        if not _vector_retrieve("scatter plot", 1):
+            raise RuntimeError("index returned no rows for a probe query")
+        _check_index_metadata()
+        log.info("Vector index ready: %s", DB_FILE)
+        _retrieval_reason = ""
         return True
     except Exception as e:
-        log.warning("Failed to load embedding model (%s). Falling back to SequenceMatcher.", e)
+        _use_vector_index = False
+        _retrieval_reason = str(e)
+        log.warning("Failed to load vector index (%s). Falling back to SequenceMatcher.", e)
         return False
 
 
@@ -233,6 +271,10 @@ def retrieve_examples(query: str, top_k: int = 6) -> list[dict]:
 
 # Load vector index at startup
 _load_vector_index()
+if os.environ.get("CX_REQUIRE_VECTOR", "").lower() in ("1", "true", "yes") and not _use_vector_index:
+    # Opt-in: hosted deployments can refuse to start rather than silently serve
+    # lower-quality text-similarity retrieval.
+    raise RuntimeError(f"CX_REQUIRE_VECTOR is set but vector retrieval is unavailable: {_retrieval_reason}")
 
 # ---------------------------------------------------------------------------
 # Knowledge DB — SQLite-backed, graph-type-aware prompt context
@@ -1730,6 +1772,19 @@ async def rest_schema(request: Request) -> Response:
     if text == "{}":
         return JSONResponse({"error": "schema not found"}, status_code=404)
     return Response(text, media_type="application/schema+json")
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def rest_health(request: Request) -> Response:
+    """Liveness/readiness for load balancers. Makes no LLM call and no network fetch."""
+    body = {
+        "status": "ok",
+        "retrieval": "vector" if _use_vector_index else "fallback",
+        "examples": len(EXAMPLES),
+    }
+    if _retrieval_reason:
+        body["retrieval_reason"] = _retrieval_reason
+    return JSONResponse(body)
 
 
 @mcp.custom_route("/cache-stats", methods=["GET"])
@@ -6173,6 +6228,30 @@ async def rest_favicon(request: Request) -> Response:
 # ASGI application — module-level so external ASGI hosts can import it as `src.server:app`.
 # Uvicorn-based local dev still uses the __main__ block below.
 # ---------------------------------------------------------------------------
+def _apply_disabled_tools() -> None:
+    """Remove the tools named in CX_DISABLED_TOOLS (comma-separated).
+
+    For hosts where a tool cannot work (e.g. render needs Playwright + Chromium,
+    publish needs a dashboards install). Unknown names log a warning; with
+    CX_STRICT_TOOLS=1 they fail startup, so an upstream rename is not missed.
+    """
+    names = [n.strip() for n in os.environ.get("CX_DISABLED_TOOLS", "").split(",") if n.strip()]
+    strict = os.environ.get("CX_STRICT_TOOLS", "").lower() in ("1", "true", "yes")
+    for name in names:
+        try:
+            # local_provider.remove_tool replaces the deprecated mcp.remove_tool.
+            remove = getattr(getattr(mcp, "local_provider", None), "remove_tool", None) or mcp.remove_tool
+            remove(name)
+            log.info("Tool disabled via CX_DISABLED_TOOLS: %s", name)
+        except Exception as e:
+            msg = f"CX_DISABLED_TOOLS names an unknown tool: {name} ({e})"
+            if strict:
+                raise RuntimeError(msg)
+            log.warning(msg)
+
+
+_apply_disabled_tools()
+
 app = mcp.http_app(transport="http", middleware=_cors_middleware)
 
 

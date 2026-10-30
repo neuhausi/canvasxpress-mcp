@@ -115,6 +115,8 @@ nohup python src/server.py > /tmp/cx-server.log 2>&1 &
 
 ## REST endpoints
 
+`GET /health` returns `{status, retrieval, examples}` without calling the LLM or fetching anything; use it for load-balancer checks.
+
 All endpoints accept `GET` (query parameters) or `POST` (JSON body).
 Endpoints that interact with the LLM also support **JSONP** via a `callback=` parameter
 for direct integration with CanvasXpress's `askLLM()` function.
@@ -1280,6 +1282,9 @@ python src/server.py
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model for vector search |
+| `CX_REQUIRE_VECTOR` | `0` | Set to `1` to refuse to start if vector retrieval is unavailable (default: fall back to text similarity). `GET /health` always reports `retrieval: vector\|fallback` |
+| `CX_DISABLED_TOOLS` | — | Comma-separated tool names to remove, e.g. `render_canvasxpress_config,publish_canvasxpress_dashboard` on hosts without Playwright or a dashboards install |
+| `CX_STRICT_TOOLS` | `0` | Set to `1` to fail startup if `CX_DISABLED_TOOLS` names an unknown tool |
 
 All variables can also be set in a `.env` file in the project root.
 

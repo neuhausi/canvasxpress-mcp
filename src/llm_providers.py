@@ -496,6 +496,10 @@ def _complete_anthropic(
     return text, _anthropic_usage(message)
 
 
+# Bedrock model ids that rejected an explicit temperature (learned at runtime).
+_BEDROCK_NO_TEMPERATURE: set = set()
+
+
 def _complete_bedrock(
     system: str,
     user: str,
@@ -511,16 +515,27 @@ def _complete_bedrock(
     """
     client = _get_bedrock()
 
+    inference_config = {"maxTokens": max_tokens}
+    if temperature is not None and model not in _BEDROCK_NO_TEMPERATURE:
+        inference_config["temperature"] = temperature
+
     body = {
         "system": [{"text": system}],
         "messages": [{"role": "user", "content": [{"text": user}]}],
-        "inferenceConfig": {
-            "maxTokens":   max_tokens,
-            "temperature": temperature,
-        },
+        "inferenceConfig": inference_config,
     }
 
-    response = client.converse(modelId=model, **body)
+    try:
+        response = client.converse(modelId=model, **body)
+    except Exception as e:
+        # Newer models (e.g. Sonnet 5 / 5.5) reject an explicit temperature with
+        # "temperature is deprecated for this model". Retry once without it and
+        # remember the model so later calls skip the rejected attempt.
+        if "temperature" not in inference_config or "temperature" not in str(e).lower():
+            raise
+        _BEDROCK_NO_TEMPERATURE.add(model)
+        inference_config.pop("temperature")
+        response = client.converse(modelId=model, **body)
 
     output   = response["output"]["message"]["content"][0]["text"]
     tok_in   = response["usage"]["inputTokens"]
