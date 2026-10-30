@@ -108,6 +108,12 @@ python scripts/generate_few_shots.py --per-graph 60 --seed 1        # all graph 
 python scripts/generate_few_shots.py --graphs "Bar graph,Boxplot" --engine ./canvasXpress.min.js
 ```
 
+When all graph types are generated (the default), the curated records in `data/few_shot_supplement.json` are
+appended after the generated ones, so hand-written cases the generator cannot phrase (calculated fields,
+drill-down, meter and bullet KPIs) survive a regeneration. Ids are assigned on merge. Pass `--no-supplement` to
+skip them, or `--supplement PATH` to use another file. Add a record there (`description`, `config`, optional
+`data` and `header`) to keep it across regenerations.
+
 Output goes to `data/few_shot_examples.generated.json`; it never overwrites `few_shot_examples.json`. Copy it into
 place and run `build_index.py` to use it. Graph names are the engine's display names (`Bar graph`, not `Bar`).
 

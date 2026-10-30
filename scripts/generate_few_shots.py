@@ -16,6 +16,11 @@ its own name, so adding or removing a graph type does not change the others.
     python scripts/generate_few_shots.py --list-graphs
     python scripts/generate_few_shots.py --engine ./canvasXpress.min.js --seed 7
 
+When every graph type is requested (the default), the curated records in
+``data/few_shot_supplement.json`` are appended after the generated ones. They cover cases the
+generator cannot phrase (calculated fields, drill-down, meter and bullet KPIs); ids are
+assigned on merge. Use ``--no-supplement`` to skip them or ``--supplement PATH`` for another file.
+
 The output goes to ``data/few_shot_examples.generated.json`` unless ``--output`` is given;
 it never overwrites ``data/few_shot_examples.json`` on its own. After copying a corpus
 into place, run ``python build_index.py``.
@@ -32,6 +37,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_ENGINE = "https://www.canvasxpress.org/dist/canvasXpress.min.js"
 DEFAULT_OUTPUT = BASE_DIR / "data" / "few_shot_examples.generated.json"
+DEFAULT_SUPPLEMENT = BASE_DIR / "data" / "few_shot_supplement.json"
 
 _PAGE = '<!doctype html><html><body><canvas id="cx" width="400" height="300"></canvas></body></html>'
 
@@ -87,6 +93,32 @@ def renumber(records: list) -> list:
     return records
 
 
+def load_supplement(path: Path) -> list:
+    """Read the curated supplement records; each needs a string ``description`` and a ``config`` object."""
+    try:
+        records = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        sys.exit(f"Cannot read supplement {path}: {exc}")
+    if not isinstance(records, list):
+        sys.exit(f"Supplement {path} must be a JSON list of records")
+    for index, record in enumerate(records):
+        if not isinstance(record, dict) or not isinstance(record.get("description"), str) \
+                or not isinstance(record.get("config"), dict):
+            sys.exit(f"Supplement {path}: record {index} needs a string 'description' and an object 'config'")
+    return records
+
+
+def append_supplement(records: list, supplement: list) -> list:
+    """Return the generated records followed by the supplement (copied, with the corpus defaults filled in)."""
+    merged = list(records)
+    for record in supplement:
+        extra = dict(record)
+        extra.setdefault("data", "data")
+        extra.setdefault("header", [])
+        merged.append(extra)
+    return merged
+
+
 def _run(engine: str, requested, per_graph: int, sentences: int, seed: int) -> dict:
     try:
         from playwright.sync_api import sync_playwright
@@ -122,6 +154,10 @@ def main() -> None:
     parser.add_argument("--sentences", type=int, default=3, help="average sentences per prompt (default 3)")
     parser.add_argument("--seed", type=int, default=1, help="random seed (default 1)")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="output JSON path")
+    parser.add_argument("--supplement", default=str(DEFAULT_SUPPLEMENT),
+                        help="curated records appended when all graphs are requested")
+    parser.add_argument("--no-supplement", action="store_true",
+                        help="do not append the curated supplement")
     parser.add_argument("--list-graphs", action="store_true", help="print the graph names and exit")
     args = parser.parse_args()
 
@@ -142,12 +178,20 @@ def main() -> None:
         print("\n".join(result["graphs"]))
         return
 
-    records = renumber(result["records"])
+    records = result["records"]
+    appended = 0
+    if not requested and not args.no_supplement:
+        supplement = load_supplement(args.supplement)
+        records = append_supplement(records, supplement)
+        appended = len(supplement)
+    records = renumber(records)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(records, indent=1) + "\n", encoding="utf-8")
     graph_types = {r["config"].get("graphType") for r in records}
     print(f"Wrote {len(records)} examples ({len(graph_types)} graph types) to {output}")
+    if appended:
+        print(f"Appended {appended} curated supplement records from {args.supplement}")
     print(f"Engine: {args.engine}" + (f" (version {result['version']})" if result.get("version") else ""))
     print(f"Seed: {args.seed}, per graph: {args.per_graph}, sentences: {args.sentences}")
 

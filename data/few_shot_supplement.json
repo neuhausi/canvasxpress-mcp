@@ -1,0 +1,174 @@
+[
+ {
+  "data": "data",
+  "header": [
+   "Col1"
+  ],
+  "description": "Create a ring meter of Col1.",
+  "config": {
+   "graphType": "Meter",
+   "meterType": "ring",
+   "xAxis": [
+    "Col1"
+   ]
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Col1"
+  ],
+  "description": "Create a ring meter KPI of Col1 with the title in the top-left corner of the card.",
+  "config": {
+   "graphType": "Meter",
+   "meterType": "ring",
+   "meterCard": true,
+   "meterRingTitlePosition": "topLeft",
+   "xAxis": [
+    "Col1"
+   ]
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Col1",
+   "Col2"
+  ],
+  "description": "Create a gauge meter of Col1 with a target reference marker from Col2.",
+  "config": {
+   "graphType": "Meter",
+   "meterType": "gauge",
+   "xAxis": [
+    "Col1"
+   ],
+   "bulletTargetVarName": "Col2"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Col1"
+  ],
+  "description": "Create a gauge meter of Col1 with qualitative range bands at 25, 50, 75 and 100.",
+  "config": {
+   "graphType": "Meter",
+   "meterType": "gauge",
+   "xAxis": [
+    "Col1"
+   ],
+   "rangeSegments": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ]
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Col1",
+   "Group"
+  ],
+  "description": "Create bullet KPI cards showing the average Col1 for each Group.",
+  "config": {
+   "graphType": "Bullet",
+   "meterCard": true,
+   "groupingFactors": [
+    "Group"
+   ],
+   "summaryType": "average",
+   "meterVar": "Col1",
+   "xAxis": [
+    "Col1"
+   ]
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Col1",
+   "Col2"
+  ],
+  "description": "Create a digital meter of Col1 with a reference target from Col2.",
+  "config": {
+   "graphType": "Meter",
+   "meterType": "digital",
+   "xAxis": [
+    "Col1"
+   ],
+   "bulletTargetVarName": "Col2"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Sample",
+   "Date",
+   "Sales"
+  ],
+  "description": "Create a Bar chart of a running total of Sales using a cumulative-sum calculated field cumsum(Sales).",
+  "config": {
+   "graphType": "Bar",
+   "calculatedFields": [
+    {
+     "name": "Running Sales",
+     "formula": "cumsum(Sales)",
+     "target": "variable"
+    }
+   ],
+   "xAxis": [
+    "Running Sales"
+   ]
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Region",
+   "Sales"
+  ],
+  "description": "Create a Bar chart of each region's share of total Sales using a level-of-detail percent-of-total calculated field pcttotal(Sales, by=Region).",
+  "config": {
+   "graphType": "Bar",
+   "calculatedFields": [
+    {
+     "name": "Sales Share",
+     "formula": "pcttotal(Sales, by=Region)",
+     "target": "variable"
+    }
+   ],
+   "xAxis": [
+    "Sales Share"
+   ],
+   "groupingFactors": [
+    "Region"
+   ]
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Region",
+   "State",
+   "City",
+   "Sales"
+  ],
+  "description": "Create a Bar chart of Sales grouped by Region with a drill-down hierarchy Region then State then City, so clicking a bar drills into the next level with a breadcrumb to step back.",
+  "config": {
+   "graphType": "Bar",
+   "groupingFactors": [
+    "Region"
+   ],
+   "drillHierarchy": [
+    "Region",
+    "State",
+    "City"
+   ],
+   "summaryType": "mean",
+   "showLegend": true
+  }
+ }
+]
