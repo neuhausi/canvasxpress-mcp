@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "72.9",
+  "x-cx-version": "73",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -5190,6 +5190,18 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Data Filters",
       "x-cx-nl": "Set the data filter max items to {_integer_}"
+    },
+    "dataFilterNumberFormat": {
+      "type": [
+        "string",
+        "object",
+        "boolean"
+      ],
+      "description": "Number format for the tick labels of the numeric range sliders in the data filters (and the html range widget). Overrides numberFormat. A compact format keeps large values short, i.e. 20M. It could be a preset name (comma, percent, dollar, euro, pound, yen, compact), a sprintf format string, or an object, i.e. {\"locale\": \"en-US\", \"style\": \"decimal|percent|currency|compact\", \"currency\": \"USD\", \"decimals\": 1, \"grouping\": true, \"prefix\": \"\", \"suffix\": \"\"}. Uses Intl.NumberFormat when available",
+      "default": false,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Text",
+      "x-cx-nl": "Set the data filter number format to {_string_}"
     },
     "dataFilterTextColor": {
       "type": [
