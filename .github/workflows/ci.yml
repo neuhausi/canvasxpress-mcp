@@ -1,0 +1,36 @@
+name: CI
+
+# Runs the offline test suite and smoke-builds the vector index on every push and PR.
+# The render test skips itself when Playwright is absent, so no Chromium is installed here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-all-MiniLM-L6-v2
+      # PyPI's Linux torch pulls several GB of CUDA libraries; the CPU wheel is enough.
+      - name: Install CPU torch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Build the index (smoke)
+        run: python build_index.py --output "$RUNNER_TEMP/embeddings.db"
+      - name: Test
+        run: python -m pytest -q

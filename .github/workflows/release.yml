@@ -1,0 +1,33 @@
+name: Release
+
+# Push a tag like v0.2.0 to publish a GitHub release for it. Hosts can then pin the tag
+# instead of a commit SHA. The tag is only released if CI-equivalent checks pass.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-all-MiniLM-L6-v2
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev]"
+      - run: python build_index.py --output "$RUNNER_TEMP/embeddings.db"
+      - run: python -m pytest -q
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"

@@ -6283,7 +6283,8 @@ app = mcp.http_app(transport="http", middleware=_cors_middleware)
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-if __name__ == "__main__":
+def main() -> None:
+    """Run the HTTP server (console-script and ``python src/server.py`` entry point)."""
     info = provider_info()
     log.info(
         "Starting CanvasXpress MCP server on %s:%d  provider=%s  model=%s",
@@ -6295,3 +6296,7 @@ if __name__ == "__main__":
         log.info("Retrieval : %s", "vector (sqlite-vec)" if _use_vector_index else "SequenceMatcher (fallback)")
         log.info("Examples  : %d loaded", len(EXAMPLES))
     mcp.run(transport="http", host=HOST, port=PORT, middleware=_cors_middleware)
+
+
+if __name__ == "__main__":
+    main()

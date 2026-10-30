@@ -1,0 +1,57 @@
+# Dependency metadata for canvasxpress-mcp. requirements.txt (a full, pinned freeze)
+# stays as the reference environment; this file declares only what src/ imports, so
+# `pip install -e ".[bedrock]"` works without pulling a developer's whole environment.
+#
+# The modules are flat (src/server.py, src/cx_knowledge.py, ...) and resolve data/
+# relative to the checkout, so install EDITABLE from a clone (pip install -e .).
+# Floors are the versions the test suite runs against; fastmcp is capped below 3.3
+# until the MCP App view has been verified there.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canvasxpress-mcp"
+version = "0.1.0"
+description = "MCP server that turns plain-English requests into CanvasXpress chart configs"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "fastmcp>=3.2.3,<3.3",
+  "starlette>=1.0.0",
+  "uvicorn>=0.44.0",
+  "jsonschema>=4.26.0",
+  "python-dotenv>=1.2.2",
+  "numpy>=2.4.4",
+  "sqlite-vec>=0.1.9",
+  "sentence-transformers>=5.4.0",
+]
+
+[project.optional-dependencies]
+# LLM providers: install the one you set LLM_PROVIDER to.
+anthropic = ["anthropic>=0.93.0"]
+bedrock   = ["boto3>=1.35"]
+openai    = ["openai>=1.82.0"]
+gemini    = ["google-genai>=1.73.1"]
+ollama    = ["httpx>=0.28.1"]
+# render_canvasxpress_config (headless Chromium). After installing:  playwright install chromium
+render    = ["playwright>=1.55.0"]
+# sqlite3 cannot load extensions on some macOS Python builds; apsw is the fallback.
+apsw      = ["apsw>=3.53.1.0"]
+dev       = ["pytest>=9.0.2", "pytest-timeout>=2.4.0", "pillow>=12.2.0"]
+
+[project.scripts]
+canvasxpress-mcp = "server:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = [
+  "cloud_meter", "cx_dashboard", "cx_dashboard_publish", "cx_dashboard_suggest",
+  "cx_dashboard_validate", "cx_datasets", "cx_knowledge", "cx_render", "cx_selector",
+  "cx_survival", "cx_validate", "llm_providers", "server",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

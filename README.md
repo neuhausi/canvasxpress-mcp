@@ -72,11 +72,31 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+`requirements.txt` is the full pinned reference environment. For a smaller install, `pyproject.toml`
+declares only what the server imports, with an extra per LLM provider and feature (from a clone, editable):
+
+```bash
+pip install -e ".[bedrock]"        # or anthropic, openai, gemini, ollama; add render for headless PNG
+canvasxpress-mcp                   # same as: python src/server.py
+```
+
+On Linux, install the CPU build of PyTorch first, or `sentence-transformers` pulls several GB of CUDA
+libraries: `pip install torch --index-url https://download.pytorch.org/whl/cpu`. `fastmcp` is capped below 3.3
+until the MCP App view has been verified there.
+
 ### 2. Build the vector index (one-time)
 
 ```bash
 python build_index.py
 ```
+
+Options: `--examples PATH`, `--output PATH`, `--model NAME` (default `$EMBEDDING_MODEL`). The index records
+its model, dimension, example count and a hash of the examples file; the server warns when they disagree with
+its settings.
+
+Each record in `data/few_shot_examples.json` has the keys `id`, `data`, `header`, `description` and `config`;
+only `description` (embedded) and `config` (returned) are used for retrieval. Older snapshots are in
+`data/archive/`. To add your own examples, append records with that shape and rebuild the index.
 
 Re-run whenever you add or change `data/few_shot_examples.json`. If you skip this
 step the server still works — it falls back to text-similarity matching and logs a warning.
