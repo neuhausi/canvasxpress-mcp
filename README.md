@@ -98,6 +98,19 @@ Each record in `data/few_shot_examples.json` has the keys `id`, `data`, `header`
 only `description` (embedded) and `config` (returned) are used for retrieval. Older snapshots are in
 `data/archive/`. To add your own examples, append records with that shape and rebuild the index.
 
+**Regenerating the corpus.** The records are the output of the engine's own generator, `generateExamples`.
+`scripts/generate_few_shots.py` runs it in headless Chromium against a released engine (Playwright required),
+with a seeded random generator so the same `--seed` gives the same corpus:
+
+```bash
+python scripts/generate_few_shots.py --list-graphs                  # the 64 valid graph names
+python scripts/generate_few_shots.py --per-graph 60 --seed 1        # all graph types
+python scripts/generate_few_shots.py --graphs "Bar graph,Boxplot" --engine ./canvasXpress.min.js
+```
+
+Output goes to `data/few_shot_examples.generated.json`; it never overwrites `few_shot_examples.json`. Copy it into
+place and run `build_index.py` to use it. Graph names are the engine's display names (`Bar graph`, not `Bar`).
+
 Re-run whenever you add or change `data/few_shot_examples.json`. If you skip this
 step the server still works — it falls back to text-similarity matching and logs a warning.
 
