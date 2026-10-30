@@ -59,6 +59,7 @@
 </head>
 <body>
   <div id="cx-error"></div>
+  <div id="cx-wait" style="font:13px sans-serif;opacity:.7;padding:12px">CanvasXpress dashboard view loaded. Waiting for the host to send the dashboard...</div>
   <div id="cx-toolbar">
     <span id="cx-status"></span>
     <button id="cx-save" class="cx-btn" type="button">Save</button>
@@ -320,6 +321,7 @@
           return;
         }
         renderDashboardSpec(spec);
+        const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
         if (payload && payload.spec) showToolbar(payload);
       } catch (err) {
         showError(err.message || String(err));
@@ -359,6 +361,8 @@
         // Host may not support MCP Apps; the dashboard still renders if a
         // tool-result postMessage arrives.
         console.warn('[cx-dashboard-view] ui/initialize failed (host may not support MCP Apps):', err);
+        const wait = document.getElementById('cx-wait');
+        if (wait) wait.textContent = 'The host did not answer ui/initialize: ' + (err.message || err);
       });
     });
   </script>
