@@ -12,14 +12,15 @@
     body {
       overflow-x: hidden;
       overflow-y: auto;
-      background: var(--cxd-bg, #ffffff);
-      color: var(--cxd-fg, #111827);
+      color-scheme: light dark;
+      background: transparent;   /* follow the host's own background in light and dark */
+      color: CanvasText;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     #cx-dashboard { width: 100%; }
     /* Compact filter search boxes (the bundle's default is a 32px field). */
-    .cxd-filters input.cX-DataFilter-Search { height: 24px; font-size: 12px; padding: 0 0 0 6px; margin-bottom: 3px; }
-    .cxd-filters input.cxd-filters-find { margin-bottom: 6px; }
+    #cx-dashboard .cxd-filters input.cX-DataFilter-Search { height: 24px; font-size: 12px; padding: 0 0 0 6px; margin-bottom: 3px; }
+    #cx-dashboard .cxd-filters input.cxd-filters-find { margin-bottom: 6px; }
     #cx-toolbar { display: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 8px 0; }
     #cx-status { font-size: 12px; opacity: .8; margin-right: auto; }
     #cx-status.err { color: #b91c1c; opacity: 1; }
