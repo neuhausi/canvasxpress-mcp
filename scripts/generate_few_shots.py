@@ -12,6 +12,7 @@ same ``--seed`` reproduces the same output. Each graph type is reseeded from the
 its own name, so adding or removing a graph type does not change the others.
 
     python scripts/generate_few_shots.py                       # all graph types, seed 1
+    python scripts/generate_few_shots.py --per-graph 0 --sentences 8   # the shipped corpus's settings
     python scripts/generate_few_shots.py --graphs "Bar graph,Boxplot" --per-graph 20
     python scripts/generate_few_shots.py --list-graphs
     python scripts/generate_few_shots.py --engine ./canvasXpress.min.js --seed 7

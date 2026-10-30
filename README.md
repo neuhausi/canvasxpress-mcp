@@ -115,7 +115,8 @@ with a seeded random generator so the same `--seed` gives the same corpus:
 
 ```bash
 python scripts/generate_few_shots.py --list-graphs                  # the 64 valid graph names
-python scripts/generate_few_shots.py --per-graph 60 --seed 1        # all graph types
+python scripts/generate_few_shots.py --per-graph 60 --seed 1        # 60 per graph type, 3-sentence prompts
+python scripts/generate_few_shots.py --per-graph 0 --sentences 8     # the shipped corpus's settings (auto coverage)
 python scripts/generate_few_shots.py --graphs "Bar graph,Boxplot" --engine ./canvasXpress.min.js
 ```
 
@@ -1576,8 +1577,17 @@ generated notes). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 **Regenerating the few-shot corpus** is described under [Setup](#2-build-the-vector-index-one-time):
 `scripts/generate_few_shots.py` runs the engine's own `generateExamples` with a seed and appends the curated
-`data/few_shot_supplement.json`. The shipped `few_shot_examples.json` cannot be reproduced byte for byte (the engine's
-generator has changed since it was made), so treat it as a frozen artifact and regenerate deliberately.
+`data/few_shot_supplement.json`.
+
+The shipped `few_shot_examples.json` was made with the generator's auto-coverage mode at 8 sentences per prompt
+(`--per-graph 0 --sentences 8`). That setting reproduces its per-graph counts for 63 of 64 graph types (3,768 records
+against 3,774; Oncoprint was added in a separate run). The wording differs because the original run was unseeded. The
+script's defaults (`--per-graph 60 --sentences 3`) are different: auto mode at `--sentences 3` yields about 12,200
+records of short prompts, which retrieve differently. In a retrieval test with held-out synthetic requests, the
+short-prompt corpus was slightly better on one- or two-sentence requests (top-1 graph type 0.91 against 0.88) and clearly
+worse on long multi-parameter ones (parameter recall 0.69 against 0.90), while putting about a third less text in front
+of the LLM. Concatenating both corpora kept most of each advantage. This used synthetic requests from the same
+templates, not a live LLM evaluation, so check `eval/` before changing the shipped corpus.
 
 ---
 
