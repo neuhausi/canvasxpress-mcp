@@ -1595,6 +1595,23 @@ def cx_chart_resource() -> ResourceResult:
 # resourceDomains = canvasxpress.org) covers this view too and is reused as-is.
 _CX_DASH_APP_HTML = (Path(__file__).parent / "ui" / "cx_dashboard_view.html").read_text(encoding="utf-8")
 
+
+def _view_build_stamp(html: str) -> str:
+    """Git short sha (when available) plus a hash of the view HTML: shown inside the view so a
+    user can see which code a client is really running."""
+    import hashlib
+    import subprocess
+    try:
+        sha = subprocess.check_output(
+            ["git", "-C", str(Path(__file__).parent), "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL, timeout=5).decode().strip()
+    except Exception:
+        sha = "nogit"
+    return "%s/%s" % (sha, hashlib.md5(html.encode("utf-8")).hexdigest()[:6])
+
+
+_CX_DASH_APP_HTML = _CX_DASH_APP_HTML.replace("__CX_VIEW_BUILD__", _view_build_stamp(_CX_DASH_APP_HTML))
+
 _CX_DASH_RESOURCE_URI = "ui://canvasxpress/dashboard"
 
 # Tools that return a dashboard spec reference this view via _meta.ui.resourceUri.
