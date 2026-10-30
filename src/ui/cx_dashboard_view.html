@@ -106,6 +106,17 @@
       console.error('[cx-dashboard-view]', msg);
     }
 
+    /**
+     * A tool call that produced no dashboard (declined template, bad input, tool error).
+     * The agent usually retries with better arguments, so no red banner: clear any old
+     * banner, drop the waiting line (the view collapses) and log the reason to the console.
+     */
+    function skipResult(msg) {
+      clearError();
+      const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
+      console.warn('[cx-dashboard-view] no dashboard:', msg);
+    }
+
     /** Clear a prior error banner. */
     function clearError() {
       const el = document.getElementById('cx-error');
@@ -408,29 +419,29 @@
       try {
         const result = params;  // params IS the CallToolResult
         if (result.isError) {
-          showError('Tool returned an error: ' +
+          skipResult('Tool returned an error: ' +
             ((result.content && result.content[0] && result.content[0].text) || 'unknown'));
           return;
         }
         if (!result.content || !result.content.length) {
-          showError('Tool result has no content');
+          skipResult('Tool result has no content');
           return;
         }
         const textBlock = result.content.find(c => c.type === 'text' && c.text);
         if (!textBlock) {
-          showError('No text content block in tool result');
+          skipResult('No text content block in tool result');
           return;
         }
         let payload;
         try {
           payload = JSON.parse(textBlock.text);
         } catch (e) {
-          showError('Failed to parse tool result JSON: ' + e.message);
+          skipResult('Failed to parse tool result JSON: ' + e.message);
           return;
         }
         // suggest_canvasxpress_dashboard can decline when no template fits.
         if (payload && payload.suggested === false) {
-          showError('No dashboard was suggested: ' +
+          skipResult('No dashboard was suggested: ' +
             (payload.reason || 'the data did not match a known template.'));
           return;
         }
@@ -438,12 +449,12 @@
         const spec = (payload && payload.spec) ? payload.spec
           : (payload && payload.layout && payload.panels ? payload : null);
         if (!spec) {
-          showError('Tool result has no dashboard spec (missing layout/panels).');
+          skipResult('Tool result has no dashboard spec (missing layout/panels).');
           return;
         }
         if (payload && payload.valid === false && Array.isArray(payload.errors) && payload.errors.length) {
           // The server flagged it invalid; renderDashboard would throw anyway.
-          showError('Dashboard spec is invalid:\n  - ' + payload.errors.join('\n  - '));
+          skipResult('Dashboard spec is invalid:\n  - ' + payload.errors.join('\n  - '));
           return;
         }
         renderDashboardSpec(spec);
