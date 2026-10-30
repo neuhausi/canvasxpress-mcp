@@ -622,6 +622,83 @@ def _explore_template(data: dict) -> Optional[dict]:
                       (' and "%s"' % second) if second else "", distribution, second or main, main)}
 
 
+_MAX_COUNT_BARS = 4
+_MAX_COUNT_LEVELS = 30
+
+
+def _count_groups(text: list, rows: int) -> list:
+    """The discrete columns to draw as count bars: few-level columns first (fewest levels first),
+    then the rest up to ``_MAX_COUNT_LEVELS`` levels; a column whose values are all different (an
+    id) is only used when nothing else is left. At most ``_MAX_COUNT_BARS``."""
+    usable = [c for c in text if 2 <= c["unique"] <= _MAX_COUNT_LEVELS and c["unique"] < rows]
+    ordered = sorted(usable, key=lambda c: c["unique"])
+    if not ordered:
+        ordered = sorted(text, key=lambda c: c["unique"])
+    return [c["name"] for c in ordered[:_MAX_COUNT_BARS]]
+
+
+def _force_template(data: dict, count_only: bool = False) -> Optional[dict]:
+    """The last-resort dashboard: a filter panel and ONE bar chart, built from whatever the table has.
+
+    A Bar of the first numeric column (one bar per row, coloured by a small factor when there is
+    one) or, when no column is numeric, a Bar of the row count per level of a discrete column (a
+    column ``n`` of 1s, summed per group). ``count_only`` says the only numeric column is that
+    synthetic ``n``. Any orientation is accepted: the table is rebuilt with one row per sample
+    first. None when the table has no columns to draw.
+    """
+    import cx_datasets  # local import, as in _resolve_input
+
+    table = _table_from_data(data)
+    if len(table) < 2 or len(table[0]) < 2:
+        return None
+    # The first column holds the row ids; declare it so it is not read as a measure.
+    data = cx_datasets.table_to_data(table, id_column=table[0][0])
+    columns = _describe_columns(data)
+    if not columns:
+        return None
+    numeric = [c for c in columns if c["type"] == "numeric" and not (count_only and c["name"] == _COUNT_FIELD)]
+    text = [c for c in columns if c["type"] == "text" and c["unique"] >= 1]
+    factors = [c for c in text if _MIN_FACTOR_LEVELS <= c["unique"] <= _MAX_FACTOR_LEVELS]
+    skip = [_COUNT_FIELD] if count_only else []
+    fields = (_filter_fields(columns, skip)
+              or [c["name"] for c in columns if c["name"] not in skip][:_MAX_FILTER_FIELDS])
+    panels: list = [{"id": "filters", "type": "filters", "title": "Filters", "fields": fields,
+                     "x": 0, "y": 0, "w": 3, "h": _GRID_H}]
+    if numeric:
+        measure = next((c for c in numeric if c["unique"] >= 2), numeric[0])["name"]
+        color = factors[0]["name"] if factors else None
+        panels.append({
+            "id": "bar", "title": measure + " per sample",
+            "config": _without_title(_build_chart_config(
+                "Bar", {"x": measure, "color": color},
+                {"graphOrientation": "vertical", "smpLabelRotate": 45}, data)),
+            "x": 3, "y": 0, "w": 9, "h": _GRID_H})
+        reason = 'Fallback view: filters and a bar chart of "%s" per sample.' % measure
+    elif text and count_only:
+        groups = _count_groups(text, len(table) - 1)
+        for index, group in enumerate(groups):
+            pair = len(groups) > 1
+            column, row = index % 2, index // 2
+            last_alone = pair and index == len(groups) - 1 and len(groups) % 2 == 1
+            width = 9 if (not pair or last_alone) else (5 if column == 0 else 4)
+            panels.append({
+                "id": "bar-%d" % (index + 1), "title": "Count by " + group,
+                "config": _without_title({
+                    "graphType": "Bar", "graphOrientation": "vertical", "xAxis": [_COUNT_FIELD],
+                    "groupingFactors": [group], "colorBy": group, "summaryType": "sum"}),
+                "measures": [_COUNT_FIELD],
+                "x": 3 + (0 if last_alone else (0 if column == 0 else 5)), "y": row * _GRID_H,
+                "w": width, "h": _GRID_H})
+        panels[0]["h"] = _GRID_H * ((len(groups) + 1) // 2)
+        reason = 'Fallback view: filters and bar charts of the row count per %s.' % (
+            ", ".join('"%s"' % g for g in groups))
+    else:
+        return None
+    suggestion = {"template": "minimal", "label": "Quick view",
+                  "panels": _with_dashboard_configs(panels, data), "reason": reason, "data": data}
+    return suggestion
+
+
 def _is_standard_orientation(data: Any) -> bool:
     """A table whose variables are the measures and whose rows are the samples."""
     y = data.get("y") if isinstance(data, dict) else None
@@ -737,6 +814,12 @@ def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], 
             return cx_datasets.load_dataset(dataset), None
         if isinstance(data, list):
             return cx_datasets.table_to_data(data), None
+        if isinstance(data, dict) and not isinstance(data.get("y"), dict):
+            return None, ("data is an object without a \"y\" entry, so it was not read as a table. Send "
+                          "either a list of lists (the first list is the column names, then one list per "
+                          "row, numbers as numbers) or a CanvasXpress object {\"y\": {\"vars\": [...], "
+                          "\"smps\": [...], \"data\": [[...]]}, \"x\": {...}}. An object with "
+                          "\"headers\" and \"rows\", or a list of row objects, is not accepted.")
     except KeyError as exc:
         return None, str(exc.args[0])
     except ValueError as exc:
@@ -745,24 +828,52 @@ def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], 
 
 
 def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] = None,
-            thresholds: Optional[list] = None, dataset: Optional[str] = None) -> dict:
+            thresholds: Optional[list] = None, dataset: Optional[str] = None,
+            force: bool = False) -> dict:
     """The MCP-facing result: the suggestion, the validated spec, and a usage snippet — or a
     plain "nothing fits" answer pointing at the composing tools. ``dataset`` names a bundled
-    sample (see ``cx_datasets``); ``data`` may be a data object or a headers+rows array."""
+    sample (see ``cx_datasets``); ``data`` may be a data object or a headers+rows array.
+    ``force`` skips the templates and builds the minimal dashboard (see ``_force_template``); a
+    caller uses it only after its corrected attempts have failed."""
+    count_only = False
+    if force and isinstance(data, list) and len(data) >= 2 and all(isinstance(r, (list, tuple)) for r in data):
+        import cx_datasets  # local import, as in _resolve_input
+        try:
+            cx_datasets.table_to_data(data)
+        except ValueError as exc:
+            if "no numeric columns" in str(exc) and _COUNT_FIELD not in [str(h) for h in data[0]]:
+                # A table of discrete columns only: add a column of 1s so there is something to sum.
+                data = [list(data[0]) + [_COUNT_FIELD]] + [list(r) + [1] for r in data[1:]]
+                count_only = True
     data, error = _resolve_input(data, dataset)
     if error:
+        if "no numeric columns" in error and not force:
+            # No template can ever fit such a table, so retrying the same call cannot help.
+            error += (" A table with only discrete columns cannot match a template: call this tool again "
+                      "with force=true to get a filter panel and a count bar per column.")
         return {"suggested": False, "error": error, "reason": error}
-    # The wizard-parity templates first (cohort, ngs-qc); the generic explorer is only the fallback.
-    suggestion = suggest_dashboard(data)
-    if suggestion is None and _is_standard_orientation(data):
-        suggestion = _explore_template(data)
+    if force:
+        suggestion = _force_template(data, count_only)
+        if suggestion is None:
+            message = ("force=true needs a table with at least one data row and a column to draw; "
+                       "this one has none. Check that data is a list of lists with the column names "
+                       "first.")
+            return {"suggested": False, "error": message, "reason": message}
+        data = suggestion.pop("data")
+    else:
+        # The wizard-parity templates first (cohort, ngs-qc); the generic explorer is only the fallback.
+        suggestion = suggest_dashboard(data)
+        if suggestion is None and _is_standard_orientation(data):
+            suggestion = _explore_template(data)
     if suggestion is None:
         return {
             "suggested": False,
             "reason": ("No dashboard template fits: not a survival cohort table, a per-sample "
                        "sequencing QC table, or a table with at least two numeric columns and one "
-                       "factor column. Choose charts with select_canvasxpress_chart and "
-                       "assemble them with compose_canvasxpress_dashboard."),
+                       "factor column. Check that numbers are sent as numbers (not text) and that "
+                       "the table has one row per sample, then call this tool again with the "
+                       "corrected data. If your 5th attempt still fails, call it once more with "
+                       "force=true to get a filter panel and a bar chart."),
         }
     from cx_dashboard import _usage_snippet, builder_base_url  # local import: cx_dashboard owns the snippet text
 

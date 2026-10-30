@@ -3609,8 +3609,10 @@ def compose_canvasxpress_dashboard(
         "dashboard view. "
         "The result renders itself as a live interactive dashboard (with Save and Open in Builder) in "
         "the dashboard view: do not show the JSON, do not redraw it in an HTML widget, do not change "
-        "its layout. Only if the client shows no dashboard view, call explain_canvasxpress_dashboards "
-        "with topic inline_widget. "
+        "its layout. If a call returns an error or suggested: false, read the message, correct the "
+        "arguments and call this tool again, up to 5 attempts. If the 5th attempt still fails, call it "
+        "once more with force=true, which builds a filter panel and bar charts from the table. "
+        "Never build the dashboard yourself in an HTML widget. "
         "Every panel is bound to the one dataset, so a selection in one panel selects the same "
         "rows in the others. Recognises a patient cohort with survival columns (filters, "
         "Kaplan-Meier curve, a measure by group and against time, a case card) and a per-sample "
@@ -3619,9 +3621,8 @@ def compose_canvasxpress_dashboard(
         "factor column gets a generic explorer (filters, scatter, boxplot, histogram, counts by "
         "factor). Cohort and QC dashboards opt in to an insights strip (outliers, group "
         "differences and any thresholds you declare, each caption carrying its figures). When "
-        "nothing fits it says so (suggested: false) and points at select_canvasxpress_chart + "
-        "compose_canvasxpress_dashboard instead. Deterministic and instant (no LLM call); it "
-        "never alters the data."
+        "nothing fits it says so (suggested: false) and says what to correct. Deterministic and "
+        "instant (no LLM call); it never alters the data."
     ),
     meta=_META_FOR_DASHBOARD,
 )
@@ -3631,6 +3632,7 @@ def suggest_canvasxpress_dashboard(
     theme: str | None = None,
     thresholds: list | None = None,
     dataset: str | None = None,
+    force: bool = False,
 ) -> dict:
     """
     Args:
@@ -3646,6 +3648,9 @@ def suggest_canvasxpress_dashboard(
         dataset: A bundled sample dataset instead of data: "penguins", "iris" or "mtcars"
                  (case-insensitive; e.g. "palmer penguins" works). Exactly one of data or
                  dataset is required.
+        force: Use only after 5 failed attempts: skips the templates and builds a filter panel plus
+               bar charts: a Bar of the first numeric column or, when no column is numeric, a count
+               bar for each discrete column (up to 4).
 
     Returns:
         {"suggested": true, "template": "cohort" | "ngs-qc" | "explore", "label", "reason",
@@ -3654,7 +3659,7 @@ def suggest_canvasxpress_dashboard(
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
     return cx_dashboard_suggest.suggest(
-        data, title=title, theme=theme, thresholds=thresholds, dataset=dataset)
+        data, title=title, theme=theme, thresholds=thresholds, dataset=dataset, force=force)
 
 
 @mcp.tool(

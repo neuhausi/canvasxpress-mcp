@@ -1077,9 +1077,23 @@ handled; a table stored the other way round, or a survival table with a text eve
 gets no suggestion.
 
 It is a suggestion, never a silent rewrite: when nothing fits it answers
-`{"suggested": false, ...}` and points at `select_canvasxpress_chart` +
-`compose_canvasxpress_dashboard`. Deterministic and instant (no LLM call), and the data is
-never altered. The same recognition drives the "whole dashboard" option in the
+`{"suggested": false, ...}` with a message that says what to correct. Deterministic and instant
+(no LLM call), and the data is never altered.
+
+**When a call does not work: retry, then force.** The tool description tells the model to read the message,
+correct the arguments and call again, up to 5 attempts, and never to draw the dashboard itself in an HTML
+widget. If the 5th attempt still fails it calls once more with `force=true`, which skips the templates and
+builds a **Filters panel plus bar charts** from whatever the table has:
+
+| Table | Forced dashboard |
+|---|---|
+| Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
+| Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
+
+An input that is not a table at all (for example an object with `headers` and `rows`, or a list of row
+objects) gets an error that names the accepted shapes: a list of lists with the column names first, or a
+`{y, x}` CanvasXpress object. A table with no numeric columns gets an error that points straight at
+`force=true`, because no template can ever match it. The same recognition drives the "whole dashboard" option in the
 canvasxpress-dashboards data wizard.
 
 Each dashboard also opts in to an **insights strip** — captions above the charts for what stands out
@@ -1090,9 +1104,10 @@ inferred, only the ones you declare are checked, e.g.
 
 **Input:** `data?` (CanvasXpress data object or headers+rows array), `dataset?` (`penguins` | `iris` |
 `mtcars`), `title?`, `theme?` (`light` | `dark` | `auto`), `thresholds?` (limits to flag in the
-insights strip). Exactly one of `data` / `dataset`.
+insights strip), `force?` (only after 5 failed attempts: the filter-plus-bars dashboard above). Exactly one of
+`data` / `dataset`.
 
-**Response:** `{"suggested": true, "template": "cohort" | "ngs-qc" | "explore", "label", "reason",
+**Response:** `{"suggested": true, "template": "cohort" | "ngs-qc" | "explore" | "minimal", "label", "reason",
 "panels": [{id, title, graphType}], "spec": {...}, "valid": true, "errors": [], "usage": "<html snippet>"}`.
 When nothing fits, or the input is wrong, it is `{"suggested": false, "reason": "..."}` (plus `"error"` for bad input).
 

@@ -151,12 +151,12 @@ def test_theme_is_passed_through_and_junk_ignored():
     assert sg.suggest(data, theme="neon")["spec"]["theme"] == "auto"
 
 
-def test_no_match_says_so_and_points_at_the_composer():
+def test_no_match_says_so_and_says_to_retry_then_force():
     # Numeric columns only (no factor to explore by): none of the templates fits.
     data = {"y": {"vars": ["a", "b"], "smps": ["r1", "r2", "r3"], "data": [[1, 2, 3], [4, 5, 7]]}}
     out = sg.suggest(data)
     assert out["suggested"] is False
-    assert "compose_canvasxpress_dashboard" in out["reason"]
+    assert "5th attempt" in out["reason"] and "force=true" in out["reason"]
     assert "spec" not in out
 
 
@@ -365,3 +365,93 @@ def test_no_scheme_box_auto_theme_and_builder_link(monkeypatch):
     assert out["builder_url"] == "https://canvasxpress.org/dashboards"
     monkeypatch.setenv("CXD_DASHBOARDS_URL", "http://localhost:8200/")
     assert sg.suggest(dataset="iris")["builder_url"] == "http://localhost:8200"
+
+
+# ---------------------------------------------------------------------------
+# The retry-then-force fallback: errors say what is wrong, and force=True builds a filter panel
+# plus bar charts from whatever the table has.
+# ---------------------------------------------------------------------------
+QC_TABLE = [["sample", "lane", "total_reads", "pct_mapped"],
+            ["S1", "L1", 100, 95.0], ["S2", "L2", 200, 90.0], ["S3", "L1", 150, 92.0]]
+
+
+def _discrete_table(columns):
+    names = ["sample"] + columns
+    return [names] + [["S%d" % i] + ["%s%d" % (c[0], i % (2 + k)) for k, c in enumerate(columns)]
+                      for i in range(1, 25)]
+
+
+def _bars(result):
+    return [p for p in result["panels"] if p["graphType"] == "Bar"]
+
+
+def test_force_builds_a_filter_panel_and_a_bar_of_the_first_numeric_column():
+    result = sg.suggest(copy.deepcopy(QC_TABLE), force=True)
+    assert result["suggested"] and result["template"] == "minimal" and result["valid"], result
+    assert [p["id"] for p in result["panels"]] == ["filters", "bar"]
+    bar = result["spec"]["panels"]["bar"]["config"]
+    assert bar["graphType"] == "Bar" and bar["xAxis"] == ["total_reads"]
+    assert result["spec"]["panels"]["filters"]["fields"]
+
+
+def test_force_with_only_discrete_columns_adds_a_count_bar_per_column_up_to_four():
+    result = sg.suggest(_discrete_table(["lane", "batch", "library", "site", "sex"]), force=True)
+    assert result["suggested"] and result["valid"], result
+    bars = _bars(result)
+    assert len(bars) == 4
+    for panel in bars:
+        config = result["spec"]["panels"][panel["id"]]["config"]
+        assert config["xAxis"] == ["n"] and config["summaryType"] == "sum" and len(config["groupingFactors"]) == 1
+    assert "n" not in result["spec"]["panels"]["filters"]["fields"]
+
+
+def test_force_with_one_discrete_column_gives_one_wide_count_bar():
+    result = sg.suggest(_discrete_table(["lane"]), force=True)
+    items = {i["panel"]: i for i in result["spec"]["layout"]["items"]}
+    assert len(_bars(result)) == 1 and items["bar-1"]["w"] == 9
+
+
+def test_force_skips_an_id_like_discrete_column_when_others_exist():
+    table = _discrete_table(["lane", "batch"])
+    for i, row in enumerate(table[1:]):
+        row.append("unique%d" % i)
+    table[0].append("barcode")
+    titles = [p["title"] for p in _bars(sg.suggest(table, force=True))]
+    assert "Count by barcode" not in titles and len(titles) == 2
+
+
+def test_force_does_not_read_generated_row_ids_as_a_measure():
+    # No id column: the rows are numbered 1..n, which must not become a measure called "Id".
+    table = [["lane", "total_reads"], ["L1", 100], ["L2", 200], ["L1", 150]]
+    result = sg.suggest(table, force=True)
+    assert result["spec"]["panels"]["bar"]["config"]["xAxis"] == ["total_reads"]
+    assert "Id" not in result["spec"]["panels"]["filters"]["fields"]
+
+
+def test_force_needs_a_data_row():
+    result = sg.suggest([["sample", "lane"]], force=True)
+    assert result["suggested"] is False and result["error"]
+
+
+def test_an_object_without_y_gets_an_error_that_names_the_accepted_shapes():
+    result = sg.suggest({"headers": QC_TABLE[0], "rows": QC_TABLE[1:]})
+    assert result["suggested"] is False
+    assert "list of lists" in result["error"] and "headers" in result["error"]
+
+
+def test_a_table_without_numbers_points_straight_at_force():
+    result = sg.suggest([["a", "b"], ["x", "y"], ["z", "w"]])
+    assert result["suggested"] is False
+    assert "force=true" in result["error"] and "only discrete columns" in result["error"]
+
+
+def test_tool_description_gives_the_retry_then_force_instruction_and_no_widget_fallback():
+    import server
+    tool = server.suggest_canvasxpress_dashboard
+    text = getattr(tool, "description", None) or ""
+    if not text:  # FastMCP versions differ in what the decorator returns
+        import asyncio
+        text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
+    assert "up to 5 attempts" in text and "force=true" in text
+    assert "do not redraw it in an HTML widget" in text
+    assert "inline_widget" not in text

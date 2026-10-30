@@ -4,6 +4,17 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 
 ## [Unreleased]
 
+### Changed
+- **`suggest_canvasxpress_dashboard`: retry, then force.** The tool description no longer tells a model to fall back to
+  an inline HTML widget (`inline_widget`) when the dashboard view is not shown. It now says: on an error or
+  `suggested: false`, read the message, correct the arguments and call again, up to 5 attempts, then call once more with
+  the new `force=true`. Never build the dashboard in a widget.
+- `force=true` skips the templates and builds a Filters panel plus bar charts: a Bar of the first numeric column or,
+  for a table with only discrete columns, a count bar per discrete column (up to 4). Template `minimal`.
+- Error messages say what is wrong: an object without `y` (such as `{headers, rows}`) names the accepted shapes; a table
+  with no numeric columns points at `force=true`. The "no template fits" message asks for a retry and then `force`.
+  The tool still accepts only a list of lists or a `{y, x}` object.
+
 ### Fixed
 - **Chart view in strict MCP Apps hosts (Claude).** `ui://canvasxpress/chart` never sent `ui/notifications/initialized`
   after `ui/initialize`, so a strict host never delivered the tool result and charts from `generate_canvasxpress_config`,
