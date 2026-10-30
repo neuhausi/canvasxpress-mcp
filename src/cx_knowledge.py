@@ -48,9 +48,23 @@ log = logging.getLogger("cx-mcp.knowledge")
 
 _HERE      = Path(__file__).parent
 _BASE_DIR  = _HERE.parent
-_CACHE_DIR = _BASE_DIR / "data" / "kb_cache"
+# Legacy cache location, next to the code. Always read as a fallback so an existing
+# install keeps its warm cache when CX_STATE_DIR is introduced.
+_LEGACY_CACHE_DIR = _BASE_DIR / "data" / "kb_cache"
+# Writable cache. Defaults to the legacy location; with CX_STATE_DIR set (read-only
+# bundle, container) it moves under the state directory like the rest of the state.
+_CACHE_DIR = (
+    Path(os.environ["CX_STATE_DIR"]) / "kb_cache"
+    if os.environ.get("CX_STATE_DIR")
+    else _LEGACY_CACHE_DIR
+)
 
-GITHUB_BASE = "https://raw.githubusercontent.com/neuhausi/canvasxpress-LLM/main"
+# Source of SCHEMA.md / RULES.md / CONTEXT.md. Override with CX_KB_BASE_URL to pin
+# the knowledge base to a release tag or a mirror.
+GITHUB_BASE = os.environ.get(
+    "CX_KB_BASE_URL",
+    "https://raw.githubusercontent.com/neuhausi/canvasxpress-LLM/main",
+).rstrip("/")
 SCHEMA_TTL  = int(os.environ.get("CX_SCHEMA_TTL", "3600"))
 SKIP_FETCH  = os.environ.get("CX_SKIP_FETCH", "").lower() in ("1", "true", "yes")
 
@@ -475,22 +489,39 @@ def _fetch_url(url: str, timeout: int = 15) -> Optional[str]:
         return None
 
 
+def _cached_file(name: str) -> Optional[Path]:
+    """Return the cached copy of `name` (state dir first, then the legacy dir), or None."""
+    for directory in (_CACHE_DIR, _LEGACY_CACHE_DIR):
+        path = directory / name
+        if path.exists():
+            return path
+    return None
+
+
+def _write_cache(name: str, content: str) -> None:
+    """Best-effort cache write; a read-only or full disk must not break serving."""
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (_CACHE_DIR / name).write_text(content, encoding="utf-8")
+    except OSError as e:
+        log.warning("cx_knowledge: could not write cache %s (%s)", name, e)
+
+
 def _fetch_and_cache_files() -> dict[str, str]:
     """
     Download each target file from GitHub, cache locally, and return
     a dict of {filename: content}.  Returns {} if all downloads fail.
     """
-    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     results: dict[str, str] = {}
     for fname in _FETCH_FILES:
-        cache_path = _CACHE_DIR / fname
         url        = f"{GITHUB_BASE}/{fname}"
         content    = _fetch_url(url)
+        cache_path = _cached_file(fname)
         if content:
-            cache_path.write_text(content, encoding="utf-8")
+            _write_cache(fname, content)
             results[fname] = content
             log.debug("cx_knowledge: fetched %s (%d chars)", fname, len(content))
-        elif cache_path.exists():
+        elif cache_path is not None:
             results[fname] = cache_path.read_text(encoding="utf-8")
             log.debug("cx_knowledge: using cached %s", fname)
         else:
@@ -706,13 +737,10 @@ def _load_config_schema_entries() -> dict[str, dict]:
     if not SKIP_FETCH:
         raw = _fetch_url(CONFIG_SCHEMA_URL)
         if raw:
-            try:
-                _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                _CONFIG_SCHEMA_CACHE.write_text(raw, encoding="utf-8")
-            except Exception as e:  # noqa: BLE001 - cache write is best-effort
-                log.debug("cx_knowledge: could not cache config schema: %s", e)
-    if raw is None and _CONFIG_SCHEMA_CACHE.exists():
-        raw = _CONFIG_SCHEMA_CACHE.read_text(encoding="utf-8")
+            _write_cache(_CONFIG_SCHEMA_CACHE.name, raw)
+    cached_schema = _cached_file(_CONFIG_SCHEMA_CACHE.name)
+    if raw is None and cached_schema is not None:
+        raw = cached_schema.read_text(encoding="utf-8")
     if raw is None and _CONFIG_SCHEMA_BUNDLED.exists():
         raw = _CONFIG_SCHEMA_BUNDLED.read_text(encoding="utf-8")
     if raw is None:
@@ -809,7 +837,7 @@ def load_schema(force: bool = False) -> dict[str, dict]:
         source = "config+bundled"
     elif files:
         source = "GitHub" if any(
-            not (_CACHE_DIR / f).exists() for f in _FETCH_FILES if f in files
+            _cached_file(f) is None for f in _FETCH_FILES if f in files
         ) else "cache"
     else:
         source = "bundled (no files)"

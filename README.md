@@ -1281,6 +1281,8 @@ python src/server.py
 | `CX_DEBUG` | `0` | Set to `1` for full debug trace |
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
+| `CX_KB_BASE_URL` | canvasxpress-LLM `main` on GitHub | Base URL for `SCHEMA.md` / `RULES.md` / `CONTEXT.md`. Point at a release tag or an internal mirror to pin the knowledge base |
+| `CX_STATE_DIR` | `data/` | Writable state directory. The knowledge-base cache lives in `$CX_STATE_DIR/kb_cache` (the old `data/kb_cache` is still read as a fallback; cache write failures are logged, not fatal) |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model for vector search |
 | `CX_REQUIRE_VECTOR` | `0` | Set to `1` to refuse to start if vector retrieval is unavailable (default: fall back to text similarity). `GET /health` always reports `retrieval: vector\|fallback` |
 | `CX_DISABLED_TOOLS` | — | Comma-separated tool names to remove, e.g. `render_canvasxpress_config,publish_canvasxpress_dashboard` on hosts without Playwright or a dashboards install |
