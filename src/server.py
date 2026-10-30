@@ -97,21 +97,24 @@ CORS_ORIGINS = [
 ]
 
 # Admin key — required for destructive endpoints (e.g. /feedback/purge).
-# Set ADMIN_KEY in .env to a secret string.  If not set, a random key is
-# generated at startup and printed once to the log at WARNING level.
+# Set ADMIN_KEY in .env to a secret string.  If not set, the admin endpoints are
+# disabled: a random per-process key is generated but never printed or logged.
 _env_admin_key = os.environ.get("ADMIN_KEY", "").strip()
+ADMIN_KEY_CONFIGURED: bool = bool(_env_admin_key)
 if _env_admin_key:
     ADMIN_KEY: str = _env_admin_key
 else:
     import uuid as _uuid_init
     ADMIN_KEY = str(_uuid_init.uuid4())
-    # Deferred log — logger not yet configured at import time; use print so
-    # the key is always visible in the startup output.
+    # Logger not yet configured at import time; use print.
     print(
-        f"[cx-mcp] WARNING: ADMIN_KEY not set in .env — "
-        f"using auto-generated key for this session: {ADMIN_KEY}",
+        "[cx-mcp] ADMIN_KEY not set in .env — admin endpoints (/feedback/purge) are disabled",
         flush=True,
     )
+
+# Opt-in hardening for hosted deployments: no CORS headers, and /feedback/export
+# (which returns every logged request and response) requires the admin key.
+STRICT_REST: bool = os.environ.get("CX_STRICT_REST", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Few-shot examples (fallback for when vector index is not built)
@@ -2032,6 +2035,11 @@ def _require_admin_key(request: "Request") -> "JSONResponse | None":
     Uses hmac.compare_digest to prevent timing-based attacks.
     """
     import hmac
+    if not ADMIN_KEY_CONFIGURED:
+        return JSONResponse(
+            {"error": "Forbidden: admin endpoints are disabled (ADMIN_KEY is not set)"},
+            status_code=403,
+        )
     provided = request.headers.get("X-Admin-Key", "")
     if not provided or not hmac.compare_digest(provided, ADMIN_KEY):
         return JSONResponse(
@@ -2296,13 +2304,14 @@ class _InjectToolMiddleware:
 
 # Build the CORS ASGI middleware list — passed to mcp.run() below.
 # CORS_ORIGINS is read from .env (CORS_ORIGINS env var).
-_cors_middleware: list = [
+_cors_middleware: list = ([] if STRICT_REST else [
     Middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key", "X-Admin-Key"],
     ),
+]) + [
     Middleware(_InjectToolMiddleware),
 ]
 
@@ -5476,9 +5485,17 @@ def _cx_response(result: dict, cx: dict, status: int = 200) -> Response:
             content=body,
             status_code=status,
             media_type="application/javascript; charset=utf-8",
-            headers={"Access-Control-Allow-Origin": "*"},
+            headers={} if STRICT_REST else {"Access-Control-Allow-Origin": "*"},
         )
     return JSONResponse(result, status_code=status)
+
+
+async def _offload(fn, *args, **kwargs):
+    """Run a blocking tool/LLM call on a worker thread so it cannot stall the event loop.
+
+    asyncio.to_thread copies the current context, so per-request ContextVars carry over.
+    """
+    return await asyncio.to_thread(fn, *args, **kwargs)
 
 
 @mcp.custom_route("/generate", methods=["GET", "POST"])
@@ -5506,7 +5523,7 @@ async def rest_generate(request: Request) -> Response:
     if status != 200:
         return _cx_response({"error": err, "success": False}, cx, status)
     try:
-        result = generate_canvasxpress_config(**kwargs)
+        result = await _offload(generate_canvasxpress_config, **kwargs)
     except Exception as exc:
         log.exception("REST /generate error")
         return _cx_response({
@@ -5545,7 +5562,7 @@ async def rest_modify(request: Request) -> Response:
     if "instruction" not in kwargs:
         return _cx_response({"error": "'instruction' is required", "success": False}, cx, 400)
     try:
-        result = modify_canvasxpress_config(**kwargs)
+        result = await _offload(modify_canvasxpress_config, **kwargs)
     except Exception as exc:
         log.exception("REST /modify error")
         return _cx_response({
@@ -5637,7 +5654,8 @@ async def rest_action(request: Request) -> Response:
             pass
 
     try:
-        result = action_canvasxpress_config(
+        result = await _offload(
+            action_canvasxpress_config,
             instruction=instruction,
             gog_state=gog_state,
             gog_history=gog_history,
@@ -5670,7 +5688,7 @@ async def rest_km(request: Request) -> Response:
     if not km_args:
         return _cx_response({"error": "At least one of description, headers, data, or config is required.", "success": False}, cx, 400)
     try:
-        result = generate_km_config(**km_args)
+        result = await _offload(generate_km_config, **km_args)
     except Exception as exc:
         log.exception("REST /km error")
         return _cx_response({"config": {}, "valid": False, "success": False,
@@ -5766,7 +5784,7 @@ async def rest_ask(request: Request) -> Response:
               "headings, bold, or bullet lists.")
     user = f"Question: {question}\n\nSources:\n{context}"
     try:
-        text, _usage = llm_complete(system, user, temperature=0.0, max_tokens=400)
+        text, _usage = await _offload(llm_complete, system, user, temperature=0.0, max_tokens=400)
         return JSONResponse({"answer": text.strip(), "model": MODEL})
     except Exception as exc:
         log.exception("REST /ask error")
@@ -5905,7 +5923,8 @@ async def rest_select(request: Request) -> Response:
     llm_first = str(p.get("llm_first", "")).lower() in ("1", "true", "yes")
 
     try:
-        result = select_canvasxpress_chart(
+        result = await _offload(
+            select_canvasxpress_chart,
             intent=intent,
             column_types=column_types,
             n_samples=n_samples,
@@ -6077,7 +6096,7 @@ async def rest_map(request: Request) -> Response:
             )
 
     try:
-        result = create_map_config(**kwargs)
+        result = await _offload(create_map_config, **kwargs)
     except Exception as exc:
         log.exception("REST /map error")
         return _cx_response({
@@ -6185,7 +6204,13 @@ async def rest_feedback_export(request: Request) -> Response:
       tool        (str)   — filter by tool name (optional)
       rated_only  (bool)  — if "true", return only calls that have a rating
       limit       (int)   — max rows to return (default 500)
+
+    With CX_STRICT_REST=1 this requires the ``X-Admin-Key`` header.
     """
+    if STRICT_REST:
+        deny = _require_admin_key(request)
+        if deny:
+            return deny
     p = dict(request.query_params)
     if request.method == "POST":
         try:

@@ -1277,7 +1277,8 @@ python src/server.py
 | `MCP_HOST` | `0.0.0.0` | Server bind host |
 | `MCP_PORT` | `8100` | Server port |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
-| `ADMIN_KEY` | auto-generated | Secret key required for `POST /feedback/purge`. Auto-generated and logged if not set |
+| `ADMIN_KEY` | — | Secret key required for `POST /feedback/purge` (and `/feedback/export` in strict mode). If unset, the admin endpoints are disabled; no key is generated or printed |
+| `CX_STRICT_REST` | `0` | Set to `1` for hosted deployments: no CORS middleware, no `Access-Control-Allow-Origin` on JSONP responses, and `/feedback/export` (every logged request and response) requires `X-Admin-Key`. `CORS_ORIGINS` is ignored |
 | `CX_DEBUG` | `0` | Set to `1` for full debug trace |
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
