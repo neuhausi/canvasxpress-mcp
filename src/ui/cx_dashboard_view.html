@@ -29,13 +29,6 @@
     }
     .cx-btn:hover:not(:disabled) { opacity: 1; }
     .cx-btn:disabled { opacity: .4; cursor: default; }
-    /* Sample banner: "Showing a sample: N of M rows" + Load full file. In flow (not fixed), so the
-       iframe height the view reports includes it. */
-    #cx-sample { display: none; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; padding: 6px 8px 0; }
-    #cx-sample.on { display: flex; }
-    #cx-sample .msg { margin-right: auto; }
-    #cx-sample .msg.err { color: #b91c1c; }
-    #cx-sample.drop { outline: 2px dashed currentColor; outline-offset: -3px; }
     /* Insights: what stands out in the COMPLETE data, computed in this page. */
     #cx-insights { display: none; margin: 6px 8px 0; padding: 6px 10px 7px; border: 1px solid currentColor; border-radius: 6px; font-size: 12px; }
     #cx-insights.on { display: block; }
@@ -85,11 +78,6 @@
     <span id="cx-status"></span>
     <button id="cx-save" class="cx-btn" type="button">Save</button>
     <button id="cx-builder" class="cx-btn" type="button">Open in Builder</button>
-  </div>
-  <div id="cx-sample">
-    <span class="msg" id="cx-sample-msg"></span>
-    <button id="cx-load" class="cx-btn" type="button">Load full file...</button>
-    <input id="cx-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" style="display:none">
   </div>
   <div id="cx-insights" role="region" aria-label="What stands out"></div>
   <div id="cx-json">
@@ -430,253 +418,14 @@
       });
     }
 
-    // ------------------------------------------------------------------------------------------
-    // Sample -> full file. When the tool result says it is a SAMPLE of a larger table, the user can
-    // load the whole file here: it is parsed in this page (the file never goes through the model),
-    // shaped like the sample (same numeric columns, same annotation columns, rows numbered 1..N) and
-    // swapped into the same spec, so every panel keeps its configuration.
-    // ------------------------------------------------------------------------------------------
-    let sampleInfo = null;        // payload.sample while a sample-designed dashboard waits for, or has, its complete file
-    let loadedFull = false;       // the complete file has been loaded for this sample-designed dashboard
-
-    const NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
-    const MISSING_RE = /^(na|n\/a|nan|null|-)?$/i;
-
+    /** The inline table of a dashboard spec ({y, x}), or null. */
     function sampleData(spec) {
       const src = spec && spec.data && spec.data.data;
       const value = src && src.kind === 'inline' ? src.value : null;
       return value && value.y && Array.isArray(value.y.vars) && Array.isArray(value.y.smps) ? value : null;
     }
 
-    /** Only a table with rows as samples (not more columns than rows) can be reloaded in place. */
-    function canLoadFull(spec) {
-      const d = sampleData(spec);
-      return !!d && d.y.vars.length <= d.y.smps.length;
-    }
-
-    function setSampleMessage(text, isError) {
-      const el = document.getElementById('cx-sample-msg');
-      el.textContent = text;
-      el.className = 'msg' + (isError ? ' err' : '');
-      if (typeof reportSize === 'function') setTimeout(reportSize, 30);
-    }
-
     function fmt(n) { return Number(n).toLocaleString('en-US'); }
-
-    /** Waiting for the complete file: nothing is drawn, and Save / Open in Builder are off. */
-    function setPending(on) {
-      ['cx-save', 'cx-builder'].forEach(function (id) {
-        const b = document.getElementById(id);
-        if (!b) return;
-        b.disabled = on;
-        b.title = on ? 'Load your complete file first.' : '';
-      });
-    }
-
-    /** Empty the dashboard area (closing the previous instance), so nothing from an earlier result stays. */
-    function clearDashboard() {
-      if (handle && typeof handle.close === 'function') { try { handle.close(); } catch (e) { /* ignore */ } }
-      handle = null;
-      lastSpec = null;
-      const el = document.getElementById('cx-dashboard');
-      if (el) el.innerHTML = '';
-    }
-
-    function hideSample() {
-      sampleInfo = null;
-      loadedFull = false;
-      document.getElementById('cx-sample').className = '';
-      setPending(false);
-    }
-
-    function showSample(info, spec, payload) {
-      sampleInfo = info;
-      loadedFull = false;
-      hideInsights();
-      const box = document.getElementById('cx-sample');
-      box.className = 'on';
-      const load = document.getElementById('cx-load');
-      const ok = canLoadFull(spec);
-      load.style.display = ok ? '' : 'none';
-      setPending(true);
-      const design = (payload && payload.label ? payload.label : 'Your dashboard') +
-        ((payload && payload.panels) ? ' (' + payload.panels.length + ' panels)' : '');
-      setSampleMessage(design + ' is designed, and it is never drawn from a sample. ' + (ok ?
-        'Load your complete file (' + fmt(info.total_rows) + ' rows) to build it from all of your data.' :
-        'This table cannot be completed here: ask for the dashboard again with every row.'));
-      load.onclick = function () { document.getElementById('cx-file').click(); };
-      document.getElementById('cx-file').onchange = function (e) {
-        const file = e.target.files && e.target.files[0];
-        e.target.value = '';
-        if (file) loadFullFile(file);
-      };
-    }
-
-    /** Split delimited text into rows of cells: quotes, doubled quotes, CRLF and a BOM are handled. */
-    function parseDelimited(text, delim) {
-      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-      const rows = []; let row = []; let cell = ''; let quoted = false;
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (quoted) {
-          if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
-          else cell += ch;
-        } else if (ch === '"') quoted = true;
-        else if (ch === delim) { row.push(cell); cell = ''; }
-        else if (ch === '\n' || ch === '\r') {
-          if (ch === '\r' && text[i + 1] === '\n') i++;
-          row.push(cell); cell = ''; rows.push(row); row = [];
-        } else cell += ch;
-      }
-      if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
-      return rows.filter(function (r) { return r.some(function (c) { return c.trim() !== ''; }); });
-    }
-
-    const ISO_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
-
-    /** UTC epoch milliseconds of an ISO date or date-time; null for anything else (same rule as the server). */
-    function isoToMs(text) {
-      const m = ISO_RE.exec(String(text == null ? '' : text).trim());
-      if (!m) return null;
-      const y = +m[1], mo = +m[2], d = +m[3], h = +(m[4] || 0), mi = +(m[5] || 0), sec = +(m[6] || 0);
-      const ms = Date.UTC(y, mo - 1, d, h, mi, sec);
-      const back = new Date(ms);
-      if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d ||
-          back.getUTCHours() !== h || back.getUTCMinutes() !== mi || back.getUTCSeconds() !== sec) return null;
-      return ms;
-    }
-
-    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    /** Filter labels for UTC milliseconds ('NA' where unknown); the same rule as the server's _period_labels. */
-    function periodLabels(stamps, unit) {
-      const years = {};
-      stamps.forEach(function (ms) { if (ms !== null) years[new Date(ms).getUTCFullYear()] = 1; });
-      const single = Object.keys(years).length === 1;
-      return stamps.map(function (ms) {
-        if (ms === null) return 'NA';
-        const d = new Date(ms);
-        const year = String(d.getUTCFullYear()).padStart(4, '0');
-        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-        if (unit === 'year') return year;
-        return single ? month + ' ' + MONTH_NAMES[d.getUTCMonth()] : year + '-' + month;
-      });
-    }
-
-    /** Add the derived time variable / period annotation the server added to the sample. */
-    function applyDerived(out, derived) {
-      (derived || []).forEach(function (entry) {
-        const source = (out.x && out.x[entry.from]) || [];
-        const stamps = source.map(isoToMs);
-        if (entry.kind === 'time') {
-          out.y.vars.push(entry.name);
-          out.y.data.push(stamps);
-        } else if (entry.kind === 'period') {
-          out.x = out.x || {};
-          out.x[entry.name] = periodLabels(stamps, entry.unit);
-        }
-      });
-    }
-
-    /** The sample's data object rebuilt from the full table; {error} when a column it uses is absent. */
-    function buildFullData(rows, sample, derived) {
-      const header = rows[0].map(function (h) { return h.trim(); });
-      const index = {};
-      header.forEach(function (h, i) { if (!(h in index)) index[h] = i; });
-      const computed = {};
-      (derived || []).forEach(function (entry) { computed[entry.name] = true; });
-      const vars = sample.y.vars.map(String).filter(function (n) { return !computed[n]; });
-      const notes = (sample.x ? Object.keys(sample.x) : []).filter(function (n) { return !computed[n]; });
-      const missing = vars.concat(notes).filter(function (n) { return !(n in index); });
-      if (missing.length) {
-        return { error: 'That file has no column ' + missing.join(', ') + '. The dashboard uses: ' +
-          vars.concat(notes).join(', ') + '.' };
-      }
-      const body = rows.slice(1);
-      const out = JSON.parse(JSON.stringify(sample));
-      out.y.vars = vars.slice();
-      out.y.smps = body.map(function (_, i) { return String(i + 1); });
-      out.y.data = vars.map(function (name) {
-        return body.map(function (r) {
-          const v = (r[index[name]] || '').trim();
-          return MISSING_RE.test(v) || !NUMBER_RE.test(v) ? null : parseFloat(v);
-        });
-      });
-      out.x = {};
-      notes.forEach(function (name) {
-        out.x[name] = body.map(function (r) {
-          const v = (r[index[name]] || '').trim();
-          return MISSING_RE.test(v) ? 'NA' : v;
-        });
-      });
-      if (!notes.length) delete out.x;
-      applyDerived(out, derived);
-      return { data: out, rows: body.length };
-    }
-
-    function loadFullFile(file) {
-      if (!currentPayload || !currentPayload.spec) return;
-      const reader = new FileReader();
-      reader.onerror = function () { setSampleMessage('Could not read that file.', true); };
-      reader.onload = function () {
-        try {
-          const text = String(reader.result || '');
-          const first = text.split(/\r?\n/, 1)[0] || '';
-          const delim = (first.split('\t').length > first.split(',').length) ? '\t' : ',';
-          const rows = parseDelimited(text, delim);
-          if (rows.length < 2) { setSampleMessage('That file has no data rows.', true); return; }
-          const sample = sampleData(currentPayload.spec);
-          if (!sample) { setSampleMessage('This dashboard has no inline table to replace.', true); return; }
-          const built = buildFullData(rows, sample, currentPayload.derived);
-          if (built.error) { setSampleMessage(built.error, true); return; }
-          const spec = JSON.parse(JSON.stringify(currentPayload.spec));
-          spec.data.data.value = built.data;
-          if (spec.data.case && spec.data.case.kind === 'inline') spec.data.case.value = built.data;
-          spec.title = String(spec.title || '').replace(/ \u2014 sample of .*$/, '');
-          // The time panel's axis limits follow the complete data (same rule as the server's _time_limits).
-          const timeEntry = (currentPayload.derived || []).filter(function (d) { return d.kind === 'time'; })[0];
-          if (timeEntry && spec.panels && spec.panels.time && spec.panels.time.config) {
-            const stamps = built.data.y.data[built.data.y.vars.indexOf(timeEntry.name)] || [];
-            let low = null, high = null;
-            stamps.forEach(function (ms) {
-              if (ms === null) return;
-              low = low === null || ms < low ? ms : low;
-              high = high === null || ms > high ? ms : high;
-            });
-            if (low !== null) {
-              const pad = Math.max(Math.floor((high - low) * 0.02), 43200000);
-              spec.panels.time.config.setMinX = low - pad;
-              spec.panels.time.config.setMaxX = high + pad;
-            }
-          }
-          renderDashboardSpec(spec);
-          // Save / Open in Builder must carry the full table, not the sample.
-          currentPayload = Object.assign({}, currentPayload, { spec: spec });
-          saved = null;
-          loadedFull = true;
-          refreshInsights();
-          setPending(false);
-          setSampleMessage('Showing all ' + fmt(built.rows) + ' rows from ' + file.name + '.', false);
-        } catch (err) {
-          setSampleMessage('Could not load that file: ' + (err.message || err), true);
-        }
-      };
-      reader.readAsText(file);
-    }
-
-    document.addEventListener('dragover', function (e) {
-      if (!sampleInfo || !canLoadFull(currentPayload && currentPayload.spec)) return;
-      e.preventDefault();
-      document.getElementById('cx-sample').classList.add('drop');
-    });
-    document.addEventListener('dragleave', function () { document.getElementById('cx-sample').classList.remove('drop'); });
-    document.addEventListener('drop', function (e) {
-      document.getElementById('cx-sample').classList.remove('drop');
-      if (!sampleInfo || !canLoadFull(currentPayload && currentPayload.spec)) return;
-      e.preventDefault();
-      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (file) loadFullFile(file);
-    });
 
     // ------------------------------------------------------------------------------------------
     // Insights: what stands out in the COMPLETE data, computed here (never from a sample).
@@ -806,10 +555,12 @@
       const box = document.getElementById('cx-insights');
       const spec = currentPayload && currentPayload.spec;
       const data = sampleData(spec);
-      if (!data || sampleInfo && !loadedFull) { hideInsights(); return; }
+      if (!data) { hideInsights(); return; }
       let captions = [];
       try {
-        captions = computeInsights(data, spec.insights && spec.insights.thresholds, currentPayload.derived);
+        // Columns looked up from another file are the same for every row of a group: not a finding.
+        const lookups = ((currentPayload.joined && currentPayload.joined.lookup_columns) || []).map(function (n) { return { name: n }; });
+        captions = computeInsights(data, spec.insights && spec.insights.thresholds, (currentPayload.derived || []).concat(lookups));
       } catch (e) { console.warn('[cx-dashboard-view] insights failed:', e); }
       if (!captions.length) { hideInsights(); return; }
       box.textContent = '';
@@ -884,15 +635,12 @@
           skipResult('Dashboard spec is invalid:\n  - ' + payload.errors.join('\n  - '));
           return;
         }
-        if (payload && payload.sample && payload.spec) {
-          // Designed from a SAMPLE: never drawn from it. The dashboard appears once the complete file is loaded.
-          clearDashboard();
-          const waiting = document.getElementById('cx-wait'); if (waiting) waiting.remove();
-          showToolbar(payload);
-          showSample(payload.sample, payload.spec, payload);
+        if (payload && payload.sample) {
+          // A sample is never drawn. (The server no longer returns one; this guards an older server.)
+          showError('This dashboard was designed from a sample of the table, and it is never drawn from a sample. ' +
+            'Ask for it again with every row of the table.');
           return;
         }
-        hideSample();
         renderDashboardSpec(spec);
         const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
         if (payload && payload.spec) showToolbar(payload);

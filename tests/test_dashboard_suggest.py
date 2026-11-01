@@ -546,23 +546,17 @@ def test_kpi_skips_columns_that_round_to_nothing_on_a_whole_number_ring():
 
 
 # ---------------------------------------------------------------------------
-# total_rows: the caller declares a sample; rows are never dropped or refused.
+# total_rows: the full table's row count. A call that sends fewer rows (a sample) is refused.
 # ---------------------------------------------------------------------------
-def test_total_rows_labels_the_sample_and_changes_nothing_else():
-    plain = sg.suggest(copy.deepcopy(QC_TABLE_BIG))
-    sampled = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=600)
-    assert sampled["sample"]["rows"] == 60 and sampled["sample"]["total_rows"] == 600
-    assert sampled["sample"]["percent"] == 10.0
-    assert sampled["sample"]["note"].startswith("Designed from a sample of 60 of 600 rows (10%)")
-    assert "never drawn from the sample" in sampled["sample"]["note"]
-    assert sampled["spec"]["title"] == plain["spec"]["title"]            # the saved dashboard is not labelled a sample
-    assert "Designed from a sample of 60 of 600 rows" in sampled["reason"]
-    assert [p["id"] for p in sampled["panels"]] == [p["id"] for p in plain["panels"]]
-    assert "sample" not in plain
+def test_a_sample_is_refused_so_the_dashboard_is_only_drawn_from_all_the_data():
+    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=600)
+    assert result["suggested"] is False and "sample" not in result and "spec" not in result
+    assert "You sent 60 of the table's 600 rows" in result["error"] and "every row" in result["error"]
 
 
-def test_total_rows_equal_to_the_rows_sent_is_not_a_sample():
-    assert "sample" not in sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=60)
+def test_total_rows_equal_to_the_rows_sent_is_accepted():
+    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=60)
+    assert result["suggested"] and "sample" not in result
 
 
 def test_total_rows_errors_are_specific():
@@ -572,14 +566,13 @@ def test_total_rows_errors_are_specific():
     assert "bundled dataset" in sg.suggest(dataset="iris", total_rows=500)["error"]
 
 
-def test_tool_text_asks_for_a_15_to_20_percent_sample_and_the_total():
+def test_tool_text_asks_for_every_row_and_never_a_sample():
     import asyncio
     import server
     text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
-    assert "COMPLETE table" in text and "15-20%" in text and "total_rows" in text and "up to 200 rows" in text
-    assert "ALWAYS build the dashboard from the COMPLETE table" in text and "ONLY to explore which dashboard to build" in text
-    assert "never drawn from the sample" in text and "never describe sample numbers as results" in text
-    assert "Never truncate to the first rows" in text
+    assert "ALWAYS build the dashboard from the COMPLETE table: send EVERY row, never a sample" in text
+    assert "total_rows" in text and "refused" in text
+    assert "15-20%" not in text and "Load" not in text
 
 
 def _qc_rows(n):
@@ -685,12 +678,6 @@ def test_a_table_too_wide_for_the_standard_orientation_gets_no_time_panel():
     assert "time" not in sg.suggest(wide).get("spec", {}).get("panels", {})
 
 
-def test_the_sample_ceiling_is_in_the_tool_text():
-    import asyncio
-    import server
-    text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
-    assert "never fewer than 200 and never more than 300" in text
-
 
 def test_a_header_text_panel_sits_on_top_with_a_bold_title_and_a_short_description():
     result = sg.suggest(copy.deepcopy(QC_TABLE_BIG), title="Run <QC> & more")
@@ -703,8 +690,3 @@ def test_a_header_text_panel_sits_on_top_with_a_bold_title_and_a_short_descripti
     assert "Per-sample sequencing QC" in panel["html"] and "rows and" in panel["html"] and "Filters panel" in panel["html"]
     assert all(i["y"] >= 3 for i in result["spec"]["layout"]["items"] if i["panel"] != "intro")
     assert "Charts: Rows" not in panel["html"] and "Charts: " in panel["html"]       # the cards are not listed as charts
-
-
-def test_the_header_states_the_complete_row_count_when_designed_from_a_sample():
-    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=5000)
-    assert "5,000 rows" in result["spec"]["panels"]["intro"]["html"]

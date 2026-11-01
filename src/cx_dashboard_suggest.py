@@ -806,17 +806,16 @@ _INTRO_H = 3
 _INTRO_KINDS = {"cohort": "Survival cohort", "ngs-qc": "Per-sample sequencing QC"}
 
 
-def _intro_html(title: str, suggestion: dict, data: dict, total_rows: Optional[int]) -> str:
+def _intro_html(title: str, suggestion: dict, data: dict, sources: Optional[dict] = None) -> str:
     """The header panel: the title in bold, larger text, then a brief description built from the
-    template, the table's size and the titles of the chart panels (the table's row count is the
-    complete file's when only a sample was sent)."""
+    template, the table's size and the titles of the chart panels."""
     columns = _describe_columns(data)
-    rows = total_rows if total_rows is not None else len((data.get("y") or {}).get("smps") or [])
+    rows = len((data.get("y") or {}).get("smps") or [])
     kind = _INTRO_KINDS.get(suggestion.get("template"), "Table")
     titles = [p["title"] for p in suggestion["panels"]
-              if p.get("title") and p.get("type") != "filters" and not p["id"].startswith("kpi-")
+              if p.get("title") and p.get("type") != "filters" and not p["id"].startswith("kpi-") and p["id"] != "case"
               and (p.get("config") or {}).get("graphType")]
-    shown = titles[:4]
+    shown = titles[:3]
     charts = ""
     if shown:
         charts = " " + ", ".join(shown[:-1]) + (" and " if len(shown) > 1 else "") + shown[-1] + (
@@ -825,15 +824,20 @@ def _intro_html(title: str, suggestion: dict, data: dict, total_rows: Optional[i
     text = ("%s of %s rows and %d columns. The cards summarise the whole table.%s "
             "Select in any chart or use the Filters panel to narrow every panel at once." % (
                 kind, format(rows, ","), len(columns), charts))
+    if sources:
+        files = ", ".join("%s (%s rows)" % (t["name"], format(t["rows"], ",")) for t in sources["tables"])
+        text += " Built from %d related files: %s, joined on %s." % (
+            len(sources["tables"]), files, " and ".join('"%s"' % j["key"] for j in sources["joins"]))
     return ('<div style="font-weight: 700; font-size: 25px">' + html.escape(title) + '</div>'
             '<div style="font-size: 16px; color: var(--cxd-muted)">' + html.escape(text) + '</div>')
 
 
-def _with_intro(suggestion: dict, title: str, data: dict, total_rows: Optional[int]) -> dict:
+def _with_intro(suggestion: dict, title: str, data: dict, sources: Optional[dict] = None) -> dict:
+    height = _INTRO_H + 1 if sources else _INTRO_H          # the list of files needs a line more
     for panel in suggestion["panels"]:
-        panel["y"] = panel["y"] + _INTRO_H
+        panel["y"] = panel["y"] + height
     suggestion["panels"] = [{"id": "intro", "type": "text", "title": "", "x": 0, "y": 0, "w": _GRID_COLS,
-                             "h": _INTRO_H, "html": _intro_html(title, suggestion, data, total_rows)}
+                             "h": height, "html": _intro_html(title, suggestion, data, sources)}
                             ] + suggestion["panels"]
     return suggestion
 
@@ -847,6 +851,7 @@ def _with_intro(suggestion: dict, title: str, data: dict, total_rows: Optional[i
 # ---------------------------------------------------------------------------
 _ISO_DATETIME_RE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$")
 _MAX_PERIOD_LEVELS = 12
+_MIN_DISTINCT_DATES = 8
 
 
 def _iso_to_ms(value: Any) -> Optional[int]:
@@ -907,6 +912,8 @@ def _find_date_column(annotations: dict) -> Optional[str]:
     for name, values in annotations.items():
         present = [v for v in values if not _is_missing(v) and v != "NA"]
         if len(present) >= 3 and sum(1 for v in present if _iso_to_ms(v) is not None) / len(present) >= 0.9:
+            if len({_iso_to_ms(v) for v in present}) < _MIN_DISTINCT_DATES:
+                continue                    # a handful of dates (a run date per batch) is a group, not a time axis
             return name
     return None
 
@@ -1086,6 +1093,105 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-") or "dashboard"
 
 
+# ---------------------------------------------------------------------------
+# Several related files -> one table. The file with the most rows is the base; every other file is a
+# lookup table joined on a column both have (the column must identify one row of the lookup file).
+# The base keeps every row (a left join), so the dashboard is still drawn from all of its data.
+# ---------------------------------------------------------------------------
+def _key_text(value: Any) -> str:
+    if isinstance(value, float) and value == int(value):
+        value = int(value)
+    return str(value).strip()
+
+
+def _check_table_shape(index: int, table: Any) -> "tuple[str, list, Optional[str]]":
+    if not isinstance(table, dict) or not isinstance(table.get("data"), list):
+        return "", [], ('tables[%d] must be {"name": "...", "data": [[column names], [row], ...]}: the name of the '
+                        "file and its complete table." % index)
+    name = str(table.get("name") or "table%d" % (index + 1)).strip()
+    rows = table["data"]
+    if len(rows) < 2 or not all(isinstance(r, (list, tuple)) for r in rows):
+        return name, [], 'The table "%s" needs a header row and at least one data row.' % name
+    headers = [str(h).strip() for h in rows[0]]
+    if len(set(headers)) != len(headers) or "" in headers:
+        return name, [], 'The header row of "%s" must have unique, non-empty column names.' % name
+    return name, [headers] + [list(r) + [None] * (len(headers) - len(r)) for r in rows[1:]], None
+
+
+def join_tables(tables: Any) -> "tuple[Optional[list], Optional[dict], Optional[str]]":
+    """Join related tables into one headers+rows table: ``(rows, info, error)``.
+
+    ``tables`` is ``[{"name": ..., "data": [[headers], [row], ...]}, ...]`` (two to six files). The
+    table with the most rows is the base and keeps every row; each other table is joined on a column
+    name it shares with the table built so far, provided that column identifies one row of it (a
+    one-to-many relation is read from the many side, so a patient file is never multiplied by its
+    visits). Columns that already exist are renamed ``"<column> (<file>)"``."""
+    if not isinstance(tables, list) or not 2 <= len(tables) <= 6:
+        return None, None, ("tables must be a list of two to six files, each "
+                            '{"name": "...", "data": [[column names], [row], ...]}.')
+    parsed = []
+    for index, table in enumerate(tables):
+        name, rows, error = _check_table_shape(index, table)
+        if error:
+            return None, None, error
+        parsed.append({"name": name, "rows": rows})
+    if len({t["name"] for t in parsed}) != len(parsed):
+        return None, None, "Give every file its own name."
+    parsed.sort(key=lambda t: -len(t["rows"]))        # stable: the first of equal sizes stays first
+    base, lookups = parsed[0], parsed[1:]
+    headers = list(base["rows"][0])
+    body = [list(r) for r in base["rows"][1:]]
+    info: dict = {"base": base["name"], "tables": [{"name": t["name"], "rows": len(t["rows"]) - 1,
+                                                     "columns": len(t["rows"][0])} for t in parsed], "joins": []}
+    while lookups:
+        placed = None
+        for table in lookups:
+            lower = {h.lower(): i for i, h in enumerate(headers)}
+            shared = [(lower[h.lower()], j, h) for j, h in enumerate(table["rows"][0]) if h.lower() in lower]
+            for have, there, header in shared:
+                keys = [_key_text(r[there]) for r in table["rows"][1:] if r[there] not in (None, "")]
+                if len(set(keys)) != len(keys):
+                    continue                          # not a lookup key: it repeats within this file
+                placed = (table, have, there, header)
+                break
+            if placed:
+                break
+        if not placed:
+            left = ", ".join('"%s" (%s)' % (t["name"], ", ".join(t["rows"][0])) for t in lookups)
+            return None, None, ("Cannot relate %s to the other files: no column name is shared and unique in it. "
+                                "Name the key column the same in every file that has it, and send the file with "
+                                "one row per key (a lookup table)." % left)
+        table, have, there, header = placed
+        lookups.remove(table)
+        index = {}
+        for r in table["rows"][1:]:
+            if r[there] not in (None, ""):
+                index[_key_text(r[there])] = r
+        extra = [j for j in range(len(table["rows"][0])) if j != there]
+        taken = {h.lower() for h in headers}
+        names = []
+        for j in extra:
+            name = table["rows"][0][j]
+            if name.lower() in taken:
+                name = "%s (%s)" % (name, table["name"])
+            taken.add(name.lower())
+            names.append(name)
+        matched = 0
+        for row in body:
+            hit = index.get(_key_text(row[have])) if row[have] not in (None, "") else None
+            matched += hit is not None
+            row.extend([hit[j] if hit is not None else None for j in extra])
+        if matched == 0:
+            return None, None, ('No row of "%s" matches "%s" on the column "%s": check that the key values agree '
+                                "in both files." % (base["name"], table["name"], header))
+        headers.extend(names)
+        info["joins"].append({"table": table["name"], "key": header, "matched": matched,
+                              "unmatched": len(body) - matched})
+    info["rows"] = len(body)
+    info["lookup_columns"] = [h for h in headers if h not in base["rows"][0]]
+    return [headers] + body, info, None
+
+
 def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], Optional[str]]":
     """The data object for a ``suggest`` call, or an error message. Exactly one of ``data``
     (a ``{y, x}`` object or a headers+rows array) and ``dataset`` (a bundled name) is required."""
@@ -1114,14 +1220,23 @@ def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], 
 
 def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] = None,
             thresholds: Optional[list] = None, dataset: Optional[str] = None,
-            force: bool = False, total_rows: Optional[int] = None) -> dict:
+            force: bool = False, total_rows: Optional[int] = None, tables: Optional[list] = None) -> dict:
     """The MCP-facing result: the suggestion, the validated spec, and a usage snippet — or a
     plain "nothing fits" answer pointing at the composing tools. ``dataset`` names a bundled
     sample (see ``cx_datasets``); ``data`` may be a data object or a headers+rows array.
     ``force`` skips the templates and builds the minimal dashboard (see ``_force_template``); a
-    caller uses it only after its corrected attempts have failed. ``total_rows`` declares that ``data``
-    is a sample of a larger table: the result then carries ``sample`` and the title says so (rows are
-    never dropped or refused here)."""
+    caller uses it only after its corrected attempts have failed. ``total_rows`` is the row count of the
+    full table: a call that sends fewer rows is refused, because a dashboard is only drawn from all of
+    the data (a sample is never drawn). ``tables`` is several related files (see ``join_tables``)
+    joined into the one table the dashboard is built from, instead of ``data``."""
+    sources = None
+    if tables is not None:
+        if data is not None or dataset is not None or total_rows is not None:
+            message = "Pass tables on its own: not together with data, dataset or total_rows."
+            return {"suggested": False, "error": message, "reason": message}
+        data, sources, message = join_tables(tables)
+        if message:
+            return {"suggested": False, "error": message, "reason": message}
     count_only = False
     if force and isinstance(data, list) and len(data) >= 2 and all(isinstance(r, (list, tuple)) for r in data):
         import cx_datasets  # local import, as in _resolve_input
@@ -1172,22 +1287,19 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
     from cx_dashboard import _usage_snippet, builder_base_url  # local import: cx_dashboard owns the snippet text
 
     rows_received = max(len(_table_from_data(data)) - 1, 0)
-    sample = None
     if total_rows is not None:
         if total_rows < rows_received:
             message = ("total_rows (%d) is smaller than the %d rows you sent: it is the number of rows in "
                        "the FULL table." % (total_rows, rows_received))
             return {"suggested": False, "error": message, "reason": message}
         if total_rows > rows_received:
-            sample = {"rows": rows_received, "total_rows": total_rows,
-                      "percent": round(100.0 * rows_received / total_rows, 1),
-                      "note": "Designed from a sample of %s of %s rows (%.0f%%). The dashboard is never drawn from "
-                              "the sample: it appears when the user loads the complete file in the view." % (
-                                  format(rows_received, ","), format(total_rows, ","),
-                                  100.0 * rows_received / total_rows)}
+            message = ("You sent %s of the table's %s rows. A dashboard is only drawn from ALL of the data, never "
+                       "from a sample: call this tool again with every row of the table." % (
+                           format(rows_received, ","), format(total_rows, ",")))
+            return {"suggested": False, "error": message, "reason": message}
     suggestion = _with_kpi_row(suggestion, data)
     suggestion, derived = _with_time_axis(suggestion, data)
-    suggestion = _with_intro(suggestion, title or suggestion["label"], data, total_rows)
+    suggestion = _with_intro(suggestion, title or suggestion["label"], data, sources)
     dash_id = _slug(title or suggestion["label"])
     spec = dashboard_spec(suggestion, dash_id, data, title=title, theme=theme, thresholds=thresholds)
     result = validate_spec(spec)
@@ -1207,9 +1319,8 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
     }
     if derived:
         out["derived"] = derived
-    if sample:
-        out["sample"] = sample
-        out["reason"] = out["reason"] + " " + sample["note"]
+    if sources:
+        out["joined"] = sources
     if result.get("warnings"):
         out["warnings"] = result["warnings"]
     return out

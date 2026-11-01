@@ -5,6 +5,11 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Several related files, one dashboard.** New `tables` argument on `suggest_canvasxpress_dashboard`: 2 to 6 complete
+  files (for example orders, customers and products). The file with the most rows is the base and keeps every row; the
+  others are looked up on a column name they share (that column must identify one row of the lookup file, so a patient
+  file is never multiplied by its visits). One dashboard is built from the joined table, the header lists the files and
+  the insights strip ignores columns that came from a lookup file. Errors say which file could not be related and why.
 - **Header panel.** Every suggested dashboard starts with a full-width text panel: the title in bold, larger text and a
   short description (kind of table, complete row and column count, the charts it holds), like the Cohort Explorer.
 - **Over time.** A table with an ISO date column gets a panel of its leading measure over time (real date axis, limits
@@ -12,19 +17,14 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
   file it loads (`derived` in the result). Slash dates are never guessed.
 - **What stands out.** An insights strip computed in the dashboard view from the complete data (never a sample): declared
   limits, a group far from the overall average (for example the one lane with low % Mapped) and extreme values.
-- The design sample is now 15-20% of the rows, never fewer than 200 and never more than 300 (a larger sample only
-  makes the model's call slower).
 - **KPI row.** Every suggested dashboard starts with one row of up to four round cards: Rows, then the average of up to
   three measures (the template's own metrics for QC and survival tables). Headers are humanized column names; the
   cards follow the filters. Added after the template is chosen, so the detection is unchanged.
-- **Always the complete data; a sample is only used to design.** New `total_rows` on `suggest_canvasxpress_dashboard`:
-  a table over 200 rows is explored with a 15-20% sample (never fewer than 200) and the dashboard view draws **nothing**
-  from it. It says the dashboard is designed, keeps Save and Open in Builder off, and asks for the complete file; the
-  view's **Load full file...** (or drag and drop) parses the complete CSV/TSV in the page, never through the model, and
-  the dashboard is drawn only then, from every row. Tool text: always the complete table; never truncate to the first
-  rows; never describe sample numbers as results.
+- **Always the complete data, never a sample.** The tool text asks for every row; a call whose `total_rows` is larger than
+  the rows sent is refused and the model is told to send them all. The dashboard view has no file loader, no banner and
+  no "Load full file" button: it draws what the tool returned.
 - `tests/test_dashboard_view_insights.py` checks the insights maths (a planted bad group, pure noise, limits, outliers),
-  that the view's name, date and period handling matches the server's, and the full-file load with dates.
+  and that the view's name humanizing matches the server's.
 - `tests/test_detection_pinned.py` pins the survival / QC / batch / group vocabulary, the thresholds and the template
   chosen for the reference tables. `tests/test_dashboard_view_sample.py` tests that a sample is never drawn and the full-file load in a
   browser (set `CX_TEST_ENGINE` and `CX_TEST_DASHBOARDS`).

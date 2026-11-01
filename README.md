@@ -1090,17 +1090,19 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 | Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
 | Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
 
-**Always the complete data.** A dashboard is never drawn from a sample. A table of up to 200 rows is sent whole and
-drawn at once. A larger table is too slow to write into a tool call (1,500 rows is about 37,000 tokens, roughly ten
-minutes), so the model sends a representative sample of about 15-20% of the rows, never fewer than 200 and never more
-than 300 (every outlier plus a random fill), **only to explore which dashboard to build**, and passes `total_rows`, the size of the full table.
-The view then draws **nothing** from the sample: it says the dashboard is designed and asks for the complete file, with
-Save and Open in Builder off. The user picks the file with **Load full file...** (or drops it on the view); it is parsed
-in the page, so it never goes through the model, shaped like the sample (the same numeric and annotation columns, rows
-numbered 1 to N) and swapped into the same dashboard, so every panel keeps its configuration. The dashboard is drawn
-only then, from all the rows, and Save works with the full table in the saved spec. A file that lacks a column the
-dashboard uses is refused with the names. Rows are never dropped or refused by the server; `total_rows` only says that
-`data` is a sample.
+**Always the complete data.** A dashboard is drawn from every row of the table and never from a sample: the tool
+text tells the model to send every row, and a call that declares more rows in `total_rows` (the size of the full table)
+than it sends is refused with a message that says so. The view has no file loader and no banner: it draws what the
+tool returned.
+
+**Several related files.** Pass `tables` instead of `data`: `[{"name": "orders", "data": [[headers], [row], ...]},
+{"name": "customers", "data": [...]}, {"name": "products", "data": [...]}]` (2 to 6 complete files). The file with the
+most rows is the base and keeps every row; each other file is a lookup joined on a column name they share, and that
+column must identify one row of the lookup file (a one-to-many relation is read from the many side, so a patient file is
+never multiplied by its visits). Existing names are kept and a clashing column is renamed `<column> (<file>)`. The
+template detection then runs on the joined table, the header lists the files, and the insights strip skips columns
+that came from a lookup file (they are the same for every row of a group, so they cannot be a finding). The result
+carries `joined` (base, rows per file, the key of each join, matched and unmatched rows).
 
 **Header.** A full-width text panel across the top: the title in bold, larger text, then a short description (kind of
 table, the complete row and column count, the charts it holds). Like the Cohort Explorer example.
@@ -1144,8 +1146,8 @@ inferred, only the ones you declare are checked, e.g.
 
 **Input:** `data?` (CanvasXpress data object or headers+rows array), `dataset?` (`penguins` | `iris` |
 `mtcars`), `title?`, `theme?` (`light` | `dark` | `auto`), `thresholds?` (limits to flag in the
-insights strip), `total_rows?` (only when `data` is a sample used to explore: the rows in the full table),
-`force?` (only after 5 failed attempts: the filter-plus-bars dashboard above). Exactly one of `data` / `dataset`.
+insights strip), `tables?` (several related files, see above, instead of `data`), `total_rows?` (the rows in the full table; fewer sent is refused),
+`force?` (only after 5 failed attempts: the filter-plus-bars dashboard above). Exactly one of `data` / `dataset` / `tables`.
 
 **Response:** `{"suggested": true, "template": "cohort" | "ngs-qc" | "explore" | "minimal", "label", "reason",
 "panels": [{id, title, graphType}], "spec": {...}, "valid": true, "errors": [], "usage": "<html snippet>"}`.
