@@ -31,6 +31,11 @@ canvasxpress-upload -- python3 .../cx_upload.py`) works the same way.
 
 `CX_UPLOAD_URL` points the tool at another CanvasXpress MCP server (`http://host:8100/mcp/upload`).
 
+**macOS protected folders.** Downloads, Desktop, Documents and iCloud Drive are guarded by macOS: the python process
+Claude Desktop starts cannot read them until you allow it once in System Settings → Privacy & Security → Files and
+Folders → Claude (or give Claude Full Disk Access). Until then the tool answers with that instruction instead of a
+link; a file anywhere else (for example `~/cx-data/`) needs no grant.
+
 ## Test
 
 ```

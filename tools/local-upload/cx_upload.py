@@ -42,8 +42,16 @@ def upload(path: str) -> dict:
     size = os.path.getsize(full)
     if size > MAX_BYTES:
         return {"error": "file larger than 50 MB (%d bytes)" % size}
-    with open(full, "rb") as handle:
-        raw = handle.read()
+    try:
+        with open(full, "rb") as handle:
+            raw = handle.read()
+    except PermissionError:
+        return {"error": ("macOS does not let this upload server read %s. Protected folders (Downloads, Desktop, "
+                          "Documents, iCloud) need a one-time grant: System Settings > Privacy & Security > Files "
+                          "and Folders > Claude > turn on that folder (or Full Disk Access), then retry. Or move "
+                          "the file to a folder that is not protected, e.g. ~/cx-data/." % full)}
+    except OSError as exc:
+        return {"error": "could not read %s: %s" % (full, exc)}
     url = UPLOAD_URL + ("&" if "?" in UPLOAD_URL else "?") + "name=" + urllib.parse.quote(os.path.basename(full))
     request = urllib.request.Request(url, data=raw, method="POST",
                                      headers={"Content-Type": "text/plain; charset=utf-8", "User-Agent": "canvasxpress-upload/1.0"})
@@ -74,7 +82,10 @@ def handle(message: dict):
         params = message.get("params", {})
         if params.get("name") != "upload_csv":
             return {"content": [{"type": "text", "text": json.dumps({"error": "unknown tool"})}], "isError": True}
-        out = upload(str(params.get("arguments", {}).get("path", "")))
+        try:
+            out = upload(str(params.get("arguments", {}).get("path", "")))
+        except Exception as exc:  # noqa: BLE001  (never let one call take the server down)
+            out = {"error": "upload_csv failed: %s" % exc}
         return {"content": [{"type": "text", "text": json.dumps(out)}], "isError": "error" in out}
     if method == "ping":
         return {}
@@ -94,7 +105,10 @@ def main():
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             continue
-        result = handle(message)
+        try:
+            result = handle(message)
+        except Exception as exc:  # noqa: BLE001
+            result = {"_error": {"code": -32603, "message": str(exc)}}
         if result is None or message.get("id") is None:
             continue
         reply = {"jsonrpc": "2.0", "id": message["id"]}
