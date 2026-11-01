@@ -24,8 +24,9 @@ TOOL = {
     "description": (
         "Send a CSV/TSV file from this computer to the CanvasXpress server and get a link to it (valid 30 "
         "minutes). Use it FIRST whenever a dashboard or chart is wanted from a local file: pass the file's "
-        "path, then call suggest_canvasxpress_dashboard with the returned url. Never read the file and type its "
-        "rows into a tool call instead."
+        "path, then call suggest_canvasxpress_dashboard with the returned url. The user approves each upload in a "
+        "dialog on their screen (and picks the file there if macOS blocks reading it), so tell them a dialog will "
+        "appear. Never read the file and type its rows into a tool call instead."
     ),
     "inputSchema": {
         "type": "object",
@@ -35,6 +36,61 @@ TOOL = {
 }
 
 
+def _osascript(script: str):
+    """Run an AppleScript (macOS only); returns its output, or None when cancelled/unavailable."""
+    import subprocess
+    if sys.platform != "darwin":
+        return None
+    try:
+        done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+    except Exception:  # noqa: BLE001
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _quote(text: str) -> str:
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def ask_to_send(name: str, size: int) -> bool:
+    """A native dialog over the chat: the person allows this one upload. Nothing is sent without it.
+    On a platform without the dialog the upload proceeds (CX_UPLOAD_ASK=0 also skips the dialog)."""
+    if os.environ.get("CX_UPLOAD_ASK", "1") in ("0", "false", "no") or sys.platform != "darwin":
+        return True
+    host = urllib.parse.urlparse(UPLOAD_URL).hostname or UPLOAD_URL
+    out = _osascript(
+        'display dialog %s with title "CanvasXpress upload" buttons {"Don\'t allow", "Allow"} '
+        'default button "Allow" with icon note' % _quote(
+            "Claude asks to send %s (%s KB) to %s to build a dashboard from it. The file is kept there for 30 "
+            "minutes and nothing else is read." % (name, max(1, size // 1024), host)))
+    return bool(out) and "Allow" in out and "Don" not in out
+
+
+def choose_file(full: str):
+    """The standard macOS file chooser, pointed at the file: a file the person picks is readable without any
+    settings change (macOS counts the choice as consent for that one file). None when cancelled."""
+    folder, name = os.path.split(full)
+    return _osascript(
+        'POSIX path of (choose file with prompt %s default location (POSIX file %s))' % (
+            _quote("macOS does not let Claude read %s on its own. Choose it to allow this one file." % name),
+            _quote(folder)))
+
+
+def read_file(full: str) -> tuple:
+    """(bytes, path actually read) or raises OSError; a blocked read is retried through the file chooser."""
+    try:
+        with open(full, "rb") as handle:
+            return handle.read(), full
+    except PermissionError:
+        chosen = choose_file(full)
+        if not chosen:
+            raise PermissionError("macOS blocks reading %s and no file was chosen in the dialog. Choose the file "
+                                  "in the dialog next time, or move it out of a protected folder (Downloads, "
+                                  "Desktop, Documents)." % full)
+        with open(chosen, "rb") as handle:
+            return handle.read(), chosen
+
+
 def upload(path: str) -> dict:
     full = os.path.expanduser(os.path.expandvars(path.strip().strip("'\"")))
     if not os.path.isfile(full):
@@ -42,16 +98,13 @@ def upload(path: str) -> dict:
     size = os.path.getsize(full)
     if size > MAX_BYTES:
         return {"error": "file larger than 50 MB (%d bytes)" % size}
+    if not ask_to_send(os.path.basename(full), size):
+        return {"error": "The user did not allow sending %s. Do not retry and do not type the file's rows; "
+                         "tell the user the upload was declined." % os.path.basename(full)}
     try:
-        with open(full, "rb") as handle:
-            raw = handle.read()
-    except PermissionError:
-        return {"error": ("macOS does not let this upload server read %s. Protected folders (Downloads, Desktop, "
-                          "Documents, iCloud) need a one-time grant: System Settings > Privacy & Security > Files "
-                          "and Folders > Claude > turn on that folder (or Full Disk Access), then retry. Or move "
-                          "the file to a folder that is not protected, e.g. ~/cx-data/." % full)}
+        raw, full = read_file(full)
     except OSError as exc:
-        return {"error": "could not read %s: %s" % (full, exc)}
+        return {"error": "could not read the file: %s" % exc}
     url = UPLOAD_URL + ("&" if "?" in UPLOAD_URL else "?") + "name=" + urllib.parse.quote(os.path.basename(full))
     request = urllib.request.Request(url, data=raw, method="POST",
                                      headers={"Content-Type": "text/plain; charset=utf-8", "User-Agent": "canvasxpress-upload/1.0"})
