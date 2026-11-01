@@ -442,8 +442,16 @@ def test_force_needs_a_data_row():
     assert result["suggested"] is False and result["error"]
 
 
-def test_an_object_without_y_gets_an_error_that_names_the_accepted_shapes():
-    result = sg.suggest({"headers": QC_TABLE[0], "rows": QC_TABLE[1:]})
+def test_headers_and_rows_as_an_object_or_as_row_objects_are_read_as_the_same_table():
+    plain = sg.suggest(copy.deepcopy(QC_TABLE_BIG))
+    as_object = sg.suggest({"headers": QC_TABLE_BIG[0], "rows": copy.deepcopy(QC_TABLE_BIG[1:])})
+    as_records = sg.suggest([dict(zip(QC_TABLE_BIG[0], r)) for r in QC_TABLE_BIG[1:]])
+    for other in (as_object, as_records):
+        assert other["suggested"] and other["spec"] == plain["spec"]
+
+
+def test_an_object_without_y_or_headers_gets_an_error_that_names_the_accepted_shapes():
+    result = sg.suggest({"values": [1, 2, 3]})
     assert result["suggested"] is False
     assert "list of lists" in result["error"] and "headers" in result["error"]
 

@@ -3605,7 +3605,7 @@ def compose_canvasxpress_dashboard(
 @mcp.tool(
     description=(
         "One call for any dashboard request. Pass dataset (penguins, iris, mtcars) or data "
-        "(object or headers+rows). Returns a validated linked spec rendered inline by the "
+        "(a list of lists with the column names first, or an object with headers and rows). Returns a validated linked spec rendered inline by the "
         "dashboard view. "
         "The result renders itself as a live interactive dashboard (with Save and Open in Builder) in "
         "the dashboard view: do not show the JSON, do not redraw it in an HTML widget, do not change "
@@ -3650,7 +3650,7 @@ def suggest_canvasxpress_dashboard(
                 file). One dashboard is built from the joined table. Not together with data or dataset.
         data: The table, when not using a bundled dataset: a CanvasXpress data object
               {"y": {"vars", "smps", "data"}, "x"?, "z"?} (rows are samples when there are no
-              more variables than samples), or a headers+rows array (first row = headers;
+              more variables than samples), or a list of lists (the first list = the column names, then one list per row), or {"headers": [...], "rows": [[...]]} or a list of row objects (
               numeric columns become measures, the rest factors; "NA" is missing).
         title: Optional dashboard title (default: the template's name).
         theme: Optional "light", "dark" or "auto".

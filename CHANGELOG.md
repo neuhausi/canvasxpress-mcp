@@ -5,6 +5,9 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **More forgiving input.** `suggest_canvasxpress_dashboard` also reads a table sent as `{"headers": [...], "rows": [[...]]}`
+  or as a list of row objects (the shapes models often send), for `data` and for every file in `tables`; the tool text
+  now names the accepted shapes.
 - **Several related files, one dashboard.** New `tables` argument on `suggest_canvasxpress_dashboard`: 2 to 6 complete
   files (for example orders, customers and products). The file with the most rows is the base and keeps every row; the
   others are looked up on a column name they share (that column must identify one row of the lookup file, so a patient

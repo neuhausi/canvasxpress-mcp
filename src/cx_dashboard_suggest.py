@@ -1098,6 +1098,20 @@ def _slug(text: str) -> str:
 # lookup table joined on a column both have (the column must identify one row of the lookup file).
 # The base keeps every row (a left join), so the dashboard is still drawn from all of its data.
 # ---------------------------------------------------------------------------
+def _as_table(value: Any) -> Any:
+    """A table sent as ``{"headers": [...], "rows": [[...], ...]}`` or as a list of row objects
+    (``[{"col": v, ...}, ...]``) becomes the headers+rows list of lists; anything else is unchanged."""
+    if isinstance(value, dict) and isinstance(value.get("headers"), list) and isinstance(value.get("rows"), list) \
+            and not isinstance(value.get("y"), dict):
+        return [list(value["headers"])] + [list(r) if isinstance(r, (list, tuple)) else r for r in value["rows"]]
+    if isinstance(value, list) and value and all(isinstance(r, dict) for r in value):
+        names: list = []
+        for row in value:
+            names.extend(k for k in row if k not in names)
+        return [names] + [[row.get(k) for k in names] for row in value]
+    return value
+
+
 def _key_text(value: Any) -> str:
     if isinstance(value, float) and value == int(value):
         value = int(value)
@@ -1209,8 +1223,8 @@ def _resolve_input(data: Any, dataset: Optional[str]) -> "tuple[Optional[dict], 
             return None, ("data is an object without a \"y\" entry, so it was not read as a table. Send "
                           "either a list of lists (the first list is the column names, then one list per "
                           "row, numbers as numbers) or a CanvasXpress object {\"y\": {\"vars\": [...], "
-                          "\"smps\": [...], \"data\": [[...]]}, \"x\": {...}}. An object with "
-                          "\"headers\" and \"rows\", or a list of row objects, is not accepted.")
+                          "\"smps\": [...], \"data\": [[...]]}, \"x\": {...}}, or an object with "
+                          "\"headers\" and \"rows\".")
     except KeyError as exc:
         return None, str(exc.args[0])
     except ValueError as exc:
@@ -1230,6 +1244,9 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
     the data (a sample is never drawn). ``tables`` is several related files (see ``join_tables``)
     joined into the one table the dashboard is built from, instead of ``data``."""
     sources = None
+    data = _as_table(data)
+    if isinstance(tables, list):
+        tables = [dict(t, data=_as_table(t.get("data"))) if isinstance(t, dict) else t for t in tables]
     if tables is not None:
         if data is not None or dataset is not None or total_rows is not None:
             message = "Pass tables on its own: not together with data, dataset or total_rows."
