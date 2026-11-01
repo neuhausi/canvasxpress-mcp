@@ -5,6 +5,11 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Large dashboards reach the view.** A dashboard result carries the complete table, so it can run to hundreds of
+  KB, and Claude replaces a tool result that large with an error text the view cannot read (a blank panel). The tool
+  now returns a short result (under 2 KB: template, panels, `result_id`, `parts`) and holds the full one for 30
+  minutes; the view fetches it in pieces through the host (`get_canvasxpress_dashboard_result`) and draws it. A
+  result the host mangled still shows one line in the panel instead of nothing.
 - **More forgiving input.** `suggest_canvasxpress_dashboard` also reads a table sent as `{"headers": [...], "rows": [[...]]}`
   or as a list of row objects (the shapes models often send), for `data` and for every file in `tables`; the tool text
   now names the accepted shapes.

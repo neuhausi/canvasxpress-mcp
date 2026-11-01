@@ -123,6 +123,10 @@
       clearError();
       const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
       console.warn('[cx-dashboard-view] no dashboard:', msg);
+      // One quiet line on screen, never a blank panel.
+      const el = document.getElementById('cx-error');
+      el.textContent = 'No dashboard: ' + msg;
+      el.style.display = 'block';
     }
 
     /** Clear a prior error banner. */
@@ -614,9 +618,53 @@
         try {
           payload = JSON.parse(textBlock.text);
         } catch (e) {
-          skipResult('Failed to parse tool result JSON: ' + e.message);
+          // The host replaced the result with something else (it caps the size of a tool result):
+          // say so on screen, and recover the id of a held result from the text if it is there.
+          const m = /"result_id"\s*:\s*"([A-Za-z0-9_-]+)"/.exec(textBlock.text);
+          if (m) { fetchHeldResult(m[1], 0).then(showPayload, function (err) { showError(err.message || String(err)); }); return; }
+          showError('The host did not pass the dashboard result on to the view (it was replaced by: "' +
+            String(textBlock.text).slice(0, 160) + '...").');
           return;
         }
+        if (payload && payload.result_id && !payload.spec) {
+          // The short result: the full one (the spec with the complete data) is held on the server.
+          const wait = document.getElementById('cx-wait');
+          if (wait) wait.textContent = 'Loading the dashboard (' + (payload.parts || 1) + ' parts)...';
+          fetchHeldResult(payload.result_id, payload.parts || 1).then(function (full) {
+            showPayload(Object.assign({}, payload, full));
+          }, function (err) { showError('Could not fetch the dashboard from the server: ' + (err.message || err)); });
+          return;
+        }
+        showPayload(payload);
+      } catch (err) {
+        showError(err.message || String(err));
+      }
+    }
+
+    /** Fetch a held result in pieces through the host (tools/call) and parse it. */
+    function fetchHeldResult(resultId, parts) {
+      const pieces = [];
+      function one(part) {
+        return sendRequest('tools/call', {
+          name: 'get_canvasxpress_dashboard_result', arguments: { result_id: resultId, part: part },
+        }).then(function (result) {
+          const block = result && result.content && result.content.find(function (c) { return c.type === 'text'; });
+          let out = null;
+          try { out = JSON.parse(block.text); } catch (e) { /* fall through */ }
+          if (!out || out.error) throw new Error((out && out.error) || 'unreadable piece ' + part);
+          pieces.push(out.text);
+          const total = out.parts || parts || 1;
+          const wait = document.getElementById('cx-wait');
+          if (wait) wait.textContent = 'Loading the dashboard (' + (part + 1) + ' of ' + total + ' parts)...';
+          return part + 1 < total ? one(part + 1) : JSON.parse(pieces.join(''));
+        });
+      }
+      return one(0);
+    }
+
+    /** Draw a complete result (the wrapper with its spec, or a bare spec). */
+    function showPayload(payload) {
+      try {
         // suggest_canvasxpress_dashboard can decline when no template fits.
         if (payload && payload.suggested === false) {
           skipResult('No dashboard was suggested: ' +

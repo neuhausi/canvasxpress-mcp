@@ -3668,13 +3668,77 @@ def suggest_canvasxpress_dashboard(
 
     Returns:
         {"suggested": true, "template": "cohort" | "ngs-qc" | "explore", "label", "reason",
-         "panels": [{id, title, graphType}], "spec": {...}, "valid": bool,
-         "errors": [...], "usage": "<html snippet>", "builder_url"}, or {"suggested": false, "reason": "..."}
+         "panels": [{id, title, graphType}], "valid": bool, "errors": [...], "usage": "<html snippet>",
+         "builder_url", "result_id", "parts"} (the spec itself is held on the server and fetched by the
+         dashboard view through get_canvasxpress_dashboard_result), or {"suggested": false, "reason": "..."}
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
-    return cx_dashboard_suggest.suggest(
+    result = cx_dashboard_suggest.suggest(
         data, title=title, theme=theme, thresholds=thresholds, dataset=dataset, force=force,
         total_rows=total_rows, tables=tables)
+    return _hold_dashboard_result(result)
+
+
+# ---------------------------------------------------------------------------------------------
+# A dashboard result carries the complete table, so it can run to hundreds of KB. A host caps the
+# size of a tool result it passes on (Claude replaces a large one with an error text, which the
+# view cannot read), so the tool returns a SHORT result and keeps the full one here for a while.
+# The view then asks for it in pieces, through the host, with get_canvasxpress_dashboard_result.
+# ---------------------------------------------------------------------------------------------
+_DASH_RESULT_TTL = 1800                     # seconds a held result stays fetchable
+_DASH_RESULT_PART = 60000                   # characters per piece: well under any host's cap
+_DASH_RESULTS: dict = {}                    # id -> (expires_at, full result text)
+
+
+def _hold_dashboard_result(result: dict) -> dict:
+    """Keep the full result under an id and return the short result the model and the view get:
+    everything except ``spec`` (and the large ``derived``/``joined`` details), plus ``result_id``
+    and ``parts``. A result that has no spec (declined, error) is returned as it is."""
+    import secrets
+    import time as _time
+    if not isinstance(result, dict) or not result.get("spec"):
+        return result
+    now = _time.time()
+    for key in [k for k, (exp, _) in _DASH_RESULTS.items() if exp < now]:
+        del _DASH_RESULTS[key]
+    text = json.dumps(result, separators=(",", ":"))
+    result_id = secrets.token_urlsafe(12)
+    _DASH_RESULTS[result_id] = (now + _DASH_RESULT_TTL, text)
+    short = {k: v for k, v in result.items() if k not in ("spec", "derived", "joined")}
+    short["result_id"] = result_id
+    short["parts"] = (len(text) + _DASH_RESULT_PART - 1) // _DASH_RESULT_PART
+    short["size"] = len(text)
+    short["view"] = ("The dashboard view fetches the full result (the spec with the complete data) by result_id; "
+                     "do not ask for it yourself, do not show JSON and do not redraw it.")
+    return short
+
+
+@mcp.tool(
+    description=(
+        "Internal: one piece of a held dashboard result, by the result_id that suggest_canvasxpress_dashboard "
+        "returned. The dashboard view calls this itself to draw the dashboard; a model never needs to."
+    ),
+)
+def get_canvasxpress_dashboard_result(result_id: str, part: int = 0) -> dict:
+    """
+    Args:
+        result_id: The id in a suggest_canvasxpress_dashboard result.
+        part: Which piece (0-based); the result said how many parts there are.
+
+    Returns:
+        {"result_id", "part", "parts", "text"} or {"error": "..."} when the id is unknown or has expired.
+    """
+    import time as _time
+    held = _DASH_RESULTS.get(result_id)
+    if not held or held[0] < _time.time():
+        return {"error": "No held dashboard result with that id (results are kept for %d minutes): call "
+                         "suggest_canvasxpress_dashboard again." % (_DASH_RESULT_TTL // 60)}
+    text = held[1]
+    parts = (len(text) + _DASH_RESULT_PART - 1) // _DASH_RESULT_PART
+    if not isinstance(part, int) or part < 0 or part >= parts:
+        return {"error": "part must be between 0 and %d." % (parts - 1)}
+    return {"result_id": result_id, "part": part, "parts": parts,
+            "text": text[part * _DASH_RESULT_PART:(part + 1) * _DASH_RESULT_PART]}
 
 
 @mcp.tool(

@@ -1090,6 +1090,12 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 | Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
 | Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
 
+**Large results.** The result carries the complete table, so it can be hundreds of KB, and Claude replaces a tool
+result that large with an error text. `suggest_canvasxpress_dashboard` therefore returns a short result (template,
+panels, validity, `result_id`, `parts`) and holds the full one on the server for 30 minutes; the dashboard view fetches
+it in pieces through the host with `get_canvasxpress_dashboard_result` (a tool a model never needs to call) and draws
+it. A result the host mangled still shows one line in the panel.
+
 **Always the complete data.** A dashboard is drawn from every row of the table and never from a sample: the tool
 text tells the model to send every row, and a call that declares more rows in `total_rows` (the size of the full table)
 than it sends is refused with a message that says so. The view has no file loader and no banner: it draws what the
