@@ -1090,12 +1090,20 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 | Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
 | Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
 
-**Getting the data in: upload first.** The slow part of a dashboard request is the model writing the rows into
-the tool call (about 40,000 tokens for 1,500 rows). So the tool text tells the model, in order: (1) with a shell,
-`curl -s --data-binary @FILE "https://canvasxpress.org/mcp/upload?name=FILE"` and pass the returned `file_id` (the
-server reads the file itself; the call is instant); (2) otherwise `csv`, the file's raw text pasted as it is; (3)
-otherwise `data`. Uploads are held in memory for 30 minutes, up to 50 MB, raw body or multipart; the route sits
-under `/mcp`, the path a reverse proxy already forwards, so no proxy change is needed.
+**Getting the data in: a link first.** The slow part of a dashboard request is the model writing the rows into
+the tool call (about 40,000 tokens for 1,500 rows, 6-8 minutes), and no server can make a chat client hand a file
+over: each client has its own sandbox policy (Claude Desktop, for one, blocks a `curl` from the model's shell as
+"outbound data transfer"). What works on every client is the **server** fetching the file, so the tool text tells
+the model, in order and without asking the user which way: (1) `url`: any link to the file (one the user pasted, a
+GitHub blob, Dropbox, Google Drive or Google Sheets share link — turned into the direct-download link — or a
+`https://canvasxpress.org/mcp/file/<id>` link); (2) with a shell, `curl -s --data-binary @FILE
+"https://canvasxpress.org/mcp/upload?name=FILE"` and pass the returned `file_id`; (3) `csv`, the file's raw text
+pasted as it is, for files of up to about 300 rows; (4) for a larger local file, tell the user to drop it at
+**https://canvasxpress.org/mcp/upload** (a page: drag the file in, copy the link it gives) and call the tool with
+that link. A dropped file is also served at `GET /mcp/file/<id>`. Uploads are held in memory for 30 minutes, up to
+50 MB, raw body or multipart; the routes sit under `/mcp`, the path a reverse proxy already forwards, so no proxy
+change is needed. A fetched `url` must be http(s) on a public host (private and loopback addresses are refused);
+`CX_PUBLIC_URL` (default `https://canvasxpress.org`) is the base the file links are built with.
 
 **Large results.** The result carries the complete table, so it can be hundreds of KB, and Claude replaces a tool
 result that large with an error text. `suggest_canvasxpress_dashboard` therefore returns a short result (template,

@@ -1816,6 +1816,10 @@ async def rest_cache_stats(request: Request) -> Response:
 _UPLOAD_TTL = 1800
 _UPLOAD_MAX = 50 * 1024 * 1024
 _UPLOADS: dict = {}                         # file_id -> (expires_at, name, text)
+_PUBLIC_URL = os.environ.get("CX_PUBLIC_URL", "https://canvasxpress.org").rstrip("/")
+_UPLOAD_PAGE_URL = _PUBLIC_URL + "/mcp/upload"
+_FILE_URL_BASE = _PUBLIC_URL + "/mcp/file/"  # a held upload is also reachable here, as a plain URL
+_FETCH_TIMEOUT = 30
 
 
 def _hold_upload(name: str, text: str) -> str:
@@ -1866,12 +1870,129 @@ def _table_from_text(text: str) -> list:
     return [[h.strip() for h in rows[0]]] + [[_cell(c) for c in r] for r in rows[1:]]
 
 
-@mcp.custom_route("/mcp/upload", methods=["POST", "OPTIONS"])
+def _share_url(url: str) -> str:
+    """A share/page link as the direct-download link the host serves the bytes from (GitHub blob, Dropbox,
+    Google Drive file, Google Sheets); any other URL is returned as it is."""
+    url = url.strip()
+    m = re.match(r"https?://github\.com/([^/]+/[^/]+)/blob/(.+)$", url)
+    if m:
+        return "https://raw.githubusercontent.com/%s/%s" % (m.group(1), m.group(2))
+    m = re.match(r"https?://(?:www\.)?dropbox\.com/(.+)$", url)
+    if m:
+        return re.sub(r"([?&])dl=0", r"\1dl=1", "https://www.dropbox.com/" + m.group(1)) \
+            if "dl=" in url else url + ("&" if "?" in url else "?") + "dl=1"
+    m = re.match(r"https?://drive\.google\.com/file/d/([^/?#]+)", url)
+    if m:
+        return "https://drive.google.com/uc?export=download&id=" + m.group(1)
+    m = re.match(r"https?://docs\.google\.com/spreadsheets/d/([^/?#]+)", url)
+    if m:
+        gid = re.search(r"[#?&]gid=(\d+)", url)
+        return "https://docs.google.com/spreadsheets/d/%s/export?format=csv%s" % (
+            m.group(1), "&gid=" + gid.group(1) if gid else "")
+    return url
+
+
+def _public_host(host: str) -> bool:
+    """False for a host that resolves to a loopback, private, link-local or reserved address."""
+    import ipaddress
+    import socket
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0])
+        if not address.is_global:
+            return False
+    return bool(infos)
+
+
+def _open_url(url: str) -> tuple:
+    """GET a URL: (filename from Content-Disposition or None, bytes). Separate so tests can stand in for it."""
+    import urllib.request
+    request = urllib.request.Request(url, headers={"User-Agent": "canvasxpress-mcp/1.0", "Accept": "text/csv, text/plain, */*"})
+    with urllib.request.urlopen(request, timeout=_FETCH_TIMEOUT) as response:
+        disposition = response.headers.get("content-disposition", "")
+        m = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)', disposition)
+        return (m.group(1).strip() if m else None), response.read(_UPLOAD_MAX + 1)
+
+
+def _fetch_table_url(url: str) -> tuple:
+    """The (name, text) of the CSV/TSV at a URL. One of this server's own file URLs is read from the held
+    uploads; any other http(s) URL on a public host is fetched. Raises ValueError with the reason."""
+    url = (url or "").strip()
+    if url.startswith(_FILE_URL_BASE) or re.match(r"https?://[^/]+/mcp/file/", url):
+        held = _take_upload(url.rsplit("/", 1)[-1].split("?")[0])
+        if held is None:
+            raise ValueError("That file link has expired (files dropped at %s are kept for %d minutes): drop the "
+                             "file there again and use the new link." % (_UPLOAD_PAGE_URL, _UPLOAD_TTL // 60))
+        return held
+    url = _share_url(url)
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("url must be an http(s) link to a CSV/TSV file")
+    if not _public_host(parsed.hostname):
+        raise ValueError("url must point at a public host")
+    try:
+        name, raw = _open_url(url)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("could not fetch %s: %s" % (url, exc))
+    if len(raw) > _UPLOAD_MAX:
+        raise ValueError("file larger than %d MB" % (_UPLOAD_MAX // (1024 * 1024)))
+    name = name or (parsed.path.rsplit("/", 1)[-1] or parsed.hostname)
+    return name, raw.decode("utf-8-sig", errors="replace")
+
+
+_UPLOAD_PAGE_HTML = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CanvasXpress: send a file to your chat</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1f2937;--muted:#6b7280;--line:#d1d5db;--accent:#2563eb;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--ink:#e5e7eb;--muted:#94a3b8;--line:#334155;--accent:#60a5fa;--ok:#4ade80}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:640px;margin:48px auto;padding:0 16px}
+h1{font-size:24px;margin:0 0 4px}p{margin:0 0 16px;color:var(--muted)}
+#drop{background:var(--card);border:2px dashed var(--line);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer}
+#drop.over{border-color:var(--accent)}#drop b{color:var(--accent)}
+#out{display:none;margin-top:20px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+#out.on{display:block}.ok{color:var(--ok);font-weight:600}.err{color:#dc2626;font-weight:600}
+code{display:block;margin:8px 0;padding:10px;background:var(--bg);border-radius:8px;word-break:break-all;font-size:14px}
+button{font:inherit;padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
+small{color:var(--muted)}
+</style></head><body><main>
+<h1>Send a data file to your chat</h1>
+<p>Drop a CSV or TSV file here. You get a link that lasts 30 minutes: paste it into your chat and the dashboard is built from the complete file in seconds, instead of the assistant typing every row.</p>
+<div id="drop"><b>Choose a file</b> or drag it here<input id="file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" style="display:none"></div>
+<div id="out"></div>
+<script>
+var drop=document.getElementById('drop'),input=document.getElementById('file'),out=document.getElementById('out');
+drop.onclick=function(){input.click()};input.onchange=function(){if(input.files[0])send(input.files[0])};
+['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+drop.addEventListener('drop',function(e){if(e.dataTransfer.files[0])send(e.dataTransfer.files[0])});
+function send(file){out.className='on';out.innerHTML='Sending '+file.name+' …';
+  var x=new XMLHttpRequest();x.open('POST','upload?name='+encodeURIComponent(file.name));
+  x.onload=function(){var r;try{r=JSON.parse(x.responseText)}catch(e){r={error:x.responseText}}
+    if(x.status!==200||r.error){out.innerHTML='<div class="err">'+(r.error||'upload failed')+'</div>';return}
+    var msg='Create a dashboard from '+r.url;
+    out.innerHTML='<div class="ok">'+file.name+': '+r.rows+' rows, '+r.columns+' columns.</div>'+
+      '<div>Paste this into your chat:</div><code id="msg"></code><button id="copy">Copy</button> <small>The link works for 30 minutes.</small>';
+    document.getElementById('msg').textContent=msg;
+    document.getElementById('copy').onclick=function(){navigator.clipboard.writeText(msg).then(function(){document.getElementById('copy').textContent='Copied'})}};
+  x.onerror=function(){out.innerHTML='<div class="err">upload failed</div>'};x.send(file)}
+</script></main></body></html>"""
+
+
+@mcp.custom_route("/mcp/upload", methods=["GET", "POST", "OPTIONS"])
 async def rest_upload(request: Request) -> Response:
-    """Hold a CSV/TSV file for suggest_canvasxpress_dashboard(file_id=...). Raw body or multipart."""
+    """Hold a CSV/TSV file for suggest_canvasxpress_dashboard(file_id=... or url=...). GET is the drop page a
+    person uses from any chat client; POST takes a raw body or multipart."""
     cors = {} if STRICT_REST else {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"}
     if request.method == "OPTIONS":
         return Response(status_code=204, headers=cors)
+    if request.method == "GET":
+        return HTMLResponse(_UPLOAD_PAGE_HTML)
     name = request.query_params.get("name") or request.headers.get("x-file-name") or "upload.csv"
     content_type = request.headers.get("content-type", "")
     try:
@@ -1894,9 +2015,20 @@ async def rest_upload(request: Request) -> Response:
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400, headers=cors)
     file_id = _hold_upload(name, text)
-    return JSONResponse({"file_id": file_id, "name": name, "rows": len(table) - 1, "columns": len(table[0]),
-                         "expires_in_seconds": _UPLOAD_TTL,
+    return JSONResponse({"file_id": file_id, "url": _FILE_URL_BASE + file_id, "name": name,
+                         "rows": len(table) - 1, "columns": len(table[0]), "expires_in_seconds": _UPLOAD_TTL,
                          "next": "call suggest_canvasxpress_dashboard with file_id=%s" % file_id}, headers=cors)
+
+
+@mcp.custom_route("/mcp/file/{file_id}", methods=["GET"])
+async def rest_file(request: Request) -> Response:
+    """The text of a held upload, so a dropped file is a plain URL any client or server can fetch."""
+    held = _take_upload(request.path_params.get("file_id", ""))
+    if held is None:
+        return JSONResponse({"error": "no such file, or it has expired (files are kept %d minutes)" % (_UPLOAD_TTL // 60)},
+                            status_code=404)
+    return Response(content=held[1], media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'inline; filename="%s"' % held[0].replace('"', ""), "Cache-Control": "no-store"})
 
 
 @mcp.custom_route("/validate", methods=["POST"])
@@ -3695,13 +3827,17 @@ def compose_canvasxpress_dashboard(
 
 @mcp.tool(
     description=(
-        "One call for any dashboard request. HOW TO SEND THE DATA, in this order, without deliberating: (1) if you "
-        "can run a shell command, upload the file (curl -s --data-binary @FILE "
-        "\"https://canvasxpress.org/mcp/upload?name=FILE\") and pass the returned file_id: the server reads the "
-        "file itself, so the call is instant. (2) Otherwise pass csv: the file's raw text pasted as it is. "
-        "(3) Otherwise data: a list of lists with the column names first, or an object with headers and rows; "
-        "or dataset (penguins, iris, mtcars). Never convert the file to JSON by hand when (1) or (2) is possible, "
-        "and never split it across calls. Returns a validated linked spec rendered inline by the "
+        "One call for any dashboard request. HOW TO SEND THE DATA, in this order, without deliberating and without "
+        "asking the user which way: (1) if the file is at a link (one the user pasted, a GitHub, Dropbox, Google "
+        "Drive/Sheets, S3 or https://canvasxpress.org/mcp/file/... link), pass url: the server fetches the file "
+        "itself, so the call is instant. (2) Else, if you can run a shell command, upload the file (curl -s "
+        "--data-binary @FILE \"https://canvasxpress.org/mcp/upload?name=FILE\") and pass the returned file_id. "
+        "(3) Else, for a file of up to 300 rows, pass csv: the file's raw text pasted as it is. (4) Else (a larger "
+        "file you would have to type out) do NOT type it: tell the user in one sentence to drop the file at "
+        "https://canvasxpress.org/mcp/upload and paste the link it gives them, then call this tool with that link "
+        "as url. data (a list of lists with the column names first, or an object with headers and rows) and "
+        "dataset (penguins, iris, mtcars) are for tables you already hold as data. Never convert a file to JSON "
+        "by hand, and never split it across calls. Returns a validated linked spec rendered inline by the "
         "dashboard view. "
         "The result renders itself as a live interactive dashboard (with Save and Open in Builder) in "
         "the dashboard view: do not show the JSON, do not redraw it in an HTML widget, do not change "
@@ -3738,15 +3874,19 @@ def suggest_canvasxpress_dashboard(
     tables: list | None = None,
     file_id: str | None = None,
     csv: str | None = None,
+    url: str | None = None,
 ) -> dict:
     """
     Args:
-        file_id: FASTEST. The id returned by uploading the file: run in your shell
-                 curl -s --data-binary @FILE "https://canvasxpress.org/mcp/upload?name=FILE" and pass its file_id.
-                 The server reads the file itself; nothing else is needed. Try this first whenever you can run
-                 a command.
-        csv: The raw text of the CSV/TSV file, pasted exactly as it is (no conversion to JSON, no quoting): use
-             when you cannot run a command. Fewer tokens than data.
+        url: FASTEST. An http(s) link to the CSV/TSV file: the server fetches it itself. Share links from GitHub,
+             Dropbox, Google Drive and Google Sheets are accepted as they are, and so is the link a person gets
+             by dropping a file at https://canvasxpress.org/mcp/upload. Use this whenever a link exists.
+        file_id: The id returned by uploading the file from your shell:
+                 curl -s --data-binary @FILE "https://canvasxpress.org/mcp/upload?name=FILE". Use when there is
+                 no link but you can run a command.
+        csv: The raw text of the CSV/TSV file, pasted exactly as it is (no conversion to JSON, no quoting): for a
+             file of up to about 300 rows when neither url nor file_id is possible. For a larger file ask the
+             user to drop it at https://canvasxpress.org/mcp/upload and pass the link they get as url.
         tables: Several RELATED files instead of data, e.g. [{"name": "orders", "data": [[headers], [row], ...]},
                 {"name": "customers", "data": [...]}, {"name": "products", "data": [...]}] (2 to 6 files, each
                 COMPLETE). The file with the most rows is the base and keeps every row; each other file is a
@@ -3777,12 +3917,19 @@ def suggest_canvasxpress_dashboard(
          dashboard view through get_canvasxpress_dashboard_result), or {"suggested": false, "reason": "..."}
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
-    if file_id is not None:
+    held = None
+    if url is not None:
+        try:
+            held = _fetch_table_url(url)
+        except ValueError as exc:
+            return {"suggested": False, "error": str(exc), "reason": str(exc)}
+    elif file_id is not None:
         held = _take_upload(file_id)
         if held is None:
             message = ("No uploaded file with that file_id (uploads are kept for %d minutes): upload it again "
                        "with curl -s --data-binary @FILE https://canvasxpress.org/mcp/upload" % (_UPLOAD_TTL // 60))
             return {"suggested": False, "error": message, "reason": message}
+    if held is not None:
         try:
             data = _table_from_text(held[1])
         except ValueError as exc:

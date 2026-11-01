@@ -5,6 +5,12 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **A link instead of the rows.** `suggest_canvasxpress_dashboard(url=...)`: the server fetches the CSV/TSV itself
+  (GitHub blob, Dropbox, Google Drive and Google Sheets share links are turned into direct-download links; http(s)
+  on public hosts only), so the model types one link and the dashboard is built in well under a second on any
+  client, including those whose sandbox blocks an upload from the model's shell. `GET /mcp/upload` is now a page
+  where a person drops a local file and gets such a link (`/mcp/file/<id>`, 30 minutes); the tool text tells the
+  model to ask for that link rather than type out a file of more than ~300 rows.
 - **Upload instead of typing the rows.** `POST /mcp/upload` (raw body or multipart; under the `/mcp` path a proxy
   already forwards) holds a CSV/TSV for 30 minutes and returns a `file_id`; `suggest_canvasxpress_dashboard(file_id=...)`
   reads the file on the server, so the tool call is a few bytes and the model never writes the data out (a 1,500-row
