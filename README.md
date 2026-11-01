@@ -1092,8 +1092,8 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 
 **Always the complete data.** A dashboard is never drawn from a sample. A table of up to 200 rows is sent whole and
 drawn at once. A larger table is too slow to write into a tool call (1,500 rows is about 37,000 tokens, roughly ten
-minutes), so the model sends a representative sample of about 15-20% of the rows (never fewer than 200: every outlier
-plus a random fill) **only to explore which dashboard to build**, and passes `total_rows`, the size of the full table.
+minutes), so the model sends a representative sample of about 15-20% of the rows, never fewer than 200 and never more
+than 300 (every outlier plus a random fill), **only to explore which dashboard to build**, and passes `total_rows`, the size of the full table.
 The view then draws **nothing** from the sample: it says the dashboard is designed and asks for the complete file, with
 Save and Open in Builder off. The user picks the file with **Load full file...** (or drops it on the view); it is parsed
 in the page, so it never goes through the model, shaped like the sample (the same numeric and annotation columns, rows
@@ -1102,6 +1102,9 @@ only then, from all the rows, and Save works with the full table in the saved sp
 dashboard uses is refused with the names. Rows are never dropped or refused by the server; `total_rows` only says that
 `data` is a sample.
 
+**Header.** A full-width text panel across the top: the title in bold, larger text, then a short description (kind of
+table, the complete row and column count, the charts it holds). Like the Cohort Explorer example.
+
 **KPI row.** Every suggested dashboard starts with ONE row of up to four round (ring) cards: **Rows** (the count) and
 the average of up to three measures: for sequencing QC the depth, mapping and quality columns; for a survival cohort
 the follow-up time, then the first other measure; otherwise the numeric columns in order (a column whose average
@@ -1109,6 +1112,19 @@ rounds to nothing on a whole-number ring is used only when nothing larger exists
 names (`pct_q30` is "% Q30"); the ring is bound to the real column. The cards follow the filters like every other panel
 (the row count is a calculated field of 1s). The row is added after the template is chosen, so the survival and
 sequencing-QC recognition below is unaffected.
+
+**Over time.** A table with an ISO date column (`YYYY-MM-DD`, optionally with a time; a day/month order is never
+guessed, so `03/04/2025` is not read) also gets a panel of its leading measure over time, coloured by the first small
+factor, right under the KPI row, and a date-period filter: by month (shown as `01 Jan`, or `2025-01` when the data spans
+years) when the dates cover at most 12 months, by year when they cover 2 to 12 years, none when finer than that. The
+date becomes a numeric variable named `<column> (time)` (UTC milliseconds) with axis limits taken from the data's own
+range plus a 2% margin. The result's `derived` entry tells the view how to repeat this for a complete file it loads.
+Added after the template is chosen, like the KPI row.
+
+**What stands out.** An insights strip above the KPI row, computed in the view from the **complete** data, never from a
+sample: how many rows break each limit you declared (`thresholds`); a group whose average is at least 0.5 SD from the
+overall average (z of 4 or more, at least 5 rows), such as "Lane L3: % Mapped averages 84.5, 8.18 below the overall
+92.7"; and values more than 3.5 SD from the mean. At most five lines, and no strip when nothing stands out.
 
 **The recognition is pinned.** `tests/test_detection_pinned.py` fails if the survival / QC / batch / group vocabulary,
 the thresholds, or the template chosen for the reference tables (the cohort, QC, generic and edge cases of the MCP app

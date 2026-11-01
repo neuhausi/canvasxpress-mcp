@@ -1,0 +1,225 @@
+"""The dashboard view's insights strip and its date handling, in a browser.
+
+Insights are computed in the view from the COMPLETE inline data (never from a sample): declared limits,
+a group far from the overall average, and values far from the mean. The view also repeats the server's
+date derivation (a UTC-millisecond time variable and a month / year annotation) for a full file it loads,
+so those two implementations are compared here on the same inputs.
+
+Runs when Playwright is installed and CX_TEST_ENGINE and CX_TEST_DASHBOARDS are set (served in place of
+the CDN copies, no network); otherwise it skips.
+"""
+
+import json
+import os
+import random
+import re
+import sys
+
+import pytest
+
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+sys.path.insert(0, os.path.join(ROOT, "src"))
+
+import cx_dashboard_suggest as sg  # noqa: E402
+
+ENGINE = os.environ.get("CX_TEST_ENGINE", "")
+DASHBOARDS = os.environ.get("CX_TEST_DASHBOARDS", "")
+VIEW = os.path.join(ROOT, "src", "ui", "cx_dashboard_view.html")
+CDN_PREFIX = "https://www.canvasxpress.org/"
+
+HOST = """<body style="margin:0"><iframe id="f" style="width:900px;height:900px;border:0"></iframe><script>
+addEventListener('message', function (e) {
+  var m = e.data; if (!m || !m.method) return;
+  if (m.method === 'ui/initialize') { e.source.postMessage({jsonrpc: '2.0', id: m.id, result: {}}, '*'); }
+  else if (m.method === 'ui/notifications/initialized') {
+    e.source.postMessage({jsonrpc: '2.0', method: 'ui/notifications/tool-result',
+                          params: {content: [{type: 'text', text: window.PAYLOAD}]}}, '*');
+  }
+});
+</script></body>"""
+
+
+@pytest.fixture(scope="module")
+def browser_context():
+    playwright = pytest.importorskip("playwright.sync_api")
+    if not (ENGINE and os.path.isfile(ENGINE) and DASHBOARDS and os.path.isfile(DASHBOARDS)):
+        pytest.skip("set CX_TEST_ENGINE and CX_TEST_DASHBOARDS to run")
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            context = browser.new_context(viewport={"width": 900, "height": 900})
+
+            def serve(route):
+                url = route.request.url
+                if url.endswith("canvasXpress.min.js"):
+                    route.fulfill(path=ENGINE, content_type="application/javascript")
+                elif url.endswith("canvasxpress-dashboards.umd.js"):
+                    route.fulfill(path=DASHBOARDS, content_type="application/javascript")
+                elif url.endswith(".css"):
+                    route.fulfill(body="", content_type="text/css")
+                else:
+                    route.abort()
+
+            context.route(CDN_PREFIX + "**", serve)
+            yield context
+        finally:
+            browser.close()
+
+
+def open_view(context, result, wait_for):
+    """Open the view with a tool result; returns (page, frame) once `wait_for` (a selector in the frame) exists."""
+    page = context.new_page()
+    page.set_content(HOST)
+    page.evaluate("p => { window.PAYLOAD = p; }", json.dumps(result))
+    page.evaluate("h => { document.getElementById('f').srcdoc = h; }", open(VIEW, encoding="utf-8").read())
+    frame = page.frame_locator("#f")
+    frame.locator(wait_for).first.wait_for(timeout=30000)
+    page.wait_for_timeout(2500)
+    return page, frame
+
+
+def call(page, expression, *args):
+    """Evaluate a function of the view's page (a top-level function of its script)."""
+    inner = page.frames[1] if len(page.frames) > 1 else page.main_frame
+    return inner.evaluate(expression, *args) if args else inner.evaluate(expression)
+
+
+def _data(rows, seed=3):
+    rng = random.Random(seed)
+    lanes = ["L%d" % (1 + i % 4) for i in range(rows)]
+    return lanes, rng
+
+
+def _table(rows=120, shift=0.0, seed=3):
+    """sample, lane, a, b: `a` is lower by `shift` SD in lane L3."""
+    lanes, rng = _data(rows, seed)
+    out = [["sample", "lane", "a", "b"]]
+    for i, lane in enumerate(lanes):
+        a = rng.gauss(50, 5) + (-shift * 5 if lane == "L3" else 0)
+        out.append(["S%03d" % i, lane, round(a, 2), round(rng.gauss(10, 2), 2)])
+    return out
+
+
+def test_a_planted_bad_group_is_called_out_with_its_figures(browser_context):
+    result = sg.suggest(_table(shift=2.5))
+    page, frame = open_view(browser_context, result, "#cx-insights.on")
+    text = frame.locator("#cx-insights").inner_text()
+    assert "What stands out" in text and "computed from all 120 rows" in text
+    assert "Lane L3: A averages" in text and "below the overall" in text and "of 120 rows" in text
+    page.close()
+
+
+def test_pure_noise_gets_no_group_call_outs(browser_context):
+    data = sg.suggest(_table(shift=0.0, seed=9))["spec"]["data"]["data"]["value"]
+    page, _frame = open_view(browser_context, sg.suggest(_table(shift=0.0, seed=9)), "#cx-dashboard .cxd-filters")
+    found = call(page, "d => computeInsights(d, [], [])", data)
+    assert [c for c in found if " averages " in c["text"]] == []
+    page.close()
+
+
+def test_declared_limits_are_counted_and_named(browser_context):
+    table = _table(shift=0.0, seed=4)
+    result = sg.suggest(table, thresholds=[{"field": "b", "op": "lt", "value": 8, "label": "B below 8"},
+                                           {"field": "a", "op": "gt", "value": 9999, "label": "A above 9999"}])
+    below = sum(1 for r in table[1:] if r[3] < 8)
+    page, frame = open_view(browser_context, result, "#cx-insights.on")
+    text = frame.locator("#cx-insights").inner_text()
+    assert "B below 8: %d of 120 rows" % below in text
+    assert "A above 9999: none of 120 rows" in text
+    page.close()
+
+
+def test_values_far_from_the_mean_are_counted(browser_context):
+    table = _table(shift=0.0, seed=5)
+    for row in table[1:4]:
+        row[3] = 80.0                                                    # three values ~35 SD above the mean of 10
+    page, _frame = open_view(browser_context, sg.suggest(table), "#cx-dashboard .cxd-filters")
+    found = call(page, "d => computeInsights(d, [], [])", sg.suggest(table)["spec"]["data"]["data"]["value"])
+    assert any("3 rows have B above" in c["text"] for c in found), found
+    page.close()
+
+
+@pytest.mark.parametrize("name", ["total_reads", "pct_mapped", "pct_q30", "humidity_pct", "OS_months", "gc_content",
+                                  "gcContent", "contamination_freemix", "GENE12", "bmi", "age", "unit.price",
+                                  "city_60_levels", "Rows", "_"])
+def test_the_view_humanizes_names_like_the_server(browser_context, name):
+    page, _frame = open_view(browser_context, sg.suggest(_table()), "#cx-dashboard .cxd-filters")
+    assert call(page, "n => humanize(n)", name) == sg._humanize(name)
+    page.close()
+
+
+@pytest.mark.parametrize("text", ["2025-01-01", "2025-01-02 10:30", "2025-12-31T23:59:59", "1970-01-02", "2024-02-29",
+                                  "2025-02-30", "2025-13-01", "01/02/2025", "yesterday", ""])
+def test_the_view_reads_dates_like_the_server(browser_context, text):
+    page, _frame = open_view(browser_context, sg.suggest(_table()), "#cx-dashboard .cxd-filters")
+    assert call(page, "t => isoToMs(t)", text) == sg._iso_to_ms(text)
+    page.close()
+
+
+@pytest.mark.parametrize("dates", [
+    ["2025-03-04", "2025-11-30", None, "2025-01-01"],                       # one year: "03 Mar"
+    ["2024-12-31", "2025-01-01", "2025-06-15"],                            # several years: "2025-01"
+])
+@pytest.mark.parametrize("unit", ["month", "year"])
+def test_the_view_labels_periods_like_the_server(browser_context, dates, unit):
+    page, _frame = open_view(browser_context, sg.suggest(_table()), "#cx-dashboard .cxd-filters")
+    stamps = [sg._iso_to_ms(d) for d in dates]
+    assert call(page, "a => periodLabels(a[0], a[1])", [stamps, unit]) == sg._period_labels(stamps, unit)
+    page.close()
+
+
+def test_a_sample_shows_no_insights_until_the_complete_file_is_loaded(browser_context, tmp_path):
+    full = _table(rows=600, shift=2.5, seed=8)
+    sample = [full[0]] + full[1:][::5][:120]
+    result = sg.suggest(sample, total_rows=600)
+    page, frame = open_view(browser_context, result, "#cx-sample-msg")
+    assert frame.locator("#cx-insights.on").count() == 0                       # nothing from the sample
+    path = tmp_path / "full.csv"
+    path.write_text("\n".join(",".join(str(c) for c in r) for r in full) + "\n")
+    frame.locator("#cx-file").set_input_files(str(path))
+    page.wait_for_function(
+        "document.getElementById('f').contentDocument.getElementById('cx-sample-msg').textContent.indexOf('Showing all') === 0",
+        timeout=30000)
+    frame.locator("#cx-insights.on").wait_for(timeout=15000)
+    assert "computed from all 600 rows" in frame.locator("#cx-insights").inner_text()
+    assert "Lane L3" in frame.locator("#cx-insights").inner_text()
+    page.close()
+
+
+def _dated(rows, start_day=0):
+    import datetime
+    first = datetime.date(2025, 1, 1)
+    out = [["day", "site", "temp", "wind", "humidity"]]
+    for i in range(rows):
+        out.append([(first + datetime.timedelta(days=(start_day + i) * 2)).isoformat(), ["north", "south"][i % 2],
+                    10 + i % 9, 3 + i % 5, 40 + i % 17])
+    return out
+
+
+def test_loading_a_full_file_repeats_the_time_axis_and_the_month_filter(browser_context, tmp_path):
+    full = _dated(180)
+    sample = [full[0]] + full[1:][::6][:30] + full[1:][1::6][:30] + full[1:][2::6][:30] + full[1:][3::6][:30]
+    result = sg.suggest(sample, total_rows=180)
+    assert {d["kind"] for d in result["derived"]} == {"time", "period"}
+    page, frame = open_view(browser_context, result, "#cx-sample-msg")
+    path = tmp_path / "dated.csv"
+    path.write_text("\n".join(",".join(str(c) for c in r) for r in full) + "\n")
+    frame.locator("#cx-file").set_input_files(str(path))
+    page.wait_for_function(
+        "document.getElementById('f').contentDocument.getElementById('cx-sample-msg').textContent.indexOf('Showing all') === 0",
+        timeout=30000)
+    page.wait_for_timeout(3000)
+    spec = call(page, "currentPayload.spec")
+    data = spec["data"]["data"]["value"]
+    assert len(data["y"]["smps"]) == 180
+    assert data["y"]["vars"][-1] == "day (time)" and len(data["y"]["data"][-1]) == 180
+    assert data["y"]["data"][-1][0] == sg._iso_to_ms(full[1][0])
+    assert data["x"]["day (month)"][0] == sg._period_labels([sg._iso_to_ms(full[1][0])], "month")[0] == "01 Jan"
+    assert "time" in spec["panels"]
+    config = spec["panels"]["time"]["config"]                                  # recomputed from the complete data
+    assert (config["setMinX"], config["setMaxX"]) == sg._time_limits(data["y"]["data"][-1])
+    lines = [ln.strip() for ln in frame.locator("#cx-dashboard .cxd-filters").first.inner_text().splitlines() if ln.strip()]
+    start = max(i for i, ln in enumerate(lines) if ln.startswith("day (month)"))
+    counts = [int(c) for c in re.findall(r"(\d+)\s*/\s*\d+", " ".join(lines[start:]))]
+    assert sum(counts) == 180
+    page.close()

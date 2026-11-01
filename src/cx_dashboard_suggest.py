@@ -19,7 +19,10 @@ by the vendored ``cx_dashboard_validate.validate_spec``.
 
 from __future__ import annotations
 
+import calendar
+import html
 import copy
+import datetime
 import json
 import re
 from typing import Any, Optional
@@ -795,6 +798,190 @@ def _with_kpi_row(suggestion: dict, data: dict) -> dict:
     return suggestion
 
 
+# ---------------------------------------------------------------------------
+# Header: a text panel across the top, a bold title and a one-paragraph description, like the Cohort
+# Explorer example. Added last (after the KPI row and the time axis), so it only moves panels down.
+# ---------------------------------------------------------------------------
+_INTRO_H = 3
+_INTRO_KINDS = {"cohort": "Survival cohort", "ngs-qc": "Per-sample sequencing QC"}
+
+
+def _intro_html(title: str, suggestion: dict, data: dict, total_rows: Optional[int]) -> str:
+    """The header panel: the title in bold, larger text, then a brief description built from the
+    template, the table's size and the titles of the chart panels (the table's row count is the
+    complete file's when only a sample was sent)."""
+    columns = _describe_columns(data)
+    rows = total_rows if total_rows is not None else len((data.get("y") or {}).get("smps") or [])
+    kind = _INTRO_KINDS.get(suggestion.get("template"), "Table")
+    titles = [p["title"] for p in suggestion["panels"]
+              if p.get("title") and p.get("type") != "filters" and not p["id"].startswith("kpi-")
+              and (p.get("config") or {}).get("graphType")]
+    shown = titles[:4]
+    charts = ""
+    if shown:
+        charts = " " + ", ".join(shown[:-1]) + (" and " if len(shown) > 1 else "") + shown[-1] + (
+            " and more" if len(titles) > len(shown) else "") + "."
+        charts = " Charts: " + charts.strip()
+    text = ("%s of %s rows and %d columns. The cards summarise the whole table.%s "
+            "Select in any chart or use the Filters panel to narrow every panel at once." % (
+                kind, format(rows, ","), len(columns), charts))
+    return ('<div style="font-weight: 700; font-size: 25px">' + html.escape(title) + '</div>'
+            '<div style="font-size: 16px; color: var(--cxd-muted)">' + html.escape(text) + '</div>')
+
+
+def _with_intro(suggestion: dict, title: str, data: dict, total_rows: Optional[int]) -> dict:
+    for panel in suggestion["panels"]:
+        panel["y"] = panel["y"] + _INTRO_H
+    suggestion["panels"] = [{"id": "intro", "type": "text", "title": "", "x": 0, "y": 0, "w": _GRID_COLS,
+                             "h": _INTRO_H, "html": _intro_html(title, suggestion, data, total_rows)}
+                            ] + suggestion["panels"]
+    return suggestion
+
+
+# ---------------------------------------------------------------------------
+# Time axis: a table with a date column also gets a panel over time and a date-period filter. Added
+# after the template is chosen (like the KPI row), so the recognition is unchanged. Only ISO dates
+# (YYYY-MM-DD, optional time) are read: a day/month order is never guessed. The date becomes a numeric
+# variable (UTC milliseconds) for the time axis; the view repeats this for a full file it loads, from
+# the ``derived`` entry of the result.
+# ---------------------------------------------------------------------------
+_ISO_DATETIME_RE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$")
+_MAX_PERIOD_LEVELS = 12
+
+
+def _iso_to_ms(value: Any) -> Optional[int]:
+    """UTC epoch milliseconds of an ISO date or date-time string; None for anything else (or a date
+    that does not exist)."""
+    if not isinstance(value, str):
+        return None
+    match = _ISO_DATETIME_RE.match(value.strip())
+    if not match:
+        return None
+    year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    hour, minute, second = int(match.group(4) or 0), int(match.group(5) or 0), int(match.group(6) or 0)
+    try:
+        moment = datetime.datetime(year, month, day, hour, minute, second)
+    except ValueError:
+        return None
+    return calendar.timegm(moment.timetuple()) * 1000
+
+
+def _period_label(ms: int, unit: str) -> str:
+    moment = datetime.datetime.fromtimestamp(ms / 1000.0, datetime.timezone.utc)
+    return moment.strftime("%Y-%m" if unit == "month" else "%Y")
+
+
+_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _period_labels(stamps: list, unit: str) -> list:
+    """The filter labels for a list of UTC milliseconds ("NA" where unknown): "2019" for a year; for a month
+    "01 Jan" when every date is in one calendar year (short, and it still sorts), else "2025-01"."""
+    moments = [None if ms is None else datetime.datetime.fromtimestamp(ms / 1000.0, datetime.timezone.utc)
+               for ms in stamps]
+    single_year = len({m.year for m in moments if m is not None}) == 1
+    labels = []
+    for m in moments:
+        if m is None:
+            labels.append("NA")
+        elif unit == "year":
+            labels.append("%04d" % m.year)
+        elif single_year:
+            labels.append("%02d %s" % (m.month, _MONTH_NAMES[m.month - 1]))
+        else:
+            labels.append("%04d-%02d" % (m.year, m.month))
+    return labels
+
+
+def _time_limits(stamps: list) -> "tuple[int, int]":
+    """The time axis limits for these UTC milliseconds: the data's own range plus a 2% margin (half a day
+    at least). The view recomputes this for a full file it loads, so a wider range is never clipped."""
+    known = [ms for ms in stamps if ms is not None]
+    low, high = min(known), max(known)
+    pad = max(int((high - low) * 0.02), 43200000)
+    return low - pad, high + pad
+
+
+def _find_date_column(annotations: dict) -> Optional[str]:
+    """The first annotation column whose values (at least 90% of the non-missing ones) are ISO dates."""
+    for name, values in annotations.items():
+        present = [v for v in values if not _is_missing(v) and v != "NA"]
+        if len(present) >= 3 and sum(1 for v in present if _iso_to_ms(v) is not None) / len(present) >= 0.9:
+            return name
+    return None
+
+
+def _period_unit(stamps: list) -> Optional[str]:
+    """"month" when the dates span at most 12 months, else "year" when they span 2 to 12 years, else None
+    (a filter with more levels than that is not useful)."""
+    known = [ms for ms in stamps if ms is not None]
+    months = {_period_label(ms, "month") for ms in known}
+    years = {_period_label(ms, "year") for ms in known}
+    if 2 <= len(months) <= _MAX_PERIOD_LEVELS:
+        return "month"
+    if 2 <= len(years) <= _MAX_PERIOD_LEVELS:
+        return "year"
+    return None
+
+
+def _with_time_axis(suggestion: dict, data: dict) -> "tuple[dict, list]":
+    """Add a panel of the leading measure over time (and a month / year filter) when the table has an
+    ISO date column. Returns the suggestion and the ``derived`` entries the view needs to repeat this."""
+    y = data.get("y") or {}
+    annotations = data.get("x") or {}
+    samples = y.get("smps") or []
+    if not samples or len(y.get("vars") or []) + 1 > len(samples):       # keep the standard orientation
+        return suggestion, []
+    column = _find_date_column(annotations)
+    if column is None:
+        return suggestion, []
+    columns = _describe_columns(data)
+    metrics = _kpi_metric_columns(suggestion, columns, data)
+    numeric = [c["name"] for c in columns if c["type"] == "numeric" and c["name"] != _COUNT_FIELD]
+    measure = (metrics or numeric or [None])[0]
+    time_name = column + " (time)"
+    stamps = [_iso_to_ms(v) for v in annotations[column]]
+    if measure is None or time_name in y["vars"] or not any(ms is not None for ms in stamps):
+        return suggestion, []
+    clock = any(ms is not None and ms % 86400000 != 0 for ms in stamps)
+    time_format = "yyyy-mm-dd HH:MM" if clock else "yyyy-mm-dd"
+    levels = lambda values: len({"NA" if _is_missing(v) else str(v) for v in values})  # noqa: E731
+    group = next((n for n, v in annotations.items() if n != column and 2 <= levels(v) <= _MAX_FACTOR_LEVELS), None)
+
+    y["vars"].append(time_name)
+    y["data"].append(stamps)
+    derived = [{"kind": "time", "name": time_name, "from": column, "timeFormat": time_format}]
+    unit = _period_unit(stamps)
+    period_name = None
+    if unit:
+        period_name = "%s (%s)" % (column, unit)
+        annotations[period_name] = _period_labels(stamps, unit)
+        derived.append({"kind": "period", "name": period_name, "from": column, "unit": unit})
+
+    panel = {
+        "id": "time", "title": _humanize(measure) + " over time",
+        "config": _without_title(_build_chart_config(
+            "Scatter2D", {"x": time_name, "y": measure, "color": group},
+            {"dataPointSize": "auto", "xAxisTime": True, "timeFormat": time_format,
+             "xAxisTitle": _humanize(column), "setMinX": _time_limits(stamps)[0],
+             "setMaxX": _time_limits(stamps)[1]}, data)),
+        "x": 3, "y": _KPI_H, "w": 9, "h": _GRID_H}
+    _with_dashboard_configs([panel], data)
+    first_template_panel = next((i for i, p in enumerate(suggestion["panels"]) if not p["id"].startswith("kpi-")),
+                                len(suggestion["panels"]))
+    for existing in suggestion["panels"]:
+        if existing["id"].startswith("kpi-"):
+            continue
+        if existing.get("type") == "filters":
+            existing["h"] = existing["h"] + _GRID_H
+            if period_name:
+                existing["fields"] = list(existing.get("fields") or []) + [period_name]
+        else:
+            existing["y"] = existing["y"] + _GRID_H
+    suggestion["panels"].insert(first_template_panel, panel)
+    return suggestion, derived
+
+
 def _is_standard_orientation(data: Any) -> bool:
     """A table whose variables are the measures and whose rows are the samples."""
     y = data.get("y") if isinstance(data, dict) else None
@@ -874,7 +1061,9 @@ def dashboard_spec(suggestion: dict, dashboard_id: str, data: dict, title: Optio
     for panel in suggestion["panels"]:
         data_ref = drill["source"] if panel.get("card") and drill else "data"
         entry: dict = {"title": panel.get("title", ""), "dataRef": data_ref}
-        if panel.get("type") == "filters":
+        if panel.get("type") == "text":
+            entry = {"type": "text", "html": panel["html"]}
+        elif panel.get("type") == "filters":
             entry = {"type": "filters", "title": panel.get("title") or "Filters", "dataRef": "data",
                      "fields": list(panel.get("fields") or []),
                      # No scheme name box / Save: a saved scheme has nowhere to persist here.
@@ -997,6 +1186,8 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
                                   format(rows_received, ","), format(total_rows, ","),
                                   100.0 * rows_received / total_rows)}
     suggestion = _with_kpi_row(suggestion, data)
+    suggestion, derived = _with_time_axis(suggestion, data)
+    suggestion = _with_intro(suggestion, title or suggestion["label"], data, total_rows)
     dash_id = _slug(title or suggestion["label"])
     spec = dashboard_spec(suggestion, dash_id, data, title=title, theme=theme, thresholds=thresholds)
     result = validate_spec(spec)
@@ -1014,6 +1205,8 @@ def suggest(data: Any = None, title: Optional[str] = None, theme: Optional[str] 
         "usage": _usage_snippet(dash_id),
         "builder_url": builder_base_url(),
     }
+    if derived:
+        out["derived"] = derived
     if sample:
         out["sample"] = sample
         out["reason"] = out["reason"] + " " + sample["note"]

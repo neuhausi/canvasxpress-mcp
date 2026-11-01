@@ -24,8 +24,8 @@ with open(os.path.join(os.path.dirname(__file__), "fixtures", "suggest-dashboard
 
 
 def _template_panels(panels):
-    """A suggestion's own panels: everything except the KPI row, which is added after the template is chosen."""
-    return [p for p in panels if not p["id"].startswith("kpi-")]
+    """A suggestion's own panels: everything except the header and the KPI row, which are added after the template is chosen."""
+    return [p for p in panels if not p["id"].startswith("kpi-") and p["id"] != "intro"]
 
 
 @pytest.mark.parametrize("case", FIXTURE, ids=[c["name"] for c in FIXTURE])
@@ -52,11 +52,11 @@ def test_cohort_spec_is_valid_linked_and_inline():
     assert spec["schemaVersion"] == cx_dashboard_validate.DASHBOARD_SCHEMA_VERSION
     assert spec["data"]["data"]["kind"] == "inline"
     # The case card reads a second source of the same data, narrowed to the clicked case.
-    assert all(p["dataRef"] == ("case" if pid == "case" else "data") for pid, p in spec["panels"].items())
+    assert all(p["dataRef"] == ("case" if pid == "case" else "data") for pid, p in spec["panels"].items() if pid != "intro")
     assert [p["id"] for p in _template_panels(out["panels"])] == ["filters", "km", "compare", "vs-time", "case"]
     assert spec["panels"]["filters"]["type"] == "filters"
     assert spec["panels"]["km"]["config"]["graphType"] == "KaplanMeier"
-    assert len([i for i in spec["layout"]["items"] if not i["panel"].startswith("kpi-")]) == 5
+    assert len([i for i in spec["layout"]["items"] if not i["panel"].startswith("kpi-") and i["panel"] != "intro"]) == 5
     assert cx_dashboard_validate.validate_spec(spec)["valid"]
 
 
@@ -220,9 +220,9 @@ def test_dataset_penguins_is_a_valid_five_panel_explorer():
     assert out["suggested"] is True and out["template"] == "explore"
     assert out["valid"], out["errors"]
     assert len(_template_panels(out["panels"])) == 5
-    assert len([i for i in out["spec"]["panels"] if not i.startswith("kpi-")]) == 5
+    assert len([i for i in out["spec"]["panels"] if not i.startswith("kpi-") and i != "intro"]) == 5
     assert list(out["spec"]["data"]) == ["data"]
-    assert {p["dataRef"] for p in out["spec"]["panels"].values()} == {"data"}
+    assert {p["dataRef"] for p in out["spec"]["panels"].values() if p.get("type") != "text"} == {"data"}
     assert [p["graphType"] for p in _template_panels(out["panels"])] == [
         "filters", "Scatter2D", "Boxplot", "Histogram", "Stacked"]
     assert out["spec"]["panels"]["filters"]["fields"] == ["species", "island", "sex", "year"]
@@ -347,7 +347,7 @@ def test_render_every_penguins_panel():
         return dat
 
     for panel_id, panel in spec["panels"].items():
-        if panel.get("type") == "filters":
+        if panel.get("type") in ("filters", "text"):
             continue
         try:
             png = cx_render.render_png(prepare(panel), panel["config"], width=700, height=500)
@@ -483,14 +483,14 @@ def test_kpi_is_a_single_row_of_at_most_four_round_cards(make):
     result = make()
     items = _kpi_items(result)
     assert 1 <= len(items) <= 4, items
-    assert {i["y"] for i in items} == {0} and {i["h"] for i in items} == {6}      # one row
+    assert {i["y"] for i in items} == {3} and {i["h"] for i in items} == {6}      # one row, under the header
     assert [i["x"] for i in items] == [3 * n for n in range(len(items))]          # left to right, no wrap
     assert all(i["x"] + i["w"] <= 12 for i in items)
     for item in items:
         config = result["spec"]["panels"][item["panel"]]["config"]
         assert config["graphType"] == "Meter" and config["meterType"] == "ring" and config["meterCard"] is True
     # everything else sits below the KPI row
-    assert all(i["y"] >= 6 for i in result["spec"]["layout"]["items"] if not i["panel"].startswith("kpi-"))
+    assert all(i["y"] >= 9 for i in result["spec"]["layout"]["items"] if not i["panel"].startswith(("kpi-", "intro")))
     assert result["valid"], result["errors"]
 
 
@@ -534,7 +534,7 @@ def test_kpi_never_exceeds_one_row_for_a_wide_table():
     for r in range(60):          # more rows than columns: the supported orientation
         wide.append(["s%d" % r, ["a", "b"][r % 2]] + [10 + (r * j) % 7 for j in range(40)])
     items = _kpi_items(sg.suggest(wide))
-    assert len(items) == 4 and {i["y"] for i in items} == {0}
+    assert len(items) == 4 and {i["y"] for i in items} == {3}
 
 
 def test_kpi_skips_columns_that_round_to_nothing_on_a_whole_number_ring():
@@ -591,3 +591,120 @@ def _qc_rows(n):
 QC_TABLE_BIG = _qc_rows(60)
 COHORT_TABLE = ([["patient", "OS_months", "OS_event", "arm", "age", "bmi"]]
                 + [["P%d" % i, 5 + i % 40, i % 2, ["A", "B"][i % 2], 40 + i % 30, 20 + i % 15] for i in range(1, 61)])
+
+
+# ---------------------------------------------------------------------------
+# Time axis: an ISO date column adds a panel over time and a month / year filter, after the template.
+# ---------------------------------------------------------------------------
+def _dated_rows(dates, extra=None):
+    rows = [["day", "site", "temp", "wind", "humidity"]]
+    for i, day in enumerate(dates):
+        rows.append([day, ["north", "south"][i % 2], 10 + i % 9, 3 + i % 5, 40 + i % 17])
+    return rows
+
+
+def _days(count, start="2025-01-01"):
+    first = __import__("datetime").date.fromisoformat(start)
+    return [(first + __import__("datetime").timedelta(days=i * 9)).isoformat() for i in range(count)]
+
+
+def test_an_iso_date_column_adds_a_time_panel_a_month_filter_and_the_derived_entries():
+    result = sg.suggest(_dated_rows(_days(40)))
+    assert result["valid"], result["errors"]
+    ids = [p["id"] for p in result["panels"]]
+    assert ids.index("time") == 5 and ids[:5] == ["intro", "kpi-rows", "kpi-1", "kpi-2", "kpi-3"]     # right under the KPI row
+    config = result["spec"]["panels"]["time"]["config"]
+    assert config["graphType"] == "Scatter2D" and config["xAxis"] == ["day (time)"] and config["yAxis"] == ["temp"]
+    assert config["xAxisTime"] is True and config["timeFormat"] == "yyyy-mm-dd" and config["xAxisTitle"] == "Day"
+    assert result["spec"]["panels"]["filters"]["fields"][-1] == "day (month)"
+    assert [(d["kind"], d["name"], d["from"]) for d in result["derived"]] == [
+        ("time", "day (time)", "day"), ("period", "day (month)", "day")]
+    data = result["spec"]["data"]["data"]["value"]
+    assert data["y"]["data"][data["y"]["vars"].index("day (time)")][0] == 1735689600000       # 2025-01-01 00:00 UTC
+    assert data["x"]["day (month)"][0] == "01 Jan"                                              # one calendar year: short labels
+    assert sg._period_labels([sg._iso_to_ms("2024-12-31"), sg._iso_to_ms("2025-01-01")], "month") == ["2024-12", "2025-01"]
+    assert sg._period_labels([sg._iso_to_ms("2024-12-31"), None], "year") == ["2024", "NA"]
+
+
+def test_the_time_axis_limits_follow_the_data_with_a_small_margin():
+    result = sg.suggest(_dated_rows(_days(40)))
+    config = result["spec"]["panels"]["time"]["config"]
+    data = result["spec"]["data"]["data"]["value"]
+    stamps = data["y"]["data"][data["y"]["vars"].index("day (time)")]
+    low, high = min(stamps), max(stamps)
+    assert (config["setMinX"], config["setMaxX"]) == sg._time_limits(stamps)
+    assert config["setMinX"] < low and config["setMaxX"] > high
+    assert (high - low) * 0.02 - 1 <= low - config["setMinX"] <= (high - low) * 0.02 + 1
+    assert sg._time_limits([5 * 86400000, 5 * 86400000]) == (5 * 86400000 - 43200000, 5 * 86400000 + 43200000)
+
+
+def test_the_time_panel_pushes_the_rest_down_and_leaves_one_kpi_row():
+    plain = sg.suggest([row[1:] for row in _dated_rows(_days(40))])
+    dated = sg.suggest(_dated_rows(_days(40)))
+    assert "time" not in plain["spec"]["panels"] and "derived" not in plain
+    at = {i["panel"]: i for i in dated["spec"]["layout"]["items"]}
+    base = {i["panel"]: i for i in plain["spec"]["layout"]["items"]}
+    for panel in ("scatter", "compare", "distribution", "counts"):
+        assert at[panel]["y"] == base[panel]["y"] + 12 and at[panel]["x"] == base[panel]["x"]
+    assert at["filters"]["h"] == base["filters"]["h"] + 12
+    assert at["time"] == {"panel": "time", "x": 3, "y": 9, "w": 9, "h": 12}
+    assert {i["y"] for i in _kpi_items(dated)} == {3}
+
+
+def test_the_derived_time_variable_is_not_a_kpi_metric_or_a_range_filter():
+    result = sg.suggest(_dated_rows(_days(40)))
+    kpi = [result["spec"]["panels"][i["panel"]]["measures"][0] for i in _kpi_items(result)]
+    assert "day (time)" not in kpi
+    assert "day (time)" not in result["spec"]["panels"]["filters"]["fields"]
+
+
+def test_the_date_filter_is_by_year_over_several_years_and_absent_when_too_fine():
+    years = sg.suggest(_dated_rows(_days(60, "2018-01-01")))                 # about 1.5 years of 9-day steps -> months > 12
+    assert years["spec"]["panels"]["filters"]["fields"][-1] == "day (year)"
+    long = sg.suggest(_dated_rows(_days(60, "2000-01-01") + []))             # still few distinct years
+    assert any(d["kind"] == "period" for d in long["derived"])
+    many = sg.suggest(_dated_rows([ "%04d-01-01" % (1950 + i) for i in range(40)]))   # 40 distinct years: too many levels
+    assert not any(d["kind"] == "period" for d in many["derived"]) and "time" in many["spec"]["panels"]
+
+
+def test_a_time_of_day_changes_the_axis_format_and_slash_dates_are_never_guessed():
+    stamped = sg.suggest(_dated_rows(["2025-03-%02d 10:30" % (1 + i % 28) for i in range(40)]))
+    assert stamped["spec"]["panels"]["time"]["config"]["timeFormat"] == "yyyy-mm-dd HH:MM"
+    slashed = sg.suggest(_dated_rows(["%d/%d/2025" % (1 + i % 12, 1 + i % 28) for i in range(40)]))
+    assert "time" not in slashed["spec"]["panels"] and "derived" not in slashed
+
+
+def test_iso_to_ms_reads_valid_dates_and_refuses_the_rest():
+    assert sg._iso_to_ms("1970-01-02") == 86400000 and sg._iso_to_ms("2025-01-01T00:00:01") == 1735689601000
+    for bad in ("2025-02-30", "2025-13-01", "01/02/2025", "yesterday", None, 5):
+        assert sg._iso_to_ms(bad) is None
+
+
+def test_a_table_too_wide_for_the_standard_orientation_gets_no_time_panel():
+    wide = [["day"] + ["m%d" % i for i in range(12)]] + [[d] + [i + j for j in range(12)] for i, d in enumerate(_days(12))]
+    assert "time" not in sg.suggest(wide).get("spec", {}).get("panels", {})
+
+
+def test_the_sample_ceiling_is_in_the_tool_text():
+    import asyncio
+    import server
+    text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
+    assert "never fewer than 200 and never more than 300" in text
+
+
+def test_a_header_text_panel_sits_on_top_with_a_bold_title_and_a_short_description():
+    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG), title="Run <QC> & more")
+    assert result["valid"], result["errors"]
+    item = next(i for i in result["spec"]["layout"]["items"] if i["panel"] == "intro")
+    assert (item["x"], item["y"], item["w"]) == (0, 0, 12) and item["h"] == 3
+    panel = result["spec"]["panels"]["intro"]
+    assert panel["type"] == "text"
+    assert panel["html"].startswith('<div style="font-weight: 700; font-size: 25px">Run &lt;QC&gt; &amp; more</div>')
+    assert "Per-sample sequencing QC" in panel["html"] and "rows and" in panel["html"] and "Filters panel" in panel["html"]
+    assert all(i["y"] >= 3 for i in result["spec"]["layout"]["items"] if i["panel"] != "intro")
+    assert "Charts: Rows" not in panel["html"] and "Charts: " in panel["html"]       # the cards are not listed as charts
+
+
+def test_the_header_states_the_complete_row_count_when_designed_from_a_sample():
+    result = sg.suggest(copy.deepcopy(QC_TABLE_BIG), total_rows=5000)
+    assert "5,000 rows" in result["spec"]["panels"]["intro"]["html"]

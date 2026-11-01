@@ -138,10 +138,10 @@ def test_reference_table_gets_the_same_template(number, name, columns, rows, exp
 
 def test_survival_and_qc_templates_keep_their_own_panels():
     cohort = sg.suggest(_table(SURVIVAL, 60))
-    assert [p["graphType"] for p in cohort["panels"] if not p["id"].startswith("kpi-")] == [
+    assert [p["graphType"] for p in cohort["panels"] if not p["id"].startswith("kpi-") and p["id"] != "intro"] == [
         "filters", "KaplanMeier", "Boxplot", "Scatter2D", "Bar"]
     qc = sg.suggest(_table(QC, 24))
-    assert [p["id"] for p in qc["panels"] if not p["id"].startswith("kpi-")] == [
+    assert [p["id"] for p in qc["panels"] if not p["id"].startswith("kpi-") and p["id"] != "intro"] == [
         "filters", "depth", "quality-scatter", "quality-spread", "case"]
 
 

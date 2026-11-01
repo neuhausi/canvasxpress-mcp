@@ -36,6 +36,13 @@
     #cx-sample .msg { margin-right: auto; }
     #cx-sample .msg.err { color: #b91c1c; }
     #cx-sample.drop { outline: 2px dashed currentColor; outline-offset: -3px; }
+    /* Insights: what stands out in the COMPLETE data, computed in this page. */
+    #cx-insights { display: none; margin: 6px 8px 0; padding: 6px 10px 7px; border: 1px solid currentColor; border-radius: 6px; font-size: 12px; }
+    #cx-insights.on { display: block; }
+    #cx-insights .ttl { font-weight: 600; margin-bottom: 3px; }
+    #cx-insights .ttl span { font-weight: 400; opacity: .7; margin-left: 6px; }
+    #cx-insights ul { margin: 0; padding-left: 16px; }
+    #cx-insights li { margin: 1px 0; }
     #cx-json { display: none; padding: 6px 8px 0; }
     #cx-json textarea {
       width: 100%; height: 150px; box-sizing: border-box; font: 11px monospace;
@@ -84,6 +91,7 @@
     <button id="cx-load" class="cx-btn" type="button">Load full file...</button>
     <input id="cx-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" style="display:none">
   </div>
+  <div id="cx-insights" role="region" aria-label="What stands out"></div>
   <div id="cx-json">
     <textarea id="cx-json-text" readonly spellcheck="false"></textarea>
     <div class="row"><button id="cx-json-copy" class="cx-btn" type="button">Copy JSON</button>
@@ -428,7 +436,8 @@
     // shaped like the sample (same numeric columns, same annotation columns, rows numbered 1..N) and
     // swapped into the same spec, so every panel keeps its configuration.
     // ------------------------------------------------------------------------------------------
-    let sampleInfo = null;        // payload.sample while the dashboard shows a sample or a loaded file
+    let sampleInfo = null;        // payload.sample while a sample-designed dashboard waits for, or has, its complete file
+    let loadedFull = false;       // the complete file has been loaded for this sample-designed dashboard
 
     const NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
     const MISSING_RE = /^(na|n\/a|nan|null|-)?$/i;
@@ -475,12 +484,15 @@
 
     function hideSample() {
       sampleInfo = null;
+      loadedFull = false;
       document.getElementById('cx-sample').className = '';
       setPending(false);
     }
 
     function showSample(info, spec, payload) {
       sampleInfo = info;
+      loadedFull = false;
+      hideInsights();
       const box = document.getElementById('cx-sample');
       box.className = 'on';
       const load = document.getElementById('cx-load');
@@ -520,13 +532,61 @@
       return rows.filter(function (r) { return r.some(function (c) { return c.trim() !== ''; }); });
     }
 
+    const ISO_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
+
+    /** UTC epoch milliseconds of an ISO date or date-time; null for anything else (same rule as the server). */
+    function isoToMs(text) {
+      const m = ISO_RE.exec(String(text == null ? '' : text).trim());
+      if (!m) return null;
+      const y = +m[1], mo = +m[2], d = +m[3], h = +(m[4] || 0), mi = +(m[5] || 0), sec = +(m[6] || 0);
+      const ms = Date.UTC(y, mo - 1, d, h, mi, sec);
+      const back = new Date(ms);
+      if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d ||
+          back.getUTCHours() !== h || back.getUTCMinutes() !== mi || back.getUTCSeconds() !== sec) return null;
+      return ms;
+    }
+
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    /** Filter labels for UTC milliseconds ('NA' where unknown); the same rule as the server's _period_labels. */
+    function periodLabels(stamps, unit) {
+      const years = {};
+      stamps.forEach(function (ms) { if (ms !== null) years[new Date(ms).getUTCFullYear()] = 1; });
+      const single = Object.keys(years).length === 1;
+      return stamps.map(function (ms) {
+        if (ms === null) return 'NA';
+        const d = new Date(ms);
+        const year = String(d.getUTCFullYear()).padStart(4, '0');
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        if (unit === 'year') return year;
+        return single ? month + ' ' + MONTH_NAMES[d.getUTCMonth()] : year + '-' + month;
+      });
+    }
+
+    /** Add the derived time variable / period annotation the server added to the sample. */
+    function applyDerived(out, derived) {
+      (derived || []).forEach(function (entry) {
+        const source = (out.x && out.x[entry.from]) || [];
+        const stamps = source.map(isoToMs);
+        if (entry.kind === 'time') {
+          out.y.vars.push(entry.name);
+          out.y.data.push(stamps);
+        } else if (entry.kind === 'period') {
+          out.x = out.x || {};
+          out.x[entry.name] = periodLabels(stamps, entry.unit);
+        }
+      });
+    }
+
     /** The sample's data object rebuilt from the full table; {error} when a column it uses is absent. */
-    function buildFullData(rows, sample) {
+    function buildFullData(rows, sample, derived) {
       const header = rows[0].map(function (h) { return h.trim(); });
       const index = {};
       header.forEach(function (h, i) { if (!(h in index)) index[h] = i; });
-      const vars = sample.y.vars.map(String);
-      const notes = sample.x ? Object.keys(sample.x) : [];
+      const computed = {};
+      (derived || []).forEach(function (entry) { computed[entry.name] = true; });
+      const vars = sample.y.vars.map(String).filter(function (n) { return !computed[n]; });
+      const notes = (sample.x ? Object.keys(sample.x) : []).filter(function (n) { return !computed[n]; });
       const missing = vars.concat(notes).filter(function (n) { return !(n in index); });
       if (missing.length) {
         return { error: 'That file has no column ' + missing.join(', ') + '. The dashboard uses: ' +
@@ -534,6 +594,7 @@
       }
       const body = rows.slice(1);
       const out = JSON.parse(JSON.stringify(sample));
+      out.y.vars = vars.slice();
       out.y.smps = body.map(function (_, i) { return String(i + 1); });
       out.y.data = vars.map(function (name) {
         return body.map(function (r) {
@@ -541,15 +602,15 @@
           return MISSING_RE.test(v) || !NUMBER_RE.test(v) ? null : parseFloat(v);
         });
       });
-      if (notes.length) {
-        out.x = {};
-        notes.forEach(function (name) {
-          out.x[name] = body.map(function (r) {
-            const v = (r[index[name]] || '').trim();
-            return MISSING_RE.test(v) ? 'NA' : v;
-          });
+      out.x = {};
+      notes.forEach(function (name) {
+        out.x[name] = body.map(function (r) {
+          const v = (r[index[name]] || '').trim();
+          return MISSING_RE.test(v) ? 'NA' : v;
         });
-      }
+      });
+      if (!notes.length) delete out.x;
+      applyDerived(out, derived);
       return { data: out, rows: body.length };
     }
 
@@ -566,16 +627,34 @@
           if (rows.length < 2) { setSampleMessage('That file has no data rows.', true); return; }
           const sample = sampleData(currentPayload.spec);
           if (!sample) { setSampleMessage('This dashboard has no inline table to replace.', true); return; }
-          const built = buildFullData(rows, sample);
+          const built = buildFullData(rows, sample, currentPayload.derived);
           if (built.error) { setSampleMessage(built.error, true); return; }
           const spec = JSON.parse(JSON.stringify(currentPayload.spec));
           spec.data.data.value = built.data;
           if (spec.data.case && spec.data.case.kind === 'inline') spec.data.case.value = built.data;
           spec.title = String(spec.title || '').replace(/ \u2014 sample of .*$/, '');
+          // The time panel's axis limits follow the complete data (same rule as the server's _time_limits).
+          const timeEntry = (currentPayload.derived || []).filter(function (d) { return d.kind === 'time'; })[0];
+          if (timeEntry && spec.panels && spec.panels.time && spec.panels.time.config) {
+            const stamps = built.data.y.data[built.data.y.vars.indexOf(timeEntry.name)] || [];
+            let low = null, high = null;
+            stamps.forEach(function (ms) {
+              if (ms === null) return;
+              low = low === null || ms < low ? ms : low;
+              high = high === null || ms > high ? ms : high;
+            });
+            if (low !== null) {
+              const pad = Math.max(Math.floor((high - low) * 0.02), 43200000);
+              spec.panels.time.config.setMinX = low - pad;
+              spec.panels.time.config.setMaxX = high + pad;
+            }
+          }
           renderDashboardSpec(spec);
           // Save / Open in Builder must carry the full table, not the sample.
           currentPayload = Object.assign({}, currentPayload, { spec: spec });
           saved = null;
+          loadedFull = true;
+          refreshInsights();
           setPending(false);
           setSampleMessage('Showing all ' + fmt(built.rows) + ' rows from ' + file.name + '.', false);
         } catch (err) {
@@ -598,6 +677,154 @@
       const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (file) loadFullFile(file);
     });
+
+    // ------------------------------------------------------------------------------------------
+    // Insights: what stands out in the COMPLETE data, computed here (never from a sample).
+    //   - declared limits (spec.insights.thresholds): how many rows break each
+    //   - a group whose average is far from the overall average: |effect| >= 0.5 SD, z >= 4, >= 5 rows
+    //   - values more than 3.5 SD from the mean
+    // ------------------------------------------------------------------------------------------
+    const ACRONYMS = { gc: 1, os: 1, pfs: 1, dfs: 1, efs: 1, bmi: 1, id: 1, dna: 1, rna: 1, qc: 1, umi: 1, snp: 1, tpm: 1, cpm: 1, fpkm: 1 };
+
+    /** A column name as a reader would write it (same rules as the server): total_reads -> Total Reads. */
+    function humanize(name) {
+      const text = String(name).replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+      const words = text.split(/[\s._\-]+/).filter(Boolean).map(function (token) {
+        const low = token.toLowerCase();
+        if (low === 'pct' || low === 'percent' || low === 'perc') return '%';
+        if ((token === token.toUpperCase() && token !== low) || ACRONYMS[low]) return token.toUpperCase();
+        return token.charAt(0).toUpperCase() + token.slice(1);
+      });
+      return words.join(' ') || String(name);
+    }
+
+    function fmtNum(v) {
+      const a = Math.abs(v);
+      if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e8 ? 0 : 1).replace(/\.0$/, '') + 'M';
+      if (a >= 1e4) return Math.round(v).toLocaleString('en-US');
+      return String(Number(v.toPrecision(3)));
+    }
+
+    const OPS = {
+      lt: function (a, b) { return a < b; }, le: function (a, b) { return a <= b; },
+      gt: function (a, b) { return a > b; }, ge: function (a, b) { return a >= b; },
+    };
+
+    function findMeasure(vars, field) {
+      const want = String(field).toLowerCase();
+      let hit = vars.filter(function (v) { return String(v).toLowerCase() === want; });
+      if (!hit.length) hit = vars.filter(function (v) { return String(v).toLowerCase().indexOf(want) !== -1; });
+      return hit.length === 1 ? hit[0] : null;
+    }
+
+    /** The captions for a data object ({y:{vars,smps,data}, x}); an array of {rank, text}, best first. */
+    function computeInsights(data, thresholds, derived) {
+      if (!data || !data.y || !Array.isArray(data.y.vars) || data.y.vars.length > data.y.smps.length) return [];
+      const skip = {};
+      (derived || []).forEach(function (d) { skip[d.name] = true; });
+      const N = data.y.smps.length;
+      const vars = data.y.vars.filter(function (v) { return !skip[v]; });
+      const column = function (name) { return data.y.data[data.y.vars.indexOf(name)] || []; };
+      const factors = Object.keys(data.x || {}).filter(function (k) {
+        if (skip[k]) return false;
+        const seen = {}; let n = 0;
+        data.x[k].forEach(function (v) { if (!seen[v]) { seen[v] = 1; n++; } });
+        return n >= 2 && n <= 12 && n < N;
+      });
+      const found = [];
+
+      (thresholds || []).forEach(function (t) {
+        const name = t && findMeasure(vars, t.field);
+        if (!name || !OPS[t.op]) return;
+        const values = column(name).filter(function (v) { return typeof v === 'number'; });
+        const hits = values.filter(function (v) { return OPS[t.op](v, t.value); }).length;
+        const label = t.label || (humanize(name) + ' ' + t.op + ' ' + t.value);
+        found.push({ rank: 1000, text: label + ': ' + (hits ? fmt(hits) + ' of ' + fmt(values.length) + ' rows (' +
+          (100 * hits / values.length).toFixed(1).replace(/\.0$/, '') + '%)' : 'none of ' + fmt(values.length) + ' rows') });
+      });
+
+      const groupHits = [];
+      const outlierHits = [];
+      vars.forEach(function (name) {
+        const col = column(name);
+        const present = col.filter(function (v) { return typeof v === 'number'; });
+        if (present.length < 20) return;
+        const mean = present.reduce(function (a, b) { return a + b; }, 0) / present.length;
+        const sd = Math.sqrt(present.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / present.length);
+        if (!(sd > 0)) return;
+        factors.forEach(function (f) {
+          const groups = {};
+          col.forEach(function (v, i) {
+            if (typeof v !== 'number') return;
+            const level = data.x[f][i];
+            if (level === 'NA') return;
+            (groups[level] = groups[level] || { sum: 0, n: 0 });
+            groups[level].sum += v; groups[level].n += 1;
+          });
+          Object.keys(groups).forEach(function (level) {
+            const g = groups[level];
+            if (g.n < 5) return;
+            const diff = g.sum / g.n - mean;
+            const effect = diff / sd;
+            const z = diff / (sd / Math.sqrt(g.n));
+            if (Math.abs(effect) >= 0.5 && Math.abs(z) >= 4) {
+              groupHits.push({ rank: Math.abs(effect), key: f + '\u0000' + level, text: humanize(f) + ' ' + level + ': ' +
+                humanize(name) + ' averages ' + fmtNum(g.sum / g.n) + ', ' + fmtNum(Math.abs(diff)) + ' ' +
+                (diff < 0 ? 'below' : 'above') + ' the overall ' + fmtNum(mean) + ' (' + fmt(g.n) + ' of ' + fmt(N) + ' rows).' });
+            }
+          });
+        });
+        if (present.length >= 30) {
+          const high = present.filter(function (v) { return v > mean + 3.5 * sd; }).length;
+          const low = present.filter(function (v) { return v < mean - 3.5 * sd; }).length;
+          [[high, 'above ' + fmtNum(mean + 3.5 * sd)], [low, 'below ' + fmtNum(mean - 3.5 * sd)]].forEach(function (side) {
+            if (side[0] > 0 && side[0] <= 0.05 * present.length) {
+              outlierHits.push({ rank: side[0], text: fmt(side[0]) + (side[0] === 1 ? ' row has ' : ' rows have ') +
+                humanize(name) + ' ' + side[1] + ' (more than 3.5 SD from the mean ' + fmtNum(mean) + ').' });
+            }
+          });
+        }
+      });
+      groupHits.sort(function (a, b) { return b.rank - a.rank; });
+      const perGroup = {};
+      groupHits.forEach(function (h) {
+        perGroup[h.key] = (perGroup[h.key] || 0) + 1;
+        if (perGroup[h.key] <= 2 && found.filter(function (x) { return x.rank < 1000; }).length < 3) found.push(h);
+      });
+      outlierHits.sort(function (a, b) { return b.rank - a.rank; });
+      outlierHits.slice(0, 2).forEach(function (h) { found.push(h); });
+      return found.slice(0, 5);
+    }
+
+    function hideInsights() {
+      const box = document.getElementById('cx-insights');
+      box.className = ''; box.textContent = '';
+    }
+
+    /** Draw the insights strip for the dashboard now on screen (complete data only). */
+    function refreshInsights() {
+      const box = document.getElementById('cx-insights');
+      const spec = currentPayload && currentPayload.spec;
+      const data = sampleData(spec);
+      if (!data || sampleInfo && !loadedFull) { hideInsights(); return; }
+      let captions = [];
+      try {
+        captions = computeInsights(data, spec.insights && spec.insights.thresholds, currentPayload.derived);
+      } catch (e) { console.warn('[cx-dashboard-view] insights failed:', e); }
+      if (!captions.length) { hideInsights(); return; }
+      box.textContent = '';
+      const title = document.createElement('div');
+      title.className = 'ttl';
+      title.textContent = 'What stands out';
+      const note = document.createElement('span');
+      note.textContent = 'computed from all ' + fmt(data.y.smps.length) + ' rows';
+      title.appendChild(note);
+      const list = document.createElement('ul');
+      captions.forEach(function (c) { const li = document.createElement('li'); li.textContent = c.text; list.appendChild(li); });
+      box.appendChild(title); box.appendChild(list);
+      box.className = 'on';
+      if (typeof reportSize === 'function') setTimeout(reportSize, 30);
+    }
 
     function showToolbar(payload) {
       currentPayload = payload;
@@ -669,6 +896,7 @@
         renderDashboardSpec(spec);
         const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
         if (payload && payload.spec) showToolbar(payload);
+        refreshInsights();
       } catch (err) {
         showError(err.message || String(err));
       }
