@@ -1448,6 +1448,7 @@ are for a shared or corporate deployment (for example an ALB in front of a conta
 | `CX_KB_BASE_URL` | Where `SCHEMA.md` / `RULES.md` / `CONTEXT.md` are fetched from (default: `canvasxpress-LLM` `main` on GitHub). Point at a tag or an internal mirror to pin the knowledge base. |
 | `CX_CONFIG_SCHEMA_URL` | Where the config JSON Schema is fetched from (default: `canvasxpress.org`). A bundled copy is the fallback. |
 | `CX_SKIP_FETCH=1` | Never fetch; use the cache and the bundled schema. This also drops the `SCHEMA.md` / `RULES.md` layer, so graph-type applicability is less detailed. |
+| `CX_PUBLIC_URL` | The address clients reach this server at (default `https://canvasxpress.org`). It is the base of the file links (`<CX_PUBLIC_URL>/mcp/file/<id>`) and of the drop page and `curl` upload address the dashboard tool text tells the model to use, so a self-hosted instance must set it to its own address. The local uploader (`tools/local-upload/`) points at it with `CX_UPLOAD_URL=<CX_PUBLIC_URL>/mcp/upload`. |
 
 **Network.** At runtime the server reaches the LLM provider, GitHub (raw) for the knowledge base and
 `canvasxpress.org` for the config schema. Building the index downloads the embedding model from Hugging Face once;

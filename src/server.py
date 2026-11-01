@@ -3829,13 +3829,13 @@ def compose_canvasxpress_dashboard(
     description=(
         "One call for any dashboard request. HOW TO SEND THE DATA, in this order, without deliberating and without "
         "asking the user which way: (1) if the file is at a link (one the user pasted, a GitHub, Dropbox, Google "
-        "Drive/Sheets, S3 or https://canvasxpress.org/mcp/file/... link), pass url: the server fetches the file "
+        "Drive/Sheets, S3 or %(file)s... link), pass url: the server fetches the file "
         "itself, so the call is instant; if an upload_csv tool is available and the file is on the user's computer, "
         "call upload_csv(path) first and pass the url it returns. (2) Else, if you can run a shell command, upload the file (curl -s "
-        "--data-binary @FILE \"https://canvasxpress.org/mcp/upload?name=FILE\") and pass the returned file_id. "
+        "--data-binary @FILE \"%(upload)s?name=FILE\") and pass the returned file_id. "
         "(3) Else, for a file of up to 300 rows, pass csv: the file's raw text pasted as it is. (4) Else (a larger "
         "file you would have to type out) do NOT type it: tell the user in one sentence to drop the file at "
-        "https://canvasxpress.org/mcp/upload and paste the link it gives them, then call this tool with that link "
+        "%(upload)s and paste the link it gives them, then call this tool with that link "
         "as url. data (a list of lists with the column names first, or an object with headers and rows) and "
         "dataset (penguins, iris, mtcars) are for tables you already hold as data. Never convert a file to JSON "
         "by hand, and never split it across calls. Returns a validated linked spec rendered inline by the "
@@ -3861,7 +3861,7 @@ def compose_canvasxpress_dashboard(
         "differences and any thresholds you declare, each caption carrying its figures). When "
         "nothing fits it says so (suggested: false) and says what to correct. Deterministic and "
         "instant (no LLM call); it never alters the data."
-    ),
+    ) % {"upload": _UPLOAD_PAGE_URL, "file": _FILE_URL_BASE},
     meta=_META_FOR_DASHBOARD,
 )
 def suggest_canvasxpress_dashboard(
@@ -3881,13 +3881,14 @@ def suggest_canvasxpress_dashboard(
     Args:
         url: FASTEST. An http(s) link to the CSV/TSV file: the server fetches it itself. Share links from GitHub,
              Dropbox, Google Drive and Google Sheets are accepted as they are, and so is the link a person gets
-             by dropping a file at https://canvasxpress.org/mcp/upload. Use this whenever a link exists.
+             by dropping a file at the server's /mcp/upload page (address in the tool description). Use this
+             whenever a link exists.
         file_id: The id returned by uploading the file from your shell:
-                 curl -s --data-binary @FILE "https://canvasxpress.org/mcp/upload?name=FILE". Use when there is
+                 curl -s --data-binary @FILE "<server>/mcp/upload?name=FILE" (address in the tool description). Use when there is
                  no link but you can run a command.
         csv: The raw text of the CSV/TSV file, pasted exactly as it is (no conversion to JSON, no quoting): for a
              file of up to about 300 rows when neither url nor file_id is possible. For a larger file ask the
-             user to drop it at https://canvasxpress.org/mcp/upload and pass the link they get as url.
+             user to drop it at the server's /mcp/upload page and pass the link they get as url.
         tables: Several RELATED files instead of data, e.g. [{"name": "orders", "data": [[headers], [row], ...]},
                 {"name": "customers", "data": [...]}, {"name": "products", "data": [...]}] (2 to 6 files, each
                 COMPLETE). The file with the most rows is the base and keeps every row; each other file is a
@@ -3928,7 +3929,7 @@ def suggest_canvasxpress_dashboard(
         held = _take_upload(file_id)
         if held is None:
             message = ("No uploaded file with that file_id (uploads are kept for %d minutes): upload it again "
-                       "with curl -s --data-binary @FILE https://canvasxpress.org/mcp/upload" % (_UPLOAD_TTL // 60))
+                       "with curl -s --data-binary @FILE %s" % (_UPLOAD_TTL // 60, _UPLOAD_PAGE_URL))
             return {"suggested": False, "error": message, "reason": message}
     if held is not None:
         try:

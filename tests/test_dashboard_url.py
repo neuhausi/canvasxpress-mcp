@@ -83,4 +83,5 @@ def test_the_tool_tells_the_model_the_link_comes_first():
     import asyncio
     text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
     assert text.index("pass url") < text.index("file_id") < text.index("pass csv")
-    assert "https://canvasxpress.org/mcp/upload" in text and "without asking the user which way" in text
+    assert server._UPLOAD_PAGE_URL in text and server._FILE_URL_BASE in text         # follows CX_PUBLIC_URL
+    assert "without asking the user which way" in text and "upload_csv" in text
