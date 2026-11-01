@@ -31,10 +31,12 @@ canvasxpress-upload -- python3 .../cx_upload.py`) works the same way.
 
 `CX_UPLOAD_URL` points the tool at another CanvasXpress MCP server (`http://host:8100/mcp/upload`).
 
-**Consent, every time, no standing privileges.** Nothing is sent without the person saying so: each `upload_csv`
-call first shows a native dialog over the chat ("Claude asks to send *file* (N KB) to *host* … Allow / Don't allow");
-a refusal is returned to the model as an error that tells it not to retry and not to type the rows. `CX_UPLOAD_ASK=0`
-turns the dialog off for unattended use. On platforms without the dialog (Linux, Windows) the upload proceeds.
+**Consent in the chat, every time, no standing privileges.** Nothing is sent without the person saying so: each
+`upload_csv` call first asks **in the conversation** through MCP elicitation ("Send *file* (N KB) to *host* to build
+a dashboard from it?" with Accept / Decline, rendered by the client — Claude Desktop supports it). A refusal is
+returned to the model as an error that tells it not to retry and not to type the rows. A client without elicitation
+gets a native dialog over the chat on macOS instead; elsewhere the upload proceeds. `CX_UPLOAD_ASK=0` turns the
+question off for unattended use.
 
 **macOS protected folders (Downloads, Desktop, Documents, iCloud).** The process Claude Desktop starts cannot read
 them on its own. Instead of asking for a Files-and-Folders grant in System Settings, the tool opens the standard

@@ -52,12 +52,50 @@ def _quote(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+CLIENT = {"elicitation": False}             # what the client said it supports at initialize
+_pending: list = []                         # inbound messages that arrived while waiting for an answer
+
+
+def ask_in_chat(name: str, size: int, host: str):
+    """Ask the person IN THE CHAT, through MCP elicitation: the client shows the question with Accept/Decline
+    and sends the answer back. Returns True/False, or None when the client cannot do this."""
+    if not CLIENT["elicitation"]:
+        return None
+    ident = "consent-" + os.urandom(4).hex()
+    send({"jsonrpc": "2.0", "id": ident, "method": "elicitation/create", "params": {
+        "message": "Send %s (%s KB) to %s to build a dashboard from it? The file is kept there for 30 minutes; "
+                   "nothing else is read." % (name, max(1, size // 1024), host),
+        "requestedSchema": {"type": "object", "properties": {
+            "allow": {"type": "boolean", "title": "Send the file", "description": "Yes = upload %s" % name,
+                      "default": True}}, "required": ["allow"]}}})
+    for line in sys.stdin.buffer:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line.decode("utf-8"))
+        except ValueError:
+            continue
+        if message.get("id") == ident and "method" not in message:
+            result = message.get("result") or {}
+            if message.get("error") or result.get("action") != "accept":
+                return False
+            return bool((result.get("content") or {}).get("allow", True))
+        _pending.append(message)                 # anything else is handled after the answer
+    return False                                 # the client went away
+
+
 def ask_to_send(name: str, size: int) -> bool:
-    """A native dialog over the chat: the person allows this one upload. Nothing is sent without it.
-    On a platform without the dialog the upload proceeds (CX_UPLOAD_ASK=0 also skips the dialog)."""
-    if os.environ.get("CX_UPLOAD_ASK", "1") in ("0", "false", "no") or sys.platform != "darwin":
+    """The person allows this one upload: in the chat when the client supports elicitation, otherwise through a
+    native dialog over the chat (macOS). Nothing is sent without it. CX_UPLOAD_ASK=0 skips the question."""
+    if os.environ.get("CX_UPLOAD_ASK", "1") in ("0", "false", "no"):
         return True
     host = urllib.parse.urlparse(UPLOAD_URL).hostname or UPLOAD_URL
+    answer = ask_in_chat(name, size, host)
+    if answer is not None:
+        return answer
+    if sys.platform != "darwin":
+        return True
     out = _osascript(
         'display dialog %s with title "CanvasXpress upload" buttons {"Don\'t allow", "Allow"} '
         'default button "Allow" with icon note' % _quote(
@@ -126,6 +164,7 @@ def handle(message: dict):
     method = message.get("method")
     ident = message.get("id")
     if method == "initialize":
+        CLIENT["elicitation"] = "elicitation" in (message.get("params", {}).get("capabilities") or {})
         return {"protocolVersion": message.get("params", {}).get("protocolVersion") or "2025-06-18",
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "canvasxpress-upload", "version": "1.0.0"}}
@@ -147,10 +186,30 @@ def handle(message: dict):
     return {"_error": {"code": -32601, "message": "method not found: %s" % method}}
 
 
+def send(message: dict):
+    sys.stdout.buffer.write((json.dumps(message) + "\n").encode("utf-8"))
+    sys.stdout.buffer.flush()
+
+
+def dispatch(message: dict):
+    if "method" not in message:                  # a response to something we asked, arriving late: ignore
+        return
+    try:
+        result = handle(message)
+    except Exception as exc:  # noqa: BLE001
+        result = {"_error": {"code": -32603, "message": str(exc)}}
+    if result is None or message.get("id") is None:
+        return
+    reply = {"jsonrpc": "2.0", "id": message["id"]}
+    if isinstance(result, dict) and "_error" in result:
+        reply["error"] = result["_error"]
+    else:
+        reply["result"] = result
+    send(reply)
+
+
 def main():
-    stdin = sys.stdin.buffer
-    stdout = sys.stdout.buffer
-    for line in stdin:
+    for line in sys.stdin.buffer:
         line = line.strip()
         if not line:
             continue
@@ -158,19 +217,9 @@ def main():
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             continue
-        try:
-            result = handle(message)
-        except Exception as exc:  # noqa: BLE001
-            result = {"_error": {"code": -32603, "message": str(exc)}}
-        if result is None or message.get("id") is None:
-            continue
-        reply = {"jsonrpc": "2.0", "id": message["id"]}
-        if isinstance(result, dict) and "_error" in result:
-            reply["error"] = result["_error"]
-        else:
-            reply["result"] = result
-        stdout.write((json.dumps(reply) + "\n").encode("utf-8"))
-        stdout.flush()
+        dispatch(message)
+        while _pending:                          # messages that arrived while a question was open
+            dispatch(_pending.pop(0))
 
 
 if __name__ == "__main__":
