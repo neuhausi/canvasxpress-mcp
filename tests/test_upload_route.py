@@ -63,8 +63,8 @@ def test_cells_are_read_like_a_careful_model_would_send_them():
     assert [server._cell(v) for v in ["12", "1.5", "NA", "", "x", " 7 "]] == [12, 1.5, None, None, "x", 7]
 
 
-def test_the_tool_text_puts_the_upload_first():
+def test_the_tool_still_takes_file_id_and_csv():
     import asyncio
     tool = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard"))
-    assert "/mcp/upload" in tool.description and tool.description.index("file_id") < tool.description.index("csv:")
-    assert {"file_id", "csv"} <= set(tool.parameters["properties"])
+    assert "/mcp/upload" in tool.description
+    assert {"file_id", "csv", "url", "urls"} <= set(tool.parameters["properties"])

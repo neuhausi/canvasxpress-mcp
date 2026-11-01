@@ -5,6 +5,13 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **One rule for getting data in: "drag the file here".** `suggest_canvasxpress_dashboard` called with no data
+  returns `{drop: true}` and the dashboard view shows a drop zone; the person drags the file (or 2 to 6 related
+  files) onto the panel, the view uploads it within its own origin (`/mcp/upload`), calls the tool again with the
+  link (`url`, or the new `urls` for several files) through the host and draws the result. No rows pass through
+  the model, so a file on the computer, a file attached to the chat and data made by an analysis all take seconds.
+  The tool text is now that one rule: `dataset` or `url` when there is one, otherwise call with nothing and tell
+  the user to drag the file onto the panel.
 - **Behind-the-scenes upload from a local file.** `tools/local-upload/cx_upload.py` is a stdlib-only local MCP
   server (stdio; also a Desktop Extension via its `manifest.json`) with one tool, `upload_csv(path)`: it reads the
   file on the user's machine, POSTs it to `/mcp/upload` and returns the link; the remote tool text says to use it

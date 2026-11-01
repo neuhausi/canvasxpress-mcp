@@ -20,9 +20,11 @@ from test_dashboard_view_insights import browser_context, open_view, _table  # n
 VIEW = os.path.join(ROOT, "src", "ui", "cx_dashboard_view.html")
 
 
-def test_the_view_source_has_no_file_loader():
+def test_the_view_source_has_no_sample_loader():
+    """The old sample-then-"Load full file" loader is gone. (The drop zone that replaced it is a different thing:
+    it shows only when the tool was called with no data, and it never draws from a sample.)"""
     text = open(VIEW, encoding="utf-8").read()
-    for gone in ("Load full file", "cx-load", "cx-file", "loadFullFile", "buildFullData", "Showing all", "dragover"):
+    for gone in ("Load full file", "cx-load", "cx-file", "loadFullFile", "buildFullData", "Showing all"):
         assert gone not in text, gone
 
 

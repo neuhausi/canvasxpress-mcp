@@ -1090,20 +1090,23 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 | Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
 | Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
 
-**Getting the data in: a link first.** The slow part of a dashboard request is the model writing the rows into
-the tool call (about 40,000 tokens for 1,500 rows, 6-8 minutes), and no server can make a chat client hand a file
-over: each client has its own sandbox policy (Claude Desktop, for one, blocks a `curl` from the model's shell as
-"outbound data transfer"). What works on every client is the **server** fetching the file, so the tool text tells
-the model, in order and without asking the user which way: (1) `url`: any link to the file (one the user pasted, a
-GitHub blob, Dropbox, Google Drive or Google Sheets share link — turned into the direct-download link — or a
-`https://canvasxpress.org/mcp/file/<id>` link); (2) with a shell, `curl -s --data-binary @FILE
-"https://canvasxpress.org/mcp/upload?name=FILE"` and pass the returned `file_id`; (3) `csv`, the file's raw text
-pasted as it is, for files of up to about 300 rows; (4) for a larger local file, tell the user to drop it at
-**https://canvasxpress.org/mcp/upload** (a page: drag the file in, copy the link it gives) and call the tool with
-that link. A dropped file is also served at `GET /mcp/file/<id>`. Uploads are held in memory for 30 minutes, up to
-50 MB, raw body or multipart; the routes sit under `/mcp`, the path a reverse proxy already forwards, so no proxy
-change is needed. A fetched `url` must be http(s) on a public host (private and loopback addresses are refused);
-`CX_PUBLIC_URL` (default `https://canvasxpress.org`) is the base the file links are built with.
+**Getting the data in: one rule.** The slow part of a dashboard request is the model writing the rows into the
+tool call (about 40,000 tokens for 1,500 rows, 6-8 minutes), and no chat client hands a file to an MCP server (a
+file attached to the chat, or made by an analysis, lives in a sandbox that cannot reach the server). So the tool
+text is one rule: pass `dataset` (penguins, iris, mtcars) or `url` (any link to a CSV/TSV: a GitHub blob, Dropbox,
+Google Drive or Google Sheets share link — turned into the direct-download link — or a
+`https://canvasxpress.org/mcp/file/<id>` link) when there is one; **otherwise call the tool with no data at all.**
+The view then shows a drop zone ("Drag your file here"); the person drops the file (or 2 to 6 related files), the
+view uploads it within its own origin (`POST /mcp/upload`, a 30-minute link), calls the tool again with the link
+(`url`, or `urls` for several files) through the host and draws the dashboard. No rows pass through the model, so
+a file on the computer, an attachment and analysis output all take seconds. A small table already in the chat
+(under 300 rows) may still be passed as `csv`/`data`; a `file_id` from `curl -s --data-binary @FILE
+"https://canvasxpress.org/mcp/upload?name=FILE"`, and the local `upload_csv(path)` tool in `tools/local-upload/`,
+remain for scripted use. `GET /mcp/upload` is the same drop page as a stand-alone web page; a dropped file is served
+at `GET /mcp/file/<id>`. Uploads are held in memory for 30 minutes, up to 50 MB, raw body or multipart; the routes
+sit under `/mcp`, the path a reverse proxy already forwards. A fetched `url` must be http(s) on a public host
+(private and loopback addresses are refused); `CX_PUBLIC_URL` (default `https://canvasxpress.org`) is the base the
+file links are built with.
 
 **Large results.** The result carries the complete table, so it can be hundreds of KB, and Claude replaces a tool
 result that large with an error text. `suggest_canvasxpress_dashboard` therefore returns a short result (template,

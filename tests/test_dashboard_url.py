@@ -79,9 +79,10 @@ def test_private_hosts_and_bad_links_are_refused():
     assert "http(s)" in server.suggest_canvasxpress_dashboard(url="not a link")["error"]
 
 
-def test_the_tool_tells_the_model_the_link_comes_first():
+def test_the_tool_text_is_the_one_rule():
+    """dataset or url when there is one; otherwise call with NO data and the panel asks for the file."""
     import asyncio
     text = asyncio.run(server.mcp.get_tool("suggest_canvasxpress_dashboard")).description
-    assert text.index("pass url") < text.index("file_id") < text.index("pass csv")
+    assert "one rule" in text and "NO data at all" in text and "drag the file" in text
+    assert "attached to the chat" in text and "do not ask the user which way" in text
     assert server._UPLOAD_PAGE_URL in text and server._FILE_URL_BASE in text         # follows CX_PUBLIC_URL
-    assert "without asking the user which way" in text and "upload_csv" in text

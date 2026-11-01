@@ -42,6 +42,21 @@
       background: var(--cx-chrome-bg, #fff); color: var(--cx-chrome-fg, #111); border: 1px solid currentColor; border-radius: 4px;
     }
     #cx-json .row { display: flex; gap: 8px; align-items: center; margin-top: 4px; font-size: 12px; }
+    #cx-drop {
+      display: none; margin: 12px; padding: 44px 20px; text-align: center; cursor: pointer;
+      border: 2px dashed #9ca3af; border-radius: 12px; font: 15px system-ui, sans-serif; color: #374151;
+      background: #f9fafb;
+    }
+    #cx-drop.on { display: block; }
+    #cx-drop.over { border-color: #2563eb; background: #eff6ff; }
+    #cx-drop b { display: block; font-size: 20px; margin-bottom: 6px; color: #111827; }
+    #cx-drop small { display: block; margin-top: 8px; color: #6b7280; }
+    #cx-drop.busy { cursor: progress; opacity: .7; }
+    @media (prefers-color-scheme: dark) {
+      #cx-drop { background: #1f2937; color: #d1d5db; border-color: #4b5563; }
+      #cx-drop b { color: #f9fafb; } #cx-drop small { color: #9ca3af; }
+      #cx-drop.over { background: #1e3a8a; border-color: #60a5fa; }
+    }
     #cx-error {
       display: none;
       position: fixed;
@@ -74,6 +89,12 @@
   <div id="cx-error"></div>
   <div id="cx-build" style="position:fixed;right:6px;bottom:2px;font:10px monospace;opacity:.5;z-index:9000">canvasxpress-mcp view __CX_VIEW_BUILD__</div>
   <div id="cx-wait" style="font:13px sans-serif;opacity:.7;padding:12px">CanvasXpress dashboard view loaded. Waiting for the host to send the dashboard...</div>
+  <div id="cx-drop" role="button" tabindex="0" aria-label="Drag your data file here">
+    <b>Drag your file here</b>
+    <span>CSV or TSV: the complete file, straight to the dashboard (or click to choose it)</span>
+    <small id="cx-drop-note">Drop 2 to 6 related files together to build one dashboard from all of them.</small>
+    <input id="cx-drop-input" type="file" multiple accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" style="display:none">
+  </div>
   <div id="cx-toolbar">
     <span id="cx-status"></span>
     <button id="cx-save" class="cx-btn" type="button">Save</button>
@@ -268,6 +289,7 @@
       let bottom = 0;
       Array.prototype.forEach.call(document.body.children, function (el) {
         const box = el.getBoundingClientRect();
+        if (el.id === 'cx-drop' && !el.classList.contains('on')) return;
         if (el.id === 'cx-error' || el.id === 'cx-build') {
           // fixed-position banner/stamp: count only the banner, and only while it shows
           if (el.id === 'cx-error' && getComputedStyle(el).display !== 'none') bottom = Math.max(bottom, box.bottom);
@@ -662,9 +684,83 @@
       return one(0);
     }
 
+    /**
+     * The drop zone: the tool was called with no data, so the person drags the file in here. The
+     * view uploads it within its own origin (the server's /mcp/upload, 30-minute link), calls
+     * suggest_canvasxpress_dashboard(url=...) through the host and draws the result. No rows ever
+     * pass through the model; a file on the computer, attached to the chat, or made by an analysis
+     * all take this path.
+     */
+    let dropUploadUrl = null;
+
+    function showDropZone(payload) {
+      clearError();
+      dropUploadUrl = (payload && payload.upload_url) || 'https://www.canvasxpress.org/mcp/upload';
+      // the view's origin allow-list (connectDomains) is www.canvasxpress.org: use that host
+      dropUploadUrl = dropUploadUrl.replace('https://canvasxpress.org/', 'https://www.canvasxpress.org/');
+      const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
+      const zone = document.getElementById('cx-drop');
+      zone.classList.add('on');
+      zone.classList.remove('busy');
+      document.getElementById('cx-drop-note').textContent =
+        'Drop 2 to 6 related files together to build one dashboard from all of them.';
+    }
+
+    function dropNote(text) { document.getElementById('cx-drop-note').textContent = text; }
+
+    function uploadOne(file) {
+      return fetch(dropUploadUrl + (dropUploadUrl.indexOf('?') < 0 ? '?' : '&') + 'name=' + encodeURIComponent(file.name),
+                   { method: 'POST', body: file }).then(function (r) { return r.json(); }).then(function (out) {
+        if (!out || out.error || !out.url) throw new Error((out && out.error) || 'upload failed for ' + file.name);
+        return out;
+      });
+    }
+
+    function dropFiles(files) {
+      files = Array.prototype.slice.call(files || []).filter(function (f) { return f && f.size > 0; });
+      if (!files.length) return;
+      const zone = document.getElementById('cx-drop');
+      if (zone.classList.contains('busy')) return;
+      zone.classList.add('busy');
+      dropNote('Sending ' + files.map(function (f) { return f.name; }).join(', ') + '...');
+      Promise.all(files.map(uploadOne)).then(function (ups) {
+        dropNote('Building the dashboard from ' + ups.reduce(function (n, u) { return n + (u.rows || 0); }, 0) + ' rows...');
+        const args = ups.length === 1 ? { url: ups[0].url } : { urls: ups.map(function (u) { return u.url; }) };
+        return sendRequest('tools/call', { name: 'suggest_canvasxpress_dashboard', arguments: args });
+      }).then(function (result) {
+        zone.classList.remove('on', 'busy');
+        handleToolResult(result);
+      }).catch(function (err) {
+        zone.classList.remove('busy');
+        dropNote('That did not work: ' + (err.message || err) + '. Drop the file again.');
+      });
+    }
+
+    (function wireDropZone() {
+      const zone = document.getElementById('cx-drop');
+      const input = document.getElementById('cx-drop-input');
+      zone.addEventListener('click', function () { input.click(); });
+      zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') input.click(); });
+      input.addEventListener('change', function () { dropFiles(input.files); input.value = ''; });
+      ['dragenter', 'dragover'].forEach(function (t) {
+        zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.add('over'); });
+      });
+      ['dragleave', 'drop'].forEach(function (t) {
+        zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.remove('over'); });
+      });
+      zone.addEventListener('drop', function (e) { dropFiles(e.dataTransfer && e.dataTransfer.files); });
+      // a file dropped anywhere on the view while the zone shows counts too
+      document.addEventListener('dragover', function (e) { if (zone.classList.contains('on')) e.preventDefault(); });
+      document.addEventListener('drop', function (e) {
+        if (!zone.classList.contains('on') || zone.contains(e.target)) return;
+        e.preventDefault(); dropFiles(e.dataTransfer && e.dataTransfer.files);
+      });
+    })();
+
     /** Draw a complete result (the wrapper with its spec, or a bare spec). */
     function showPayload(payload) {
       try {
+        if (payload && payload.drop) { showDropZone(payload); return; }
         // suggest_canvasxpress_dashboard can decline when no template fits.
         if (payload && payload.suggested === false) {
           skipResult('No dashboard was suggested: ' +

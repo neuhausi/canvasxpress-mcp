@@ -3827,19 +3827,17 @@ def compose_canvasxpress_dashboard(
 
 @mcp.tool(
     description=(
-        "One call for any dashboard request. HOW TO SEND THE DATA, in this order, without deliberating and without "
-        "asking the user which way: (1) if the file is at a link (one the user pasted, a GitHub, Dropbox, Google "
-        "Drive/Sheets, S3 or %(file)s... link), pass url: the server fetches the file "
-        "itself, so the call is instant; if an upload_csv tool is available and the file is on the user's computer, "
-        "call upload_csv(path) first and pass the url it returns. (2) Else, if you can run a shell command, upload the file (curl -s "
-        "--data-binary @FILE \"%(upload)s?name=FILE\") and pass the returned file_id. "
-        "(3) Else, for a file of up to 300 rows, pass csv: the file's raw text pasted as it is. (4) Else (a larger "
-        "file you would have to type out) do NOT type it: tell the user in one sentence to drop the file at "
-        "%(upload)s and paste the link it gives them, then call this tool with that link "
-        "as url. data (a list of lists with the column names first, or an object with headers and rows) and "
-        "dataset (penguins, iris, mtcars) are for tables you already hold as data. Never convert a file to JSON "
-        "by hand, and never split it across calls. Returns a validated linked spec rendered inline by the "
-        "dashboard view. "
+        "One call for any dashboard request. GETTING THE DATA IN, one rule: pass dataset (penguins, iris, mtcars) "
+        "or url (any link to a CSV/TSV file: one the user pasted, a GitHub, Dropbox, Google Drive/Sheets or S3 share "
+        "link, or a %(file)s... link) when you have one. OTHERWISE call this tool with NO data at all: the dashboard "
+        "panel then asks the user to drag the file in and builds the dashboard itself, in seconds. That is the way "
+        "for a file on the user's computer, a file attached to the chat and data produced by an analysis. Do not "
+        "read the file, do not type its rows, do not upload it yourself and do not ask the user which way: call "
+        "the tool and tell the user in one short sentence to drag the file onto the panel. Exceptions: a small "
+        "table (under 300 rows) that is already in the chat may be passed as csv (its raw text) or data; when an "
+        "upload_csv tool exists and the user gave a file path, upload_csv(path) then url is fine (the upload "
+        "page is %(upload)s). Never split a table across calls. Returns a validated linked spec rendered inline "
+        "by the dashboard view. "
         "The result renders itself as a live interactive dashboard (with Save and Open in Builder) in "
         "the dashboard view: do not show the JSON, do not redraw it in an HTML widget, do not change "
         "its layout. When the data is spread over several related files (orders, customers and products; "
@@ -3876,6 +3874,7 @@ def suggest_canvasxpress_dashboard(
     file_id: str | None = None,
     csv: str | None = None,
     url: str | None = None,
+    urls: list | None = None,
 ) -> dict:
     """
     Args:
@@ -3886,9 +3885,9 @@ def suggest_canvasxpress_dashboard(
         file_id: The id returned by uploading the file from your shell:
                  curl -s --data-binary @FILE "<server>/mcp/upload?name=FILE" (address in the tool description). Use when there is
                  no link but you can run a command.
-        csv: The raw text of the CSV/TSV file, pasted exactly as it is (no conversion to JSON, no quoting): for a
-             file of up to about 300 rows when neither url nor file_id is possible. For a larger file ask the
-             user to drop it at the server's /mcp/upload page and pass the link they get as url.
+        urls: Several links to RELATED files (2 to 6), fetched like url and joined like tables.
+        csv: The raw text of a small table (under 300 rows) that is already in the chat, pasted exactly as it is.
+             For anything else call the tool with no data: the panel asks the user to drag the file in.
         tables: Several RELATED files instead of data, e.g. [{"name": "orders", "data": [[headers], [row], ...]},
                 {"name": "customers", "data": [...]}, {"name": "products", "data": [...]}] (2 to 6 files, each
                 COMPLETE). The file with the most rows is the base and keeps every row; each other file is a
@@ -3920,7 +3919,27 @@ def suggest_canvasxpress_dashboard(
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
     held = None
-    if url is not None:
+    if not any(v is not None for v in (data, dataset, tables, file_id, csv, url, urls)):
+        # Nothing was sent, by design: the dashboard panel asks the person to drag the file in, uploads it
+        # within its own origin and calls this tool again with the link. No rows pass through the model.
+        return {"suggested": False, "drop": True, "upload_url": _PUBLIC_URL + "/mcp/upload",
+                "reason": "The dashboard panel is asking the user to drag the file in; it builds the dashboard "
+                          "itself once the file is dropped.",
+                "say": "Tell the user, in one short sentence, to drag the file onto the dashboard panel; then "
+                       "stop. Do not retry, do not read or type the file."}
+    if urls is not None:
+        tables = []
+        for link in urls:
+            try:
+                name, text = _fetch_table_url(str(link))
+                tables.append({"name": re.sub(r"\.(csv|tsv|txt)$", "", name, flags=re.I), "data": _table_from_text(text)})
+            except ValueError as exc:
+                return {"suggested": False, "error": str(exc), "reason": str(exc)}
+        if len(tables) == 1:
+            title = title or tables[0]["name"].replace("_", " ").replace("-", " ")
+            data, tables = tables[0]["data"], None
+        total_rows = None
+    elif url is not None:
         try:
             held = _fetch_table_url(url)
         except ValueError as exc:
