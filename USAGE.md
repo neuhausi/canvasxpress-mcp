@@ -268,11 +268,29 @@ From an MCP client (Claude Desktop, claude.ai with the connector on), ask for a 
 { "data": { "y": {...}, "x": {...} } }         // or a CanvasXpress data object
 ```
 
-Exactly one of `dataset` or `data` is required; an unknown dataset name returns an error listing the
-available ones. Survival cohorts and sequencing-QC tables get their dedicated dashboards; any other
-table with two numeric columns and a factor gets the generic explorer (filters, scatter, boxplot,
-histogram, counts). Use `compose_canvasxpress_dashboard` only when you need to choose the charts
-yourself or combine different datasets. Details: [README](README.md#suggest_canvasxpress_dashboard).
+An unknown dataset name returns an error listing the available ones. Survival cohorts and sequencing-QC
+tables get their dedicated dashboards; any other table with two numeric columns and a factor gets the
+generic explorer (filters, scatter, boxplot, histogram, counts). Use `compose_canvasxpress_dashboard`
+only when you need to choose the charts yourself or combine different datasets. Details:
+[README](README.md#suggest_canvasxpress_dashboard).
+
+### Getting your data in
+
+One rule: a bundled dataset or a link is passed in the call; **anything else, drag the file onto the panel.**
+Each line below is one message to paste (verified in Claude Desktop):
+
+```
+Create a dashboard from the penguins dataset
+Create a dashboard from https://github.com/mwaskom/seaborn-data/blob/master/penguins.csv
+Create a dashboard from my QC file                       → drag the file onto "Drag your file here"
+Create a dashboard from this file                        → (attached with +) drag the same file onto the panel
+Create a dashboard from my trial files: patients, sites and arms   → drag the 2–6 files together
+Create a dashboard from this table:                      → followed by the CSV lines (under 300 rows)
+Create a dashboard from ~/data/trial-patients.csv        → with tools/local-upload installed: consent in the chat
+```
+
+Data produced by an analysis works the same way: ask for the result to be saved as a CSV, then drag it onto
+the panel. No row ever passes through the model, so a 1,500-row file takes seconds instead of minutes.
 
 ## API reference
 

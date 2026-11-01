@@ -1108,6 +1108,24 @@ sit under `/mcp`, the path a reverse proxy already forwards. A fetched `url` mus
 (private and loopback addresses are refused); `CX_PUBLIC_URL` (default `https://canvasxpress.org`) is the base the
 file links are built with.
 
+**Getting the data in: the eight cases, as you type them.** Verified in Claude Desktop; each is one message.
+
+| Where the data is | What to type | What happens |
+|---|---|---|
+| A bundled dataset | `Create a dashboard from the penguins dataset` | One call, under a second (`penguins`, `iris`, `mtcars`). |
+| A link | `Create a dashboard from https://github.com/mwaskom/seaborn-data/blob/master/penguins.csv` | The server fetches it. GitHub, Dropbox, Google Drive and Google Sheets share links are converted to direct downloads. |
+| A file on your computer | `Create a dashboard from my QC file` | The panel says **Drag your file here**; drag the file from any folder onto it. Seconds, whatever its size. |
+| A file attached with **+** | attach it, then `Create a dashboard from this file` | Same drop zone: drag the same file from Finder onto the panel (a chat attachment cannot be forwarded to a server). |
+| Data produced by an analysis | `Analyze ~/data/trial-patients.csv: add a BMI category column and months on study per patient, save the result as a CSV in ~/data, then create a dashboard from it` | The assistant saves the result; drag that file onto the panel. |
+| Several related files | `Create a dashboard from my trial files: patients, sites and arms` | Select the 2 to 6 files and drag them together; one dashboard is built from the joined table (the header lists the files). |
+| A small table already in the chat | `Create a dashboard from this table:` followed by the CSV lines (under 300 rows) | Passed as `csv`, about a minute at most. |
+| A file path, with the local uploader installed | `Create a dashboard from ~/data/trial-patients.csv` | A consent question in the chat (accept), or the drop zone; both are correct. See `tools/local-upload/`. |
+
+Behind the drop zone: the tool, called with no data, returns `{drop: true}`; the view reads the dropped file and
+sends it to the server in 60 KB pieces through the host (`upload_canvasxpress_file`), gets a 30-minute link, calls
+the tool again with `url` (or `urls`) and draws the result. The iframe makes no network request of its own (Claude
+Desktop blocks that), and no row ever passes through the model.
+
 **Large results.** The result carries the complete table, so it can be hundreds of KB, and Claude replaces a tool
 result that large with an error text. `suggest_canvasxpress_dashboard` therefore returns a short result (template,
 panels, validity, `result_id`, `parts`) and holds the full one on the server for 30 minutes; the dashboard view fetches
@@ -1598,14 +1616,12 @@ Above the rendered dashboard the view shows two buttons.
 
 The theme follows the chat (`auto`), a tool call that yields no dashboard shows no error banner (the reason goes to the browser console and the assistant retries), and the corner stamp `canvasxpress-mcp view <commit>/<hash>` identifies the build. Clients cache the tool list and view HTML: after a deploy, quit all chats and restart the client. The same walk-through is in the dashboards README ("Dashboards in Claude (MCP App)") and on the Builder Home.
 
-### The dashboard view: Save, Open in Builder, errors
+### The dashboard view: the drop zone
 
-Above the rendered dashboard the view shows two buttons.
-
-- **Save** downloads the dashboard spec as `<id>.spec.json` (host `ui/download-file`). If the host does not allow downloads, a box shows the JSON with a **Copy JSON** button. The file can be put on any [canvasxpress-dashboards](https://github.com/neuhausi/canvasxpress-dashboards) install; in its Builder, drop it on the Data page and it opens at once.
-- **Open in Builder** opens the dashboard in the Builder at `CXD_DASHBOARDS_URL` (default `https://canvasxpress.org/dashboards`). When `CXD_DASHBOARDS_URL` and `CXD_DASHBOARDS_API_KEY` are both set it first saves through `publish_canvasxpress_dashboard`; saves land in the key's account (`CXD_API_USER`, or the first admin), so use that for private servers.
-
-The theme follows the chat (`auto`), a tool call that yields no dashboard shows no error banner (the reason goes to the browser console and the assistant retries), and the corner stamp `canvasxpress-mcp view <commit>/<hash>` identifies the build. Clients cache the tool list and view HTML: after a deploy, quit all chats and restart the client. The same walk-through is in the dashboards README ("Dashboards in Claude (MCP App)") and on the Builder Home.
+When the tool is called with no data the view shows **Drag your file here** instead of a dashboard. Drop a CSV/TSV
+(or 2 to 6 related files together), or click to choose; the view sends it to the server in pieces through the host
+and draws the dashboard from the link it gets back. The eight ways to get data in, with the exact messages, are
+under [`suggest_canvasxpress_dashboard`](#suggest_canvasxpress_dashboard).
 
 ### Known supporting hosts
 
