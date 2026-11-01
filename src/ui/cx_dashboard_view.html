@@ -42,21 +42,19 @@
       background: var(--cx-chrome-bg, #fff); color: var(--cx-chrome-fg, #111); border: 1px solid currentColor; border-radius: 4px;
     }
     #cx-json .row { display: flex; gap: 8px; align-items: center; margin-top: 4px; font-size: 12px; }
+    /* The drop zone fills the panel edge to edge (no page colour showing around it) and follows
+       the host's colour scheme like the rest of the chrome. */
     #cx-drop {
-      display: none; margin: 12px; padding: 44px 20px; text-align: center; cursor: pointer;
-      border: 2px dashed #9ca3af; border-radius: 12px; font: 15px system-ui, sans-serif; color: #374151;
-      background: #f9fafb;
+      display: none; width: 100%; min-height: 180px; padding: 40px 20px; text-align: center; cursor: pointer;
+      font: 15px system-ui, sans-serif; color: inherit; background: var(--cx-chrome-bg, #ffffff);
+      outline: 2px dashed currentColor; outline-offset: -10px; opacity: .92;
     }
     #cx-drop.on { display: block; }
-    #cx-drop.over { border-color: #2563eb; background: #eff6ff; }
-    #cx-drop b { display: block; font-size: 20px; margin-bottom: 6px; color: #111827; }
-    #cx-drop small { display: block; margin-top: 8px; color: #6b7280; }
-    #cx-drop.busy { cursor: progress; opacity: .7; }
-    @media (prefers-color-scheme: dark) {
-      #cx-drop { background: #1f2937; color: #d1d5db; border-color: #4b5563; }
-      #cx-drop b { color: #f9fafb; } #cx-drop small { color: #9ca3af; }
-      #cx-drop.over { background: #1e3a8a; border-color: #60a5fa; }
-    }
+    #cx-drop.over { outline-color: #2563eb; opacity: 1; }
+    #cx-drop b { display: block; font-size: 20px; margin-bottom: 6px; }
+    #cx-drop small { display: block; margin-top: 8px; opacity: .7; }
+    #cx-drop.busy { cursor: progress; opacity: .6; }
+    body.cx-dark { --cx-chrome-bg: #1f2937; --cx-chrome-fg: #e5e7eb; }
     #cx-error {
       display: none;
       position: fixed;
@@ -126,6 +124,7 @@
     let lastWidth = 0;         // last viewport width a render was done at
     let resizeTimer = null;
     let nextId = 1;
+    let hostColorScheme = null;   // 'dark' | 'light' from the host's ui/initialize result, when it says
 
     /** Show a visible error banner (not just console.error). */
     function showError(msg) {
@@ -686,18 +685,21 @@
 
     /**
      * The drop zone: the tool was called with no data, so the person drags the file in here. The
-     * view uploads it within its own origin (the server's /mcp/upload, 30-minute link), calls
-     * suggest_canvasxpress_dashboard(url=...) through the host and draws the result. No rows ever
-     * pass through the model; a file on the computer, attached to the chat, or made by an analysis
-     * all take this path.
+     * view reads the file and sends it to the server in pieces THROUGH THE HOST (tools/call
+     * upload_canvasxpress_file), the one channel a host is known to allow the view (the iframe
+     * itself may not fetch: Claude Desktop blocks that). The server returns a link; the view calls
+     * suggest_canvasxpress_dashboard(url=...) the same way and draws the result. No rows ever pass
+     * through the model; a file on the computer, attached to the chat, or made by an analysis all
+     * take this path.
      */
-    let dropUploadUrl = null;
+    const UPLOAD_PIECE = 60000;   // characters per piece: the size the held-result fetch already uses
 
     function showDropZone(payload) {
       clearError();
-      dropUploadUrl = (payload && payload.upload_url) || 'https://www.canvasxpress.org/mcp/upload';
-      // the view's origin allow-list (connectDomains) is www.canvasxpress.org: use that host
-      dropUploadUrl = dropUploadUrl.replace('https://canvasxpress.org/', 'https://www.canvasxpress.org/');
+      // match the host's scheme: the dark/light hint it gave at ui/initialize, else the OS setting
+      const dark = hostColorScheme ? hostColorScheme === 'dark'
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.body.classList.toggle('cx-dark', !!dark);
       const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
       const zone = document.getElementById('cx-drop');
       zone.classList.add('on');
@@ -708,11 +710,41 @@
 
     function dropNote(text) { document.getElementById('cx-drop-note').textContent = text; }
 
-    function uploadOne(file) {
-      return fetch(dropUploadUrl + (dropUploadUrl.indexOf('?') < 0 ? '?' : '&') + 'name=' + encodeURIComponent(file.name),
-                   { method: 'POST', body: file }).then(function (r) { return r.json(); }).then(function (out) {
-        if (!out || out.error || !out.url) throw new Error((out && out.error) || 'upload failed for ' + file.name);
+    function readText(file) {
+      return new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () { resolve(String(reader.result || '')); };
+        reader.onerror = function () { reject(new Error('could not read ' + file.name)); };
+        reader.readAsText(file);
+      });
+    }
+
+    function callTool(name, args) {
+      return sendRequest('tools/call', { name: name, arguments: args }).then(function (result) {
+        const block = result && result.content && result.content.find(function (c) { return c.type === 'text'; });
+        let out = null;
+        try { out = JSON.parse(block.text); } catch (e) { /* fall through */ }
+        if (!out) throw new Error((result && result.isError) ? name + ' returned an error' : 'unreadable result from ' + name);
+        if (out.error) throw new Error(out.error);
         return out;
+      });
+    }
+
+    function uploadOne(file) {
+      return readText(file).then(function (text) {
+        const parts = Math.max(1, Math.ceil(text.length / UPLOAD_PIECE));
+        let uploadId = null;
+        function piece(part) {
+          const args = { name: file.name, text: text.slice(part * UPLOAD_PIECE, (part + 1) * UPLOAD_PIECE), part: part, parts: parts };
+          if (uploadId) args.upload_id = uploadId;
+          return callTool('upload_canvasxpress_file', args).then(function (out) {
+            if (parts > 1) dropNote('Sending ' + file.name + ' (' + (part + 1) + ' of ' + parts + ')...');
+            if (out.url) return out;
+            uploadId = out.upload_id;
+            return piece(part + 1);
+          });
+        }
+        return piece(0);
       });
     }
 
@@ -723,7 +755,9 @@
       if (zone.classList.contains('busy')) return;
       zone.classList.add('busy');
       dropNote('Sending ' + files.map(function (f) { return f.name; }).join(', ') + '...');
-      Promise.all(files.map(uploadOne)).then(function (ups) {
+      files.reduce(function (chain, f) {        // one file at a time, so the pieces stay in order
+        return chain.then(function (ups) { return uploadOne(f).then(function (u) { ups.push(u); return ups; }); });
+      }, Promise.resolve([])).then(function (ups) {
         dropNote('Building the dashboard from ' + ups.reduce(function (n, u) { return n + (u.rows || 0); }, 0) + ' rows...');
         const args = ups.length === 1 ? { url: ups[0].url } : { urls: ups.map(function (u) { return u.url; }) };
         return sendRequest('tools/call', { name: 'suggest_canvasxpress_dashboard', arguments: args });
@@ -825,7 +859,10 @@
         appInfo: { name: 'canvasxpress-dashboard-view', version: '1.0.0' },
         clientInfo: { name: 'canvasxpress-dashboard-view', version: '1.0.0' },
         protocolVersion: '2026-01-26',
-      }).then(function () {
+      }).then(function (init) {
+        // McpUiInitializeResult.hostContext.theme is the host's colour scheme when it reports one
+        const ctx = (init && init.hostContext) || {};
+        hostColorScheme = ctx.theme === 'dark' || ctx.theme === 'light' ? ctx.theme : null;
         window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
         watchSize();
         const wait = document.getElementById('cx-wait');

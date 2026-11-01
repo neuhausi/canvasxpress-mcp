@@ -34,9 +34,13 @@ addEventListener('message', function (e) {
                           params: {content: [{type: 'text', text: window.PAYLOAD}]}}, '*');
   } else if (m.method === 'tools/call') {
     window.calls.push(m.params);
-    var text;
+    var text, a = m.params.arguments;
     if (m.params.name === 'suggest_canvasxpress_dashboard') text = window.SUGGEST;
-    else { var a = m.params.arguments; text = JSON.stringify({result_id: a.result_id, part: a.part,
+    else if (m.params.name === 'upload_canvasxpress_file') {
+      window.pieces = window.pieces || {}; window.pieces[a.part] = a.text;
+      text = JSON.stringify(Object.keys(window.pieces).length < a.parts ? {upload_id: 'u1', received: Object.keys(window.pieces).length, parts: a.parts}
+                            : {file_id: 'abc', url: 'https://canvasxpress.org/mcp/file/abc', name: a.name, rows: 120, columns: 4});
+    } else { text = JSON.stringify({result_id: a.result_id, part: a.part,
              parts: Object.keys(window.PARTS).length, text: window.PARTS[String(a.part)]}); }
     e.source.postMessage({jsonrpc: '2.0', id: m.id, result: {content: [{type: 'text', text: text}]}}, '*');
   }
@@ -60,33 +64,59 @@ def test_a_dropped_file_becomes_the_dashboard(browser_context):
     table = _table()
     short = server.suggest_canvasxpress_dashboard(data=table, title="dropped")
     parts = {str(i): server.get_canvasxpress_dashboard_result(short["result_id"], i)["text"] for i in range(short["parts"])}
-    uploads = []
-
     page = browser_context.new_page()
     page.set_content(HOST)
     page.evaluate("p => { window.PAYLOAD = p.drop; window.SUGGEST = p.suggest; window.PARTS = p.parts; }",
                   {"drop": json.dumps(server.suggest_canvasxpress_dashboard()), "suggest": json.dumps(short), "parts": parts})
-
-    def upload(route):
-        uploads.append(route.request.url)
-        route.fulfill(body=json.dumps({"url": "https://canvasxpress.org/mcp/file/abc", "rows": len(table) - 1}),
-                      content_type="application/json", headers={"Access-Control-Allow-Origin": "*"})
-
-    page.route("https://www.canvasxpress.org/mcp/upload**", upload)
     page.evaluate("h => { document.getElementById('f').srcdoc = h; }", open(VIEW, encoding="utf-8").read())
     frame = page.frame_locator("#f")
     frame.locator("#cx-drop.on").wait_for(timeout=30000)
     assert "Drag your file here" in frame.locator("#cx-drop").inner_text()
 
-    frame.locator("#cx-drop-input").set_input_files({"name": "qc.csv", "mimeType": "text/csv", "buffer": _csv(table).encode()})
+    text = _csv(table)
+    frame.locator("#cx-drop-input").set_input_files({"name": "qc.csv", "mimeType": "text/csv", "buffer": text.encode()})
     frame.locator("#cx-dashboard .cxd-filters").wait_for(timeout=30000)
     page.wait_for_timeout(1500)
-    assert uploads and "name=qc.csv" in uploads[0]
     calls = page.evaluate("() => window.calls")
-    assert calls[0] == {"name": "suggest_canvasxpress_dashboard", "arguments": {"url": "https://canvasxpress.org/mcp/file/abc"}}
+    # the file went through the host in one piece (it is small), never over the network from the iframe
+    assert calls[0]["name"] == "upload_canvasxpress_file" and calls[0]["arguments"]["text"] == text and calls[0]["arguments"]["parts"] == 1
+    assert calls[1] == {"name": "suggest_canvasxpress_dashboard", "arguments": {"url": "https://canvasxpress.org/mcp/file/abc"}}
     assert frame.locator("#cx-drop").evaluate("el => el.classList.contains('on')") is False
     assert frame.locator("#cx-dashboard canvas").count() >= 3
     page.close()
+
+
+def test_a_big_dropped_file_goes_through_the_host_in_pieces(browser_context):
+    table = _table(rows=3000)
+    short = server.suggest_canvasxpress_dashboard(data=table, title="big")
+    parts = {str(i): server.get_canvasxpress_dashboard_result(short["result_id"], i)["text"] for i in range(short["parts"])}
+    page = browser_context.new_page()
+    page.set_content(HOST)
+    page.evaluate("p => { window.PAYLOAD = p.drop; window.SUGGEST = p.suggest; window.PARTS = p.parts; }",
+                  {"drop": json.dumps(server.suggest_canvasxpress_dashboard()), "suggest": json.dumps(short), "parts": parts})
+    page.evaluate("h => { document.getElementById('f').srcdoc = h; }", open(VIEW, encoding="utf-8").read())
+    frame = page.frame_locator("#f")
+    frame.locator("#cx-drop.on").wait_for(timeout=30000)
+    text = _csv(table)
+    frame.locator("#cx-drop-input").set_input_files({"name": "big.csv", "mimeType": "text/csv", "buffer": text.encode()})
+    frame.locator("#cx-dashboard .cxd-filters").wait_for(timeout=60000)
+    calls = page.evaluate("() => window.calls")
+    ups = [c["arguments"] for c in calls if c["name"] == "upload_canvasxpress_file"]
+    assert len(ups) > 1 and "".join(u["text"] for u in ups) == text and all(u["parts"] == len(ups) for u in ups)
+    assert all(u.get("upload_id") == "u1" for u in ups[1:]) and "upload_id" not in ups[0]
+    page.close()
+
+
+def test_a_file_sent_in_pieces_through_the_host_becomes_a_link():
+    text = _csv(_table())
+    pieces = [text[i:i + 100] for i in range(0, len(text), 100)]
+    out = server.upload_canvasxpress_file("qc.csv", pieces[0], 0, len(pieces))
+    assert out["received"] == 1 and out["parts"] == len(pieces)
+    for i in range(1, len(pieces)):
+        out = server.upload_canvasxpress_file("qc.csv", pieces[i], i, len(pieces), out["upload_id"])
+    assert out["rows"] == 120 and out["url"] == server._FILE_URL_BASE + out["file_id"]
+    assert server.suggest_canvasxpress_dashboard(url=out["url"])["suggested"]
+    assert "expired" in server.upload_canvasxpress_file("x.csv", "a", 1, 2, "nope")["error"]
 
 
 def test_several_links_build_one_joined_dashboard(monkeypatch):

@@ -2020,6 +2020,58 @@ async def rest_upload(request: Request) -> Response:
                          "next": "call suggest_canvasxpress_dashboard with file_id=%s" % file_id}, headers=cors)
 
 
+_UPLOAD_PARTS: dict = {}                    # upload_id -> (expires_at, name, parts, {part: text})
+
+
+@mcp.tool(
+    description=(
+        "Used by the dashboard view, not by you: it sends a file the user dropped onto the panel, in pieces, "
+        "through the host. Returns {url} once the last piece has arrived; the view then calls "
+        "suggest_canvasxpress_dashboard with that url."
+    ),
+)
+def upload_canvasxpress_file(name: str, text: str, part: int = 0, parts: int = 1, upload_id: str | None = None) -> dict:
+    """
+    Args:
+        name: The file's name (for the dashboard title).
+        text: This piece of the file's text.
+        part: Index of this piece, from 0.
+        parts: Total number of pieces.
+        upload_id: The id returned by the first piece (omit on the first).
+
+    Returns:
+        {"upload_id", "received", "parts"} while pieces are missing, then {"file_id", "url", "name", "rows",
+        "columns"}; or {"error": "..."}.
+    """
+    import secrets
+    import time as _time
+    now = _time.time()
+    for key in [k for k, v in _UPLOAD_PARTS.items() if v[0] < now]:
+        del _UPLOAD_PARTS[key]
+    if parts < 1 or part < 0 or part >= parts:
+        return {"error": "part must be between 0 and parts-1"}
+    if upload_id is None:
+        upload_id = secrets.token_urlsafe(12)
+        _UPLOAD_PARTS[upload_id] = (now + _UPLOAD_TTL, name, parts, {})
+    held = _UPLOAD_PARTS.get(upload_id)
+    if held is None:
+        return {"error": "unknown or expired upload_id: start again from part 0 without upload_id"}
+    held[3][part] = text
+    if len(held[3]) < held[2]:
+        return {"upload_id": upload_id, "received": len(held[3]), "parts": held[2]}
+    whole = "".join(held[3][i] for i in range(held[2]))
+    del _UPLOAD_PARTS[upload_id]
+    if len(whole.encode("utf-8")) > _UPLOAD_MAX:
+        return {"error": "file larger than %d MB" % (_UPLOAD_MAX // (1024 * 1024))}
+    try:
+        table = _table_from_text(whole)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    file_id = _hold_upload(held[1] or name, whole)
+    return {"file_id": file_id, "url": _FILE_URL_BASE + file_id, "name": held[1] or name,
+            "rows": len(table) - 1, "columns": len(table[0])}
+
+
 @mcp.custom_route("/mcp/file/{file_id}", methods=["GET"])
 async def rest_file(request: Request) -> Response:
     """The text of a held upload, so a dropped file is a plain URL any client or server can fetch."""
