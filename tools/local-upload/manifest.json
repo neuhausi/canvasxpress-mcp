@@ -1,0 +1,22 @@
+{
+  "manifest_version": "0.2",
+  "name": "canvasxpress-upload",
+  "display_name": "CanvasXpress file upload",
+  "version": "1.0.0",
+  "description": "Sends a local CSV/TSV file to the CanvasXpress server and returns a link, so a dashboard is built from the complete file in seconds.",
+  "author": { "name": "Isaac Neuhaus", "url": "https://canvasxpress.org" },
+  "homepage": "https://canvasxpress.org",
+  "license": "MIT",
+  "server": {
+    "type": "python",
+    "entry_point": "cx_upload.py",
+    "mcp_config": {
+      "command": "python3",
+      "args": ["${__dirname}/cx_upload.py"],
+      "env": { "CX_UPLOAD_URL": "https://canvasxpress.org/mcp/upload" }
+    }
+  },
+  "tools": [{ "name": "upload_csv", "description": "Upload a local CSV/TSV file and get a 30-minute link for suggest_canvasxpress_dashboard(url=...)." }],
+  "keywords": ["canvasxpress", "dashboard", "csv", "upload"],
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "runtimes": { "python": ">=3.8" } }
+}

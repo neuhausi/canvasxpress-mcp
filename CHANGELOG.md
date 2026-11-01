@@ -5,6 +5,10 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Behind-the-scenes upload from a local file.** `tools/local-upload/cx_upload.py` is a stdlib-only local MCP
+  server (stdio; also a Desktop Extension via its `manifest.json`) with one tool, `upload_csv(path)`: it reads the
+  file on the user's machine, POSTs it to `/mcp/upload` and returns the link; the remote tool text says to use it
+  first. The rows never pass through the model, and no client sandbox policy is involved.
 - **A link instead of the rows.** `suggest_canvasxpress_dashboard(url=...)`: the server fetches the CSV/TSV itself
   (GitHub blob, Dropbox, Google Drive and Google Sheets share links are turned into direct-download links; http(s)
   on public hosts only), so the model types one link and the dashboard is built in well under a second on any
