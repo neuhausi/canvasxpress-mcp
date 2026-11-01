@@ -1090,6 +1090,13 @@ builds a **Filters panel plus bar charts** from whatever the table has:
 | Has a numeric column | Filters and one Bar of the first numeric column, one bar per row, coloured by the first small factor |
 | Only discrete columns | Filters and a **count bar per discrete column** (up to 4: fewest levels first, columns whose values are all different last), each a Bar of a column of 1s summed per level |
 
+**Getting the data in: upload first.** The slow part of a dashboard request is the model writing the rows into
+the tool call (about 40,000 tokens for 1,500 rows). So the tool text tells the model, in order: (1) with a shell,
+`curl -s --data-binary @FILE "https://canvasxpress.org/mcp/upload?name=FILE"` and pass the returned `file_id` (the
+server reads the file itself; the call is instant); (2) otherwise `csv`, the file's raw text pasted as it is; (3)
+otherwise `data`. Uploads are held in memory for 30 minutes, up to 50 MB, raw body or multipart; the route sits
+under `/mcp`, the path a reverse proxy already forwards, so no proxy change is needed.
+
 **Large results.** The result carries the complete table, so it can be hundreds of KB, and Claude replaces a tool
 result that large with an error text. `suggest_canvasxpress_dashboard` therefore returns a short result (template,
 panels, validity, `result_id`, `parts`) and holds the full one on the server for 30 minutes; the dashboard view fetches

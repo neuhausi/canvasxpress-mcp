@@ -1808,6 +1808,97 @@ async def rest_cache_stats(request: Request) -> Response:
     return JSONResponse(stats)
 
 
+# ---------------------------------------------------------------------------------------------
+# Upload: the data for a dashboard should never pass through the model. A model whose sandbox has a
+# shell sends the file here (curl) and passes the returned file_id to suggest_canvasxpress_dashboard.
+# The route sits under /mcp, which is the path a reverse proxy already forwards to this app.
+# ---------------------------------------------------------------------------------------------
+_UPLOAD_TTL = 1800
+_UPLOAD_MAX = 50 * 1024 * 1024
+_UPLOADS: dict = {}                         # file_id -> (expires_at, name, text)
+
+
+def _hold_upload(name: str, text: str) -> str:
+    import secrets
+    import time as _time
+    now = _time.time()
+    for key in [k for k, v in _UPLOADS.items() if v[0] < now]:
+        del _UPLOADS[key]
+    file_id = secrets.token_urlsafe(12)
+    _UPLOADS[file_id] = (now + _UPLOAD_TTL, name, text)
+    return file_id
+
+
+def _take_upload(file_id: str):
+    import time as _time
+    held = _UPLOADS.get(file_id or "")
+    if not held or held[0] < _time.time():
+        return None
+    return held[1], held[2]
+
+
+def _cell(value: str):
+    """A CSV cell as the tool would receive it from a careful model: numbers as numbers, blank/NA as None."""
+    text = value.strip()
+    if text == "" or text.upper() in ("NA", "N/A", "NAN", "NULL"):
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return number
+
+
+def _table_from_text(text: str) -> list:
+    """A CSV / TSV file's text as the headers+rows list of lists (the delimiter is sniffed from the header)."""
+    import csv as _csv
+    import io
+    text = text.lstrip("\ufeff")
+    head = text.split("\n", 1)[0]
+    delimiter = "\t" if head.count("\t") > head.count(",") else ("," if "," in head else ";")
+    rows = [r for r in _csv.reader(io.StringIO(text), delimiter=delimiter) if any(c.strip() for c in r)]
+    if len(rows) < 2:
+        raise ValueError("the file needs a header row and at least one data row")
+    return [[h.strip() for h in rows[0]]] + [[_cell(c) for c in r] for r in rows[1:]]
+
+
+@mcp.custom_route("/mcp/upload", methods=["POST", "OPTIONS"])
+async def rest_upload(request: Request) -> Response:
+    """Hold a CSV/TSV file for suggest_canvasxpress_dashboard(file_id=...). Raw body or multipart."""
+    cors = {} if STRICT_REST else {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"}
+    if request.method == "OPTIONS":
+        return Response(status_code=204, headers=cors)
+    name = request.query_params.get("name") or request.headers.get("x-file-name") or "upload.csv"
+    content_type = request.headers.get("content-type", "")
+    try:
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            part = next((v for v in form.values() if hasattr(v, "read")), None)
+            if part is None:
+                return JSONResponse({"error": "multipart body has no file part"}, status_code=400, headers=cors)
+            name = getattr(part, "filename", None) or name
+            raw = await part.read()
+        else:
+            raw = await request.body()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": "could not read the body: %s" % exc}, status_code=400, headers=cors)
+    if len(raw) > _UPLOAD_MAX:
+        return JSONResponse({"error": "file larger than %d MB" % (_UPLOAD_MAX // (1024 * 1024))}, status_code=413, headers=cors)
+    text = raw.decode("utf-8-sig", errors="replace")
+    try:
+        table = _table_from_text(text)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400, headers=cors)
+    file_id = _hold_upload(name, text)
+    return JSONResponse({"file_id": file_id, "name": name, "rows": len(table) - 1, "columns": len(table[0]),
+                         "expires_in_seconds": _UPLOAD_TTL,
+                         "next": "call suggest_canvasxpress_dashboard with file_id=%s" % file_id}, headers=cors)
+
+
 @mcp.custom_route("/validate", methods=["POST"])
 async def rest_validate(request: Request) -> Response:
     """Lint a figure ({data, config}) against the schema + parameter vocabulary."""
@@ -3604,8 +3695,13 @@ def compose_canvasxpress_dashboard(
 
 @mcp.tool(
     description=(
-        "One call for any dashboard request. Pass dataset (penguins, iris, mtcars) or data "
-        "(a list of lists with the column names first, or an object with headers and rows). Returns a validated linked spec rendered inline by the "
+        "One call for any dashboard request. HOW TO SEND THE DATA, in this order, without deliberating: (1) if you "
+        "can run a shell command, upload the file (curl -s --data-binary @FILE "
+        "\"https://canvasxpress.org/mcp/upload?name=FILE\") and pass the returned file_id: the server reads the "
+        "file itself, so the call is instant. (2) Otherwise pass csv: the file's raw text pasted as it is. "
+        "(3) Otherwise data: a list of lists with the column names first, or an object with headers and rows; "
+        "or dataset (penguins, iris, mtcars). Never convert the file to JSON by hand when (1) or (2) is possible, "
+        "and never split it across calls. Returns a validated linked spec rendered inline by the "
         "dashboard view. "
         "The result renders itself as a live interactive dashboard (with Save and Open in Builder) in "
         "the dashboard view: do not show the JSON, do not redraw it in an HTML widget, do not change "
@@ -3640,9 +3736,17 @@ def suggest_canvasxpress_dashboard(
     force: bool = False,
     total_rows: int | None = None,
     tables: list | None = None,
+    file_id: str | None = None,
+    csv: str | None = None,
 ) -> dict:
     """
     Args:
+        file_id: FASTEST. The id returned by uploading the file: run in your shell
+                 curl -s --data-binary @FILE "https://canvasxpress.org/mcp/upload?name=FILE" and pass its file_id.
+                 The server reads the file itself; nothing else is needed. Try this first whenever you can run
+                 a command.
+        csv: The raw text of the CSV/TSV file, pasted exactly as it is (no conversion to JSON, no quoting): use
+             when you cannot run a command. Fewer tokens than data.
         tables: Several RELATED files instead of data, e.g. [{"name": "orders", "data": [[headers], [row], ...]},
                 {"name": "customers", "data": [...]}, {"name": "products", "data": [...]}] (2 to 6 files, each
                 COMPLETE). The file with the most rows is the base and keeps every row; each other file is a
@@ -3673,6 +3777,24 @@ def suggest_canvasxpress_dashboard(
          dashboard view through get_canvasxpress_dashboard_result), or {"suggested": false, "reason": "..."}
          (with "error" when the input itself was wrong, e.g. an unknown dataset name).
     """
+    if file_id is not None:
+        held = _take_upload(file_id)
+        if held is None:
+            message = ("No uploaded file with that file_id (uploads are kept for %d minutes): upload it again "
+                       "with curl -s --data-binary @FILE https://canvasxpress.org/mcp/upload" % (_UPLOAD_TTL // 60))
+            return {"suggested": False, "error": message, "reason": message}
+        try:
+            data = _table_from_text(held[1])
+        except ValueError as exc:
+            return {"suggested": False, "error": str(exc), "reason": str(exc)}
+        title = title or re.sub(r"\.(csv|tsv|txt)$", "", held[0], flags=re.I).replace("_", " ").replace("-", " ") or None
+        total_rows = None
+    elif csv is not None:
+        try:
+            data = _table_from_text(csv)
+        except ValueError as exc:
+            return {"suggested": False, "error": str(exc), "reason": str(exc)}
+        total_rows = None
     result = cx_dashboard_suggest.suggest(
         data, title=title, theme=theme, thresholds=thresholds, dataset=dataset, force=force,
         total_rows=total_rows, tables=tables)

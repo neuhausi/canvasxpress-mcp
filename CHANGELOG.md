@@ -5,6 +5,11 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Upload instead of typing the rows.** `POST /mcp/upload` (raw body or multipart; under the `/mcp` path a proxy
+  already forwards) holds a CSV/TSV for 30 minutes and returns a `file_id`; `suggest_canvasxpress_dashboard(file_id=...)`
+  reads the file on the server, so the tool call is a few bytes and the model never writes the data out (a 1,500-row
+  file took the model 6-8 minutes to type as JSON). `csv` (the file's raw text) is the fallback without a shell. The
+  tool text says which to use, in that order, without deliberating.
 - **Large dashboards reach the view.** A dashboard result carries the complete table, so it can run to hundreds of
   KB, and Claude replaces a tool result that large with an error text the view cannot read (a blank panel). The tool
   now returns a short result (under 2 KB: template, panels, `result_id`, `parts`) and holds the full one for 30
