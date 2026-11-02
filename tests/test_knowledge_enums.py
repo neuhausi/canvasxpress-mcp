@@ -58,8 +58,26 @@ def test_bundled_schema_accepts_real_color_schemes_and_false():
 
 
 def test_validate_param_values_real_configs():
-    ok = ck.validate_param_values({"colorScheme": "Dark2", "theme": "cxdark",
-                                   "colorBy": "Treatment", "legendPosition": False})
-    assert ok["invalid_values"] == {}
-    bad = ck.validate_param_values({"legendPosition": "nowhere"})
-    assert "legendPosition" in bad["invalid_values"]
+    # Pin to the bundled config schema that ships in data/schema/ so this test
+    # is deterministic and offline (see module docstring). Without this,
+    # load_schema() fetches the live canvasxpress.org schema, whose colorScheme
+    # enum can lag the engine release and drop the closed value list — leaving
+    # the overlay to backfill from the smaller _BUNDLED_SCHEMA list (no Dark2)
+    # and failing the assertion for reasons unrelated to this repo.
+    prev_skip = ck.SKIP_FETCH
+    prev_cached = ck._cached_file
+    ck.SKIP_FETCH = True
+    # Ignore any on-disk cache so the offline layer reads the committed bundled
+    # schema (data/schema/) rather than a possibly-stale cached live copy.
+    ck._cached_file = lambda *_a, **_k: None
+    try:
+        ck.load_schema(force=True)
+        ok = ck.validate_param_values({"colorScheme": "Dark2", "theme": "cxdark",
+                                       "colorBy": "Treatment", "legendPosition": False})
+        assert ok["invalid_values"] == {}
+        bad = ck.validate_param_values({"legendPosition": "nowhere"})
+        assert "legendPosition" in bad["invalid_values"]
+    finally:
+        ck.SKIP_FETCH = prev_skip
+        ck._cached_file = prev_cached
+        ck.load_schema(force=True)
