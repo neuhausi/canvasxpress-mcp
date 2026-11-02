@@ -2623,6 +2623,30 @@ def resolve_data_headers(
     return resolved, warnings
 
 
+# Graph types intentionally not implemented by this server. A request that clearly
+# asks for one of these returns a plain "not implemented" error instead of silently
+# generating the closest supported type.
+_UNIMPLEMENTED_GRAPHS = {
+    "Genome":      ["genome browser", "genome track", "genome-track", "genomic track",
+                    "ideogram", "coverage track", "genome viewer", "gene model track"],
+    "Fish":        ["fish plot", "fishplot", "clonal evolution", "tumor clone", "clone plot"],
+    "OptionsWall": ["options wall", "optionswall", "option wall", "option chain wall"],
+    "TreeBracket": ["tree bracket", "treebracket", "tournament bracket", "bracket diagram"],
+    "Upset":       ["upset plot", "upset diagram", "upset chart", "upsetplot"],
+}
+
+
+def _detect_unimplemented_graph(description: str) -> str | None:
+    """Return the name of an intentionally-unimplemented graph type the description asks
+    for, or None. Keyword match on lowercased text; triggers are kept specific so a
+    supported type is never caught (e.g. "Circos" maps to the supported Circular type)."""
+    text = (description or "").lower()
+    for name, triggers in _UNIMPLEMENTED_GRAPHS.items():
+        if any(trigger in text for trigger in triggers):
+            return name
+    return None
+
+
 @mcp.tool(
     description=(
         "Generate a CanvasXpress visualization config from a plain English description. "
@@ -2718,6 +2742,22 @@ def generate_canvasxpress_config(
         print(f"\n{bar}\n  COLUMN TYPES\n{bar}", file=sys.stderr)
         for col, typ in column_types.items():
             print(f"  {col:25s} → {typ}", file=sys.stderr)
+
+    # ── Intentionally-unimplemented graph types ─────────────────────────────
+    unimplemented = _detect_unimplemented_graph(description)
+    if unimplemented:
+        message = f"The '{unimplemented}' graph type is not implemented in this server."
+        log.info("Unimplemented graph type requested: %s", unimplemented)
+        return {
+            "config":         {},
+            "valid":          False,
+            "error":          message,
+            "warnings":       [message],
+            "invalid_refs":   {},
+            "headers_used":   resolved_headers or [],
+            "types_used":     column_types or {},
+            "removed_params": [],
+        }
 
     log.info("Generating config for: %s", description)
     begin_request_usage()
@@ -2826,9 +2866,18 @@ def generate_canvasxpress_config(
         if not validation["valid"]:
             log.warning("Header validation warnings: %s", validation["warnings"])
     else:
-        validation = {"valid": True, "warnings": [], "invalid_refs": {}}
+        # No columns to check references against, but still validate parameter VALUES
+        # (enum members like networkLayoutType) so invalid values never pass silently.
+        value_check = cx_knowledge.validate_param_values(config) if config else \
+            {"warnings": [], "invalid_values": {}}
+        validation = {
+            "valid":          len(value_check["warnings"]) == 0,
+            "warnings":       value_check["warnings"],
+            "invalid_refs":   {},
+            "invalid_values": value_check["invalid_values"],
+        }
         if DEBUG:
-            log.debug("No headers or data provided — skipping column validation")
+            log.debug("No headers — column refs skipped; parameter values checked")
 
     return {
         "config":         config,
@@ -2836,6 +2885,7 @@ def generate_canvasxpress_config(
         "valid":          validation["valid"],
         "warnings":       validation["warnings"] + _geocode_warnings + data_warnings,
         "invalid_refs":   validation["invalid_refs"],
+        "invalid_values": validation.get("invalid_values", {}),
         "headers_used":   resolved_headers or [],
         "types_used":     column_types or {},
         "removed_params": removed_params,

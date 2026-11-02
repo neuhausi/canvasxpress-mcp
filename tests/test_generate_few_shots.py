@@ -71,7 +71,10 @@ def test_load_supplement_validates_records(tmp_path):
 
 def test_shipped_supplement_is_valid():
     path = os.path.join(ROOT, "data", "few_shot_supplement.json")
-    assert len(generate_few_shots.load_supplement(path)) == 9
+    records = generate_few_shots.load_supplement(path)
+    assert len(records) == 16
+    # 7 of them are the curated Network examples (the generator cannot phrase Network).
+    assert sum(1 for r in records if r["config"].get("graphType") == "Network") == 7
 
 
 @pytest.mark.skipif(not os.environ.get("CX_TEST_ENGINE"), reason="set CX_TEST_ENGINE to run")

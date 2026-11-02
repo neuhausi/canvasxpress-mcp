@@ -170,5 +170,96 @@
    "summaryType": "mean",
    "showLegend": true
   }
+ },
+ {
+  "data": "data",
+  "header": [
+   "group"
+  ],
+  "description": "Create a force-directed network graph from the nodes and edges, coloring each node by its group, with a legend.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "forceDirected",
+   "colorNodeBy": "group",
+   "showLegend": true
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "community"
+  ],
+  "description": "Draw an interactive node-edge network with a force-directed layout, nodes colored by community and the legend on the right.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "forceDirected",
+   "colorNodeBy": "community",
+   "showLegend": true,
+   "legendPosition": "right"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "group"
+  ],
+  "description": "Show a protein-protein interaction network as a draggable force-directed graph colored by group with animation.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "forceDirected",
+   "colorNodeBy": "group",
+   "showAnimation": true
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "cluster"
+  ],
+  "description": "Render a network diagram using a circular layout, coloring the nodes by cluster.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "circular",
+   "colorNodeBy": "cluster"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "type"
+  ],
+  "description": "Build a radial network layout of the nodes and edges, colored by type, with a legend.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "radial",
+   "colorNodeBy": "type",
+   "showLegend": true
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "group"
+  ],
+  "description": "Visualize a social network as a force-directed graph with larger nodes, colored by group.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "forceDirected",
+   "colorNodeBy": "group",
+   "nodeSize": 30
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "pathway"
+  ],
+  "description": "Create a gene regulatory network as a node-link diagram with a force-directed layout, coloring nodes by pathway.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "forceDirected",
+   "colorNodeBy": "pathway",
+   "showLegend": true
+  }
  }
 ]
