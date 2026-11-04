@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "73.5",
+  "x-cx-version": "73.6",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -16607,6 +16607,35 @@
         "Map"
       ]
     },
+    "mapCartogramScale": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Scaling for the non-contiguous cartogram (mapType cartogram). area: each region is scaled relative to its own area. olson: the densest region keeps its size and every other shrinks proportionally (classic Olson)",
+      "default": "area",
+      "enum": [
+        "area",
+        "olson",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "Set the map cartogram scale to {_option_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
+    "mapCartogramSilhouette": {
+      "type": "boolean",
+      "description": "For the non-contiguous cartogram (mapType cartogram), draw each region full-size silhouette in grey behind the scaled shape so the two can be compared",
+      "default": true,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "Set the map cartogram silhouette to {_boolean_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
     "mapCentralMeridian": {
       "type": [
         "number",
@@ -16867,6 +16896,27 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Maps Albers",
       "x-cx-nl": "Set the map standard parallel2 to {_float_}",
+      "x-cx-graphtypes": [
+        "Map"
+      ]
+    },
+    "mapType": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Map distortion. region: a normal map (default). The other three are cartograms driven by sizeBy: dorling draws one non-overlapping circle per region sized by value; cartogram keeps each region shape and scales it about its own centre (non-contiguous); contiguous deforms the borders so regions stay joined while their areas match the value (Dougenik rubber-sheet)",
+      "default": "region",
+      "enum": [
+        "region",
+        "dorling",
+        "cartogram",
+        "contiguous",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Maps",
+      "x-cx-nl": "Set the map type to {_option_}",
       "x-cx-graphtypes": [
         "Map"
       ]
@@ -27968,6 +28018,34 @@
         "Volcano",
         "Waterfall",
         "WordCloud"
+      ]
+    },
+    "sizeLegendNested": {
+      "type": "boolean",
+      "description": "Flag to draw the size legend as nested (concentric) bubbles sharing a common bottom edge, with a dashed leader line from each circle to its value label, instead of a column of separate size keys. Applies to proportional-circle size legends (e.g. a sizeBy bubble map or Dorling cartogram)",
+      "default": false,
+      "x-cx-category": "Legends",
+      "x-cx-nl": "{Draw|Do Not Draw} the size legend as nested (concentric) bubbles sharing a common bottom edge, with a dashed leader line from each circle to its value label, instead of a column of separate size keys",
+      "x-cx-graphtypes": [
+        "Bar",
+        "BarLine",
+        "Boxplot",
+        "Bullet",
+        "Cleveland",
+        "DotLine",
+        "Dotplot",
+        "Dumbbell",
+        "Heatmap",
+        "Line",
+        "Lollipop",
+        "Pareto",
+        "Stacked",
+        "StackedLine",
+        "StackedPercent",
+        "StackedPercentLine",
+        "Tornado",
+        "Violin",
+        "Waterfall"
       ]
     },
     "sizeLegendTitle": {
