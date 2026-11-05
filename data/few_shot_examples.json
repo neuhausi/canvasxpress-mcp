@@ -115833,5 +115833,229 @@
    "colorNodeBy": "pathway",
    "showLegend": true
   }
+ },
+ {
+  "id": 3791,
+  "data": "data",
+  "header": [
+   "FPR",
+   "TPR"
+  ],
+  "description": "Create a ROC curve (receiver operating characteristic) of TPR versus FPR as a connected line, with the chance diagonal reference line and the AUC in the title. Model evaluation for a binary classifier.",
+  "config": {
+   "graphType": "Scatter2D",
+   "scatterType": "line",
+   "xAxis": [
+    "FPR"
+   ],
+   "yAxis": [
+    "TPR"
+   ],
+   "setMinX": 0,
+   "setMaxX": 1,
+   "setMinY": 0,
+   "setMaxY": 1,
+   "xAxisTitle": "False positive rate",
+   "yAxisTitle": "True positive rate",
+   "title": "ROC curve",
+   "showLoessFit": false,
+   "decorations": {
+    "line": [
+     {
+      "x": 0,
+      "y": 0,
+      "x2": 1,
+      "y2": 1,
+      "color": "#999999",
+      "width": 1,
+      "type": "dashed",
+      "label": "Chance"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": 3792,
+  "data": "data",
+  "header": [
+   "Recall",
+   "Precision"
+  ],
+  "description": "Create a precision-recall curve as a connected line with the no-skill baseline reference line and the average precision (AP) in the title. Model evaluation for a binary classifier.",
+  "config": {
+   "graphType": "Scatter2D",
+   "scatterType": "line",
+   "xAxis": [
+    "Recall"
+   ],
+   "yAxis": [
+    "Precision"
+   ],
+   "setMinX": 0,
+   "setMaxX": 1,
+   "setMinY": 0,
+   "setMaxY": 1,
+   "xAxisTitle": "Recall",
+   "yAxisTitle": "Precision",
+   "title": "Precision-Recall",
+   "showLoessFit": false,
+   "decorations": {
+    "line": [
+     {
+      "x": 0,
+      "y": 0.5,
+      "x2": 1,
+      "y2": 0.5,
+      "color": "#999999",
+      "width": 1,
+      "type": "dashed",
+      "label": "No skill"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": 3793,
+  "data": "data",
+  "header": [
+   "Pred A",
+   "Pred B"
+  ],
+  "description": "Create a confusion matrix as a heatmap of actual (rows) versus predicted (columns) classes, printing the count inside each cell. Model evaluation for a classifier.",
+  "config": {
+   "graphType": "Heatmap",
+   "varTitle": "Actual",
+   "smpTitle": "Predicted",
+   "heatmapCellBox": true,
+   "heatmapCellText": [
+    {
+     "variable": "Actual A",
+     "sample": "Pred A",
+     "text": "50"
+    },
+    {
+     "variable": "Actual A",
+     "sample": "Pred B",
+     "text": "2"
+    },
+    {
+     "variable": "Actual B",
+     "sample": "Pred A",
+     "text": "3"
+    },
+    {
+     "variable": "Actual B",
+     "sample": "Pred B",
+     "text": "45"
+    }
+   ],
+   "title": "Confusion matrix"
+  }
+ },
+ {
+  "id": 3794,
+  "data": "data",
+  "header": [
+   "Feature",
+   "Importance"
+  ],
+  "description": "Create a horizontal feature-importance bar chart, sorted from most to least important. Model evaluation / interpretability.",
+  "config": {
+   "graphType": "Bar",
+   "graphOrientation": "horizontal",
+   "smpTitle": "Feature",
+   "xAxisTitle": "Importance",
+   "showLegend": false,
+   "title": "Feature importance"
+  }
+ },
+ {
+  "id": 3795,
+  "data": "data",
+  "header": [
+   "Predicted",
+   "Observed"
+  ],
+  "description": "Create a calibration (reliability) curve of observed frequency versus mean predicted probability as a connected line, with the perfect-calibration diagonal. Model evaluation for a classifier.",
+  "config": {
+   "graphType": "Scatter2D",
+   "scatterType": "line",
+   "xAxis": [
+    "Predicted"
+   ],
+   "yAxis": [
+    "Observed"
+   ],
+   "setMinX": 0,
+   "setMaxX": 1,
+   "setMinY": 0,
+   "setMaxY": 1,
+   "xAxisTitle": "Mean predicted probability",
+   "yAxisTitle": "Observed frequency",
+   "title": "Calibration",
+   "showLoessFit": false,
+   "decorations": {
+    "line": [
+     {
+      "x": 0,
+      "y": 0,
+      "x2": 1,
+      "y2": 1,
+      "color": "#999999",
+      "width": 1,
+      "type": "dashed",
+      "label": "Perfect"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": 3796,
+  "data": "data",
+  "header": [
+   "Training score",
+   "Validation score"
+  ],
+  "description": "Create a learning curve with training score and validation score as two lines over the training-set size. Model evaluation.",
+  "config": {
+   "graphType": "Line",
+   "smpTitle": "Training set size",
+   "yAxisTitle": "Score",
+   "showLegend": true,
+   "title": "Learning curve"
+  }
+ },
+ {
+  "id": 3797,
+  "data": "data",
+  "header": [
+   "SHAP value",
+   "Feature",
+   "Feature value"
+  ],
+  "description": "Create a SHAP summary beeswarm: a jittered dotplot grouped by feature, points positioned by SHAP value and coloured by the feature value. Model interpretability.",
+  "config": {
+   "graphType": "Dotplot",
+   "graphOrientation": "horizontal",
+   "xAxis": [
+    "SHAP value"
+   ],
+   "groupingFactors": [
+    "Feature"
+   ],
+   "colorBy": "Feature value",
+   "colorSpectrum": [
+    "#2166ac",
+    "#f7f7f7",
+    "#b2182b"
+   ],
+   "jitter": true,
+   "xAxisTitle": "SHAP value (impact on model output)",
+   "showLegend": true,
+   "title": "SHAP summary"
+  }
  }
 ]
