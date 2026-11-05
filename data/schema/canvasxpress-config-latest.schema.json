@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "73.7",
+  "x-cx-version": "73.8",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -16921,6 +16921,17 @@
         "Map"
       ]
     },
+    "mapVectorField": {
+      "type": "boolean",
+      "description": "Flag to draw a vector-field overlay (raw arrows / gridded quiver / integrated streamlines) on a Map. Positions are read from the lat / lng marker columns of data.x and the velocity components from vectorUBy / vectorVBy (defaulting to vx eastward / vy northward)",
+      "default": false,
+      "x-cx-category": "Vector Field Plots",
+      "x-cx-nl": "{Draw|Do Not Draw} a vector-field overlay (raw arrows / gridded quiver / integrated streamlines) on a Map",
+      "x-cx-graphtypes": [
+        "Scatter2D",
+        "Map"
+      ]
+    },
     "mapZipCodeIds": {
       "type": [
         "array",
@@ -30982,7 +30993,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the streamline color to {_string_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "streamlineSeedStride": {
@@ -30996,7 +31008,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the streamline seed stride to {_integer_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "streamlineStepSize": {
@@ -31010,7 +31023,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the streamline step size to {_float_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "streamlineSteps": {
@@ -31024,7 +31038,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the streamline steps to {_integer_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "stringEdgeAttributes": {
@@ -35490,7 +35505,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector arrow size to {_float_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorColorByMagnitude": {
@@ -35500,7 +35516,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "{Color|Do Not Color} raw arrows by velocity magnitude (gradient) instead of by the group annotation",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorColorValueColor": {
@@ -35515,7 +35532,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Color the vector color value {_color_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorDensity": {
@@ -35529,7 +35547,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector density to {_float_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorFieldMode": {
@@ -35549,7 +35568,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector field mode to {_option_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorGridSize": {
@@ -35563,7 +35583,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector grid size to {_integer_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorGroupBy": {
@@ -35577,7 +35598,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector group by to {_string_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorGroupPalette": {
@@ -35594,7 +35616,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector group palette to {_array_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorLineWidth": {
@@ -35608,7 +35631,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector line width to {_float_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorMinMagnitude": {
@@ -35622,7 +35646,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector min magnitude to {_float_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorPalette": {
@@ -35639,7 +35664,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector palette to {_array_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorScale": {
@@ -35653,7 +35679,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector scale to {_float_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorShowLegend": {
@@ -35663,7 +35690,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "{Show|Do Not Show} the vector-field legend (magnitude color ramp, or the group legend in raw mode)",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorUBy": {
@@ -35677,7 +35705,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector u by to {_string_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorVBy": {
@@ -35691,7 +35720,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector v by to {_string_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorXBy": {
@@ -35705,7 +35735,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector x by to {_string_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vectorYBy": {
@@ -35719,7 +35750,8 @@
       "x-cx-category": "Vector Field Plots",
       "x-cx-nl": "Set the vector y by to {_string_}",
       "x-cx-graphtypes": [
-        "Scatter2D"
+        "Scatter2D",
+        "Map"
       ]
     },
     "vennColors": {
