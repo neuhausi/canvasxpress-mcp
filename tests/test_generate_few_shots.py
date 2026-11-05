@@ -72,9 +72,13 @@ def test_load_supplement_validates_records(tmp_path):
 def test_shipped_supplement_is_valid():
     path = os.path.join(ROOT, "data", "few_shot_supplement.json")
     records = generate_few_shots.load_supplement(path)
-    assert len(records) == 16
+    assert len(records) == 23
     # 7 of them are the curated Network examples (the generator cannot phrase Network).
     assert sum(1 for r in records if r["config"].get("graphType") == "Network") == 7
+    # 7 are the model-evaluation builders (ROC, PR, confusion, calibration,
+    # learning curve, feature importance, SHAP).
+    assert sum(1 for r in records if "evaluation" in r["description"].lower()
+               or "interpretability" in r["description"].lower()) == 7
 
 
 @pytest.mark.skipif(not os.environ.get("CX_TEST_ENGINE"), reason="set CX_TEST_ENGINE to run")
