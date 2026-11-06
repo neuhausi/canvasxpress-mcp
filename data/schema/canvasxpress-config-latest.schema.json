@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "73.9",
+  "x-cx-version": "74",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -33525,6 +33525,20 @@
       "x-cx-false-disables": true,
       "x-cx-category": "UpSet Plots",
       "x-cx-nl": "Color the upset sets bar {_color_}",
+      "x-cx-graphtypes": [
+        "Heatmap"
+      ]
+    },
+    "upsetSetsBarRatio": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Ratio of the canvas width used by the set size bar plot on the left",
+      "default": 0.2,
+      "x-cx-false-disables": true,
+      "x-cx-category": "UpSet Plots",
+      "x-cx-nl": "Set the upset sets bar ratio to {_float_}",
       "x-cx-graphtypes": [
         "Heatmap"
       ]
