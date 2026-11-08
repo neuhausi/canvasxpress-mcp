@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "74",
+  "x-cx-version": "74.1",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -4811,6 +4811,22 @@
         "Scatter2D"
       ]
     },
+    "contourPoints": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of grid points in each direction for the two dimensional kernel density estimate underlying the scatter plot contours, as the n argument of the kde2d function in the R package MASS and of stat_density_2d in ggplot2",
+      "default": 100,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Contours",
+      "x-cx-nl": "Set the contour points to {_integer_}",
+      "x-cx-graphtypes": [
+        "Pareto",
+        "Heatmap",
+        "Scatter2D"
+      ]
+    },
     "contourStat": {
       "type": [
         "string",
@@ -9029,6 +9045,24 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Density Plots",
       "x-cx-nl": "Set the density kernel to {_option_}",
+      "x-cx-graphtypes": [
+        "Density",
+        "Distribution",
+        "Histogram",
+        "Ridgeline",
+        "Violin"
+      ]
+    },
+    "densityPoints": {
+      "type": [
+        "integer",
+        "boolean"
+      ],
+      "description": "Number of equally spaced points at which the density is estimated, as the n argument of the density function in R. Values above 512 are rounded up to a power of two as in R",
+      "default": 512,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Density Plots",
+      "x-cx-nl": "Set the density points to {_integer_}",
       "x-cx-graphtypes": [
         "Density",
         "Distribution",
