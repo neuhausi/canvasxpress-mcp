@@ -1443,6 +1443,14 @@ python src/server.py
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
 | `CX_KB_BASE_URL` | canvasxpress-LLM `main` on GitHub | Base URL for `SCHEMA.md` / `RULES.md` / `CONTEXT.md`. Point at a release tag or an internal mirror to pin the knowledge base |
 | `CX_STATE_DIR` | `data/` | Writable state directory: the call log (`call_log.db`) and the knowledge-base cache (`$CX_STATE_DIR/kb_cache`; the old `data/kb_cache` is still read as a fallback, and cache write failures are logged, not fatal). The code directory can then be read-only |
+| `CX_PUBLIC` | `0` | **Public profile.** Set to `1` for an internet-facing deployment: bearer-token auth is **required** and the server **refuses to start without a token** (fail-closed). Leave unset for local/tunnel installs — nothing changes |
+| `CX_AUTH_TOKENS` | — | Comma-separated bearer tokens accepted on `Authorization: Bearer <token>`. When set (even without `CX_PUBLIC`), auth is enforced on every route except the exempt prefixes and CORS preflight |
+| `CX_AUTH_TOKENS_FILE` | — | Path to a file of bearer tokens, one per line (`#` comments allowed). Merged with `CX_AUTH_TOKENS` |
+| `CX_REQUIRE_AUTH` | `0` | Set to `1` to require auth (fail-closed) without the full public profile |
+| `CX_AUTH_EXEMPT_PATHS` | `/health` | Comma-separated path prefixes served without a token (for load-balancer probes) |
+| `CX_RATE_LIMIT_PER_MIN` | `0` | Per-token fixed-window request cap per 60s (`0` = unlimited). Over the cap returns `429` |
+| `CX_DAILY_COST_LIMIT_USD` | `0` | Per-UTC-day LLM cost ceiling. Past it, generation is paused until `00:00 UTC` (`0` = no ceiling) |
+| `CX_DISABLE_GENERATION` | `0` | Manual kill switch: set to `1` to pause all generation immediately |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model for vector search |
 | `CX_REQUIRE_VECTOR` | `0` | Set to `1` to refuse to start if vector retrieval is unavailable (default: fall back to text similarity). `GET /health` always reports `retrieval: vector\|fallback` |
 | `CX_DISABLED_TOOLS` | — | Comma-separated tool names to remove, e.g. `render_canvasxpress_config,publish_canvasxpress_dashboard` on hosts without Playwright or a dashboards install |

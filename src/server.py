@@ -117,6 +117,140 @@ else:
 STRICT_REST: bool = os.environ.get("CX_STRICT_REST", "").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
+# Opt-in bearer-token auth for PUBLIC/hosted deployments (e.g. an internet-facing
+# mcp.canvasxpress.org that ChatGPT Apps / Gemini Connected Apps connect to).
+#
+# SECURE-BY-DEFAULT FOR PUBLIC DEPLOYMENTS, additive for everything else:
+#   * CX_PUBLIC=1 ("public profile") REQUIRES auth and REFUSES TO START without a
+#     token (fail-closed) — a public endpoint can never accidentally run open.
+#   * A non-public instance keeps the opt-in behaviour: auth enforces only when
+#     tokens are configured, otherwise it is open exactly as before — so local,
+#     tunnelled and existing public JSONP installs, and the Claude connector, are
+#     unaffected unless their operator opts in.
+# When enforced, every route is gated EXCEPT the exempt prefixes (default /health,
+# for load-balancer probes) and CORS preflight (OPTIONS). Env:
+#   CX_PUBLIC=1           public profile: auth required + fail-closed if no token
+#   CX_AUTH_TOKENS        comma-separated accepted bearer tokens
+#   CX_AUTH_TOKENS_FILE   path to a file of tokens, one per line (# comments ok)
+#   CX_REQUIRE_AUTH=1     require auth without the full public profile (also fail-closed)
+#   CX_AUTH_EXEMPT_PATHS  comma-separated path prefixes served without a token
+#                         (default "/health")
+#   CX_RATE_LIMIT_PER_MIN per-token fixed-window request cap per 60s (0 = unlimited)
+# Cost controls (pause spend if it runs high):
+#   CX_DAILY_COST_LIMIT_USD  per-UTC-day LLM cost ceiling; generation is paused past
+#                            it until 00:00 UTC (0 = no ceiling)
+#   CX_DISABLE_GENERATION=1  manual kill switch: pause all generation immediately
+import hmac as _hmac
+import datetime as _dt
+
+
+def _load_auth_tokens() -> set:
+    """Collect accepted bearer tokens from CX_AUTH_TOKENS and CX_AUTH_TOKENS_FILE."""
+    tokens: set = set()
+    for tok in os.environ.get("CX_AUTH_TOKENS", "").split(","):
+        tok = tok.strip()
+        if tok:
+            tokens.add(tok)
+    path = os.environ.get("CX_AUTH_TOKENS_FILE", "").strip()
+    if path:
+        try:
+            with open(path) as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        tokens.add(line)
+        except OSError as e:
+            print(f"[cx-mcp] CX_AUTH_TOKENS_FILE could not be read: {path} ({e})", flush=True)
+    return tokens
+
+
+PUBLIC_PROFILE: bool = os.environ.get("CX_PUBLIC", "").lower() in ("1", "true", "yes")
+_require_auth_flag: bool = os.environ.get("CX_REQUIRE_AUTH", "").lower() in ("1", "true", "yes")
+AUTH_TOKENS: set = _load_auth_tokens()
+# Required when the public profile or CX_REQUIRE_AUTH is set, OR (opt-in) when any
+# token is configured on a non-public instance.
+AUTH_REQUIRED: bool = PUBLIC_PROFILE or _require_auth_flag or bool(AUTH_TOKENS)
+# Fail-closed: a deployment that declares itself public/auth-required must have a
+# token, or it refuses to start rather than silently run open.
+if (PUBLIC_PROFILE or _require_auth_flag) and not AUTH_TOKENS:
+    raise RuntimeError(
+        "Auth is required (CX_PUBLIC / CX_REQUIRE_AUTH) but no tokens are configured. "
+        "Set CX_AUTH_TOKENS or CX_AUTH_TOKENS_FILE. Refusing to start open (fail-closed)."
+    )
+AUTH_EXEMPT_PATHS: tuple = tuple(
+    p.strip() for p in os.environ.get("CX_AUTH_EXEMPT_PATHS", "/health").split(",") if p.strip()
+)
+try:
+    RATE_LIMIT_PER_MIN: int = int(os.environ.get("CX_RATE_LIMIT_PER_MIN", "0"))
+except ValueError:
+    RATE_LIMIT_PER_MIN = 0
+
+
+def _auth_token_ok(candidate: str) -> bool:
+    """Constant-time check of a presented token against the configured set."""
+    return any(_hmac.compare_digest(candidate, tok) for tok in AUTH_TOKENS)
+
+
+# --- Cost controls (auto-pause on a daily ceiling + manual kill switch) ------
+try:
+    DAILY_COST_LIMIT_USD: float = float(os.environ.get("CX_DAILY_COST_LIMIT_USD", "0") or 0)
+except ValueError:
+    DAILY_COST_LIMIT_USD = 0.0
+GENERATION_DISABLED: bool = os.environ.get("CX_DISABLE_GENERATION", "").lower() in ("1", "true", "yes")
+
+# In-process spend tracker for the current UTC day. Resets at 00:00 UTC and on
+# restart; adequate for a single-process deployment (the ceiling is a safety cap,
+# not accounting). {"day": "YYYY-MM-DD", "spent_usd": float}.
+_cost_state: dict = {"day": None, "spent_usd": 0.0}
+
+
+def _today_utc() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def record_generation_cost(usd: float) -> None:
+    """Add an LLM call's USD cost to the current UTC day's running total."""
+    if not usd:
+        return
+    day = _today_utc()
+    if _cost_state["day"] != day:
+        _cost_state["day"] = day
+        _cost_state["spent_usd"] = 0.0
+    _cost_state["spent_usd"] += float(usd)
+
+
+def generation_block_reason() -> str | None:
+    """Reason generation is currently paused (manual kill or daily ceiling), else None."""
+    if GENERATION_DISABLED:
+        return "generation is disabled by the operator (CX_DISABLE_GENERATION)"
+    if DAILY_COST_LIMIT_USD > 0 and _cost_state["day"] == _today_utc() \
+            and _cost_state["spent_usd"] >= DAILY_COST_LIMIT_USD:
+        return (
+            f"daily cost ceiling reached (${_cost_state['spent_usd']:.2f} "
+            f">= ${DAILY_COST_LIMIT_USD:.2f}); resets at 00:00 UTC"
+        )
+    return None
+
+
+class GenerationPaused(RuntimeError):
+    """Raised when generation is paused by the manual kill switch or the daily
+    cost ceiling. Carried to the caller as a clean error (REST layer maps it to
+    HTTP 503; tool calls surface the reason)."""
+
+
+def _guarded_llm_complete(*args, **kwargs):
+    """``llm_complete`` with the cost kill-switch / daily-ceiling pause applied.
+
+    All LLM generation flows through here (P1 cost controls), so a single check
+    pauses every tool and REST route when spend runs high or the operator pulls
+    the switch, without touching the provider layer.
+    """
+    reason = generation_block_reason()
+    if reason is not None:
+        raise GenerationPaused(reason)
+    return llm_complete(*args, **kwargs)
+
+# ---------------------------------------------------------------------------
 # Few-shot examples (fallback for when vector index is not built)
 # ---------------------------------------------------------------------------
 def load_examples() -> list[dict]:
@@ -842,6 +976,7 @@ def _log_cache_usage(op: str, usage: dict) -> None:
         cost = usage_cost(usage)
         CACHE_STATS["cost_usd"] += cost
         usage["cost_usd"] = round(cost, 6)
+        record_generation_cost(cost)  # feed the daily cost-ceiling tracker (P1 cost controls)
         tally = _REQUEST_USAGE.get()
         if tally is not None:
             tally["calls"] += 1
@@ -1021,7 +1156,7 @@ def generate_config(
         print(f"  Size      : {len(system_prompt)} chars (~{len(system_prompt)//4} tokens)", file=sys.stderr)
 
     t1 = time.perf_counter()
-    raw_text, usage = llm_complete(
+    raw_text, usage = _guarded_llm_complete(
         system=system_prompt,
         user=prompt,
         temperature=temperature,
@@ -1193,7 +1328,7 @@ def modify_config(
         print(f"  Model    : {MODEL}", file=sys.stderr)
 
     t1 = time.perf_counter()
-    raw_text, usage = llm_complete(
+    raw_text, usage = _guarded_llm_complete(
         system=system_prompt,
         user=prompt,
         temperature=temperature,
@@ -1354,7 +1489,7 @@ def action_config(
         print(f"  Provider : {PROVIDER}", file=sys.stderr)
         print(f"  Model    : {MODEL}", file=sys.stderr)
 
-    raw_text, _usage = llm_complete(
+    raw_text, _usage = _guarded_llm_complete(
         system=_ACTION_SYSTEM,
         user=user_prompt,
         temperature=temperature,
@@ -2580,16 +2715,90 @@ class _InjectToolMiddleware:
         await self._app(scope, _buffered_receive, _intercept_send)
 
 
-# Build the CORS ASGI middleware list — passed to mcp.run() below.
-# CORS_ORIGINS is read from .env (CORS_ORIGINS env var).
+class _BearerAuthMiddleware:
+    """ASGI middleware enforcing ``Authorization: Bearer <token>`` when auth is
+    required (``AUTH_REQUIRED``). Pure pass-through when auth is off, so a
+    non-public instance is unchanged. CORS preflight (``OPTIONS``) and the exempt
+    path prefixes (default ``/health``) are always allowed. Applies an optional
+    per-token fixed-window rate limit (``CX_RATE_LIMIT_PER_MIN``)."""
+
+    def __init__(self, app):
+        self._app = app
+        # token -> [window_minute, count] for the in-process rate limiter.
+        self._hits: dict = {}
+
+    async def __call__(self, scope, receive, send):
+        # Pass through for non-HTTP scopes, or when auth is not required (the
+        # middleware is normally only wired in when AUTH_REQUIRED, but honouring
+        # it here keeps the class correct regardless of how it is mounted).
+        if scope.get("type") != "http" or not AUTH_REQUIRED:
+            await self._app(scope, receive, send)
+            return
+        method = scope.get("method", "")
+        path = scope.get("path", "") or ""
+        if method == "OPTIONS" or any(path.startswith(p) for p in AUTH_EXEMPT_PATHS):
+            await self._app(scope, receive, send)
+            return
+        token = self._bearer(scope)
+        if token is None or not _auth_token_ok(token):
+            await self._send_json(
+                send, 401,
+                {"error": "unauthorized",
+                 "detail": "Missing or invalid 'Authorization: Bearer <token>' header."},
+                extra_headers=[(b"www-authenticate", b"Bearer")],
+            )
+            return
+        if RATE_LIMIT_PER_MIN > 0 and self._rate_limited(token):
+            await self._send_json(
+                send, 429,
+                {"error": "rate_limited",
+                 "detail": f"Exceeded {RATE_LIMIT_PER_MIN} requests/min for this token."},
+                extra_headers=[(b"retry-after", b"60")],
+            )
+            return
+        await self._app(scope, receive, send)
+
+    @staticmethod
+    def _bearer(scope) -> str | None:
+        for key, value in scope.get("headers", []):
+            if key == b"authorization":
+                raw = value.decode("latin-1").strip()
+                if raw.lower().startswith("bearer "):
+                    return raw[7:].strip()
+                return None
+        return None
+
+    def _rate_limited(self, token: str) -> bool:
+        window = int(_dt.datetime.now(_dt.timezone.utc).timestamp()) // 60
+        rec = self._hits.get(token)
+        if rec is None or rec[0] != window:
+            self._hits[token] = [window, 1]
+            return False
+        rec[1] += 1
+        return rec[1] > RATE_LIMIT_PER_MIN
+
+    @staticmethod
+    async def _send_json(send, status: int, payload: dict, extra_headers=None) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        headers = [(b"content-type", b"application/json"),
+                   (b"content-length", str(len(body)).encode())]
+        if extra_headers:
+            headers.extend(extra_headers)
+        await send({"type": "http.response.start", "status": status, "headers": headers})
+        await send({"type": "http.response.body", "body": body, "more_body": False})
+
+
+# Build the ASGI middleware list — passed to mcp.http_app()/mcp.run() below.
+# Order is outermost-first: CORS (so OPTIONS preflight is answered before auth) →
+# bearer auth (only when required) → tool injection. CORS_ORIGINS is read from .env.
 _cors_middleware: list = ([] if STRICT_REST else [
     Middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "X-API-Key", "X-Admin-Key"],
+        allow_headers=["Content-Type", "X-API-Key", "X-Admin-Key", "Authorization"],
     ),
-]) + [
+]) + ([Middleware(_BearerAuthMiddleware)] if AUTH_REQUIRED else []) + [
     Middleware(_InjectToolMiddleware),
 ]
 
@@ -3294,7 +3503,7 @@ def select_canvasxpress_chart(
         intent, list(column_types.keys()), n_samples, llm_first,
     )
     def _llm_text(system: str, user: str) -> str:
-        text, usage = llm_complete(system, user, temperature=0.0, max_tokens=300)
+        text, usage = _guarded_llm_complete(system, user, temperature=0.0, max_tokens=300)
         log.debug("tiebreak LLM raw=%r  stop=%s", text[:120] if text else "", usage.get("stop_reason"))
         return text
 
@@ -3414,7 +3623,7 @@ def _llm_select_chart(
     )
 
     try:
-        raw = llm_complete(system, user).strip()
+        raw = _guarded_llm_complete(system, user).strip()
         if not raw:
             return None, "LLM returned empty response"
         if "|" in raw:
@@ -6770,6 +6979,20 @@ def main() -> None:
         HOST, PORT, info["provider"], info["model"],
     )
     log.info("MCP endpoint: http://%s:%d/mcp", HOST if HOST != "0.0.0.0" else "localhost", PORT)
+    if AUTH_REQUIRED:
+        log.info(
+            "Auth      : bearer REQUIRED%s, %d token(s)%s%s",
+            " [public profile]" if PUBLIC_PROFILE else "",
+            len(AUTH_TOKENS),
+            f", rate limit {RATE_LIMIT_PER_MIN}/min/token" if RATE_LIMIT_PER_MIN > 0 else "",
+            f", exempt {list(AUTH_EXEMPT_PATHS)}" if AUTH_EXEMPT_PATHS else "",
+        )
+    else:
+        log.info("Auth      : OPEN (no tokens configured — network-isolation only)")
+    if GENERATION_DISABLED:
+        log.warning("Generation: DISABLED (CX_DISABLE_GENERATION) — all generation is paused")
+    elif DAILY_COST_LIMIT_USD > 0:
+        log.info("Cost cap  : $%.2f/day (UTC); generation pauses past it", DAILY_COST_LIMIT_USD)
     if DEBUG:
         log.info("Debug mode ON  — set CX_DEBUG=0 to disable")
         log.info("Retrieval : %s", "vector (sqlite-vec)" if _use_vector_index else "SequenceMatcher (fallback)")

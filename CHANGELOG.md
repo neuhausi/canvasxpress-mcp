@@ -5,6 +5,17 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Public-deployment controls: bearer-token auth + cost kill-switch (for an internet-facing endpoint that
+  ChatGPT Apps / Gemini Connected Apps can connect to).** `CX_PUBLIC=1` is a fail-closed public profile:
+  bearer auth is required and the server refuses to start without a token, so a public endpoint can never
+  accidentally run open. On a non-public instance it is additive and opt-in — auth enforces only when
+  `CX_AUTH_TOKENS`/`CX_AUTH_TOKENS_FILE` is set, otherwise the endpoint behaves exactly as before, so local,
+  SSH-tunnel and existing public JSONP installs (and the Claude connector) are unchanged. When enforced, every
+  route is gated except the exempt prefixes (`CX_AUTH_EXEMPT_PATHS`, default `/health`) and CORS preflight, with
+  an optional per-token rate limit (`CX_RATE_LIMIT_PER_MIN` → `429`). Cost controls pause generation when spend
+  runs high: a per-UTC-day ceiling (`CX_DAILY_COST_LIMIT_USD`) and a manual kill switch (`CX_DISABLE_GENERATION`),
+  both surfaced through a single generation chokepoint. All LLM generation flows through the guard; the daily
+  tally reuses the existing per-request cost accounting. 11 new offline tests (`tests/test_public_auth.py`).
 - **One rule for getting data in: "drag the file here".** `suggest_canvasxpress_dashboard` called with no data
   returns `{drop: true}` and the dashboard view shows a drop zone; the person drags the file (or 2 to 6 related
   files) onto the panel, the view sends it to the server in 60 KB pieces through the host (`tools/call`
