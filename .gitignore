@@ -11,10 +11,13 @@ env/
 # Local secrets
 .env
 .env.local
+.env.public
 
 # Server runtime state
 server.pid
 server.log
+server-public.pid
+server-public.log
 /tmp/cx-server.log
 data/*.db
 data/call_log.db-wal

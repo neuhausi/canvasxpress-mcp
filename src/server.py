@@ -191,6 +191,32 @@ def _auth_token_ok(candidate: str) -> bool:
     return any(_hmac.compare_digest(candidate, tok) for tok in AUTH_TOKENS)
 
 
+# --- Google OAuth for consumer hosts (Gemini / ChatGPT) that require it ------
+# Gemini and (paid) ChatGPT only connect to a remote MCP server over standard
+# OAuth — a static bearer token is rejected. When CX_GOOGLE_CLIENT_ID is set the
+# server authenticates via Google (FastMCP GoogleProvider, a transparent OAuth
+# proxy to Google with dynamic client registration), and the static-bearer
+# middleware is bypassed. CX_PUBLIC_BASE_URL is the public https origin the OAuth
+# flow advertises (e.g. https://mcp.canvasxpress.org); the Google app's redirect
+# URI must be that origin + /auth/callback.
+OAUTH_PROVIDER = None
+_google_client_id = os.environ.get("CX_GOOGLE_CLIENT_ID", "").strip()
+if _google_client_id:
+    _public_base_url = os.environ.get("CX_PUBLIC_BASE_URL", "").strip()
+    if not _public_base_url:
+        raise RuntimeError(
+            "CX_GOOGLE_CLIENT_ID is set but CX_PUBLIC_BASE_URL is not "
+            "(the public https origin the OAuth flow advertises, e.g. "
+            "https://mcp.canvasxpress.org)."
+        )
+    from fastmcp.server.auth.providers.google import GoogleProvider  # noqa: E402
+    OAUTH_PROVIDER = GoogleProvider(
+        client_id=_google_client_id,
+        client_secret=os.environ.get("CX_GOOGLE_CLIENT_SECRET", "").strip() or None,
+        base_url=_public_base_url,
+    )
+
+
 # --- Cost controls (auto-pause on a daily ceiling + manual kill switch) ------
 try:
     DAILY_COST_LIMIT_USD: float = float(os.environ.get("CX_DAILY_COST_LIMIT_USD", "0") or 0)
@@ -1698,6 +1724,7 @@ mcp = FastMCP(
         "canvasxpress-LLM knowledge base (RULES, SCHEMA, DECISION-TREE, MINIMAL-PARAMETERS) "
         "for highly accurate, validated output. Scales to 3000+ examples."
     ),
+    auth=OAUTH_PROVIDER,  # Google OAuth when configured (Gemini/ChatGPT); else None
 )
 
 # ---------------------------------------------------------------------------
@@ -2798,7 +2825,7 @@ _cors_middleware: list = ([] if STRICT_REST else [
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key", "X-Admin-Key", "Authorization"],
     ),
-]) + ([Middleware(_BearerAuthMiddleware)] if AUTH_REQUIRED else []) + [
+]) + ([Middleware(_BearerAuthMiddleware)] if (AUTH_REQUIRED and OAUTH_PROVIDER is None) else []) + [
     Middleware(_InjectToolMiddleware),
 ]
 
@@ -6979,7 +7006,12 @@ def main() -> None:
         HOST, PORT, info["provider"], info["model"],
     )
     log.info("MCP endpoint: http://%s:%d/mcp", HOST if HOST != "0.0.0.0" else "localhost", PORT)
-    if AUTH_REQUIRED:
+    if OAUTH_PROVIDER is not None:
+        log.info(
+            "Auth      : Google OAuth (base_url=%s) — static bearer disabled",
+            os.environ.get("CX_PUBLIC_BASE_URL", "?"),
+        )
+    elif AUTH_REQUIRED:
         log.info(
             "Auth      : bearer REQUIRED%s, %d token(s)%s%s",
             " [public profile]" if PUBLIC_PROFILE else "",
