@@ -171,11 +171,14 @@ AUTH_TOKENS: set = _load_auth_tokens()
 # token is configured on a non-public instance.
 AUTH_REQUIRED: bool = PUBLIC_PROFILE or _require_auth_flag or bool(AUTH_TOKENS)
 # Fail-closed: a deployment that declares itself public/auth-required must have a
-# token, or it refuses to start rather than silently run open.
-if (PUBLIC_PROFILE or _require_auth_flag) and not AUTH_TOKENS:
+# token, or it refuses to start rather than silently run open. Google OAuth
+# (CX_GOOGLE_CLIENT_ID, handled below) is itself the auth, so it satisfies this.
+if (PUBLIC_PROFILE or _require_auth_flag) and not AUTH_TOKENS \
+        and not os.environ.get("CX_GOOGLE_CLIENT_ID", "").strip():
     raise RuntimeError(
         "Auth is required (CX_PUBLIC / CX_REQUIRE_AUTH) but no tokens are configured. "
-        "Set CX_AUTH_TOKENS or CX_AUTH_TOKENS_FILE. Refusing to start open (fail-closed)."
+        "Set CX_AUTH_TOKENS or CX_AUTH_TOKENS_FILE (or configure Google OAuth via "
+        "CX_GOOGLE_CLIENT_ID). Refusing to start open (fail-closed)."
     )
 AUTH_EXEMPT_PATHS: tuple = tuple(
     p.strip() for p in os.environ.get("CX_AUTH_EXEMPT_PATHS", "/health").split(",") if p.strip()
