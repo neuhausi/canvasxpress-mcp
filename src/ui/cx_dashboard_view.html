@@ -54,7 +54,47 @@
     #cx-drop b { display: block; font-size: 20px; margin-bottom: 6px; }
     #cx-drop small { display: block; margin-top: 8px; opacity: .7; }
     #cx-drop.busy { cursor: progress; opacity: .6; }
-    body.cx-dark { --cx-chrome-bg: #1f2937; --cx-chrome-fg: #e5e7eb; }
+    /* Dark chrome matched to Claude Desktop's dark surfaces (the host only reports
+       theme "dark"|"light", never its colours, so the palette is hardcoded here):
+       (Claude Desktop's own dark tokens, read from its app bundle: chat surface
+       bg-200 #1f1e1d, raised bg-000 #30302e, bg-100 #262624, deep bg-300 #141413). */
+    body.cx-dark { --cx-chrome-bg: #1f1e1d; --cx-chrome-fg: #e8e6e3;
+      /* The engine's data-filter widget draws every group box, search field and
+         toolbar with --cx-ui-border-accent (indigo) — alien inside Claude's neutral
+         dark UI. The widget exposes dedicated hooks; set them to the neutral palette
+         (they inherit down into the dashboard). */
+      --cx-datafilter-border-color: #343331;
+      --cx-datafilter-background-color: #1f1e1d;
+      --cx-datafilter-toolbar-background-color: #262624;
+    }
+    /* The container holding all the panels is EXACTLY the host surface (#1f1e1d);
+       only the panel TITLE bars (--cxd-title-bg -> surface-sunken, #141413) stay darker. */
+    body.cx-dark .cxd-dashboard { background-color: #1f1e1d !important; }
+    /* Blend the WHOLE dashboard (backdrop, panel cards, Filters widget) with the host:
+       override the engine's cool-gray dark UI tokens (canvasXpress.css, which sets them
+       under :where(...) at zero specificity) with the same warm palette. Only in dark —
+       light mode keeps the stock tokens. Covers theme "dark" and "auto"-resolved-dark. */
+    body.cx-dark [data-cx-ui-theme="dark"] {
+      --cx-ui-surface: #1f1e1d !important;
+      --cx-ui-surface-alt: #262624 !important;
+      --cx-ui-surface-raised: #262624 !important;
+      --cx-ui-surface-sunken: #141413 !important;
+      --cx-ui-chrome: #262624 !important;
+      --cx-ui-border: #343331 !important;
+      --cx-ui-chrome-border: #343331 !important;
+    }
+    /* "auto" resolves dark through the OS media query (mirrors canvasXpress.css). */
+    @media (prefers-color-scheme: dark) {
+      body.cx-dark [data-cx-ui-theme="auto"] {
+        --cx-ui-surface: #1f1e1d !important;
+        --cx-ui-surface-alt: #262624 !important;
+        --cx-ui-surface-raised: #262624 !important;
+        --cx-ui-surface-sunken: #141413 !important;
+        --cx-ui-chrome: #262624 !important;
+        --cx-ui-border: #343331 !important;
+        --cx-ui-chrome-border: #343331 !important;
+      }
+    }
     #cx-error {
       display: none;
       position: fixed;
@@ -171,6 +211,49 @@
     }
 
     /**
+     * In a dark host, the engine's dark chart theme paints each chart's canvas
+     * near-black (#0f1115), which clashes inside the host-matched #1f1e1d panel
+     * cards. Give every chart panel the card tone as its background — only when
+     * the spec did not set one itself, so an authored background always wins.
+     * No-op in light mode (white on white already matches).
+     */
+    function matchChartBackgroundsToHost(spec) {
+      if (!document.body.classList.contains('cx-dark')) return;
+      // The theme is applied per render AFTER the config, so a config background is
+      // repainted over (verified: the background rect draws the theme value while the
+      // live property reads the config one). Retint the dark theme DEFINITION itself:
+      // this page renders only inside Claude, so the page-local themeDef is the one
+      // paint source the engine honours.
+      try {
+        const def = window.CanvasXpress && CanvasXpress.themeDef && CanvasXpress.themeDef.cxdark;
+        if (def) {
+          def['plot.background.fill'] = '#1f1e1d';
+          def['plot.background.colour'] = '#1f1e1d';
+          def['panel.background.fill'] = '#1f1e1d';
+          def['panel.background.colour'] = '#1f1e1d';
+        }
+      } catch (e) { /* theme stays stock */ }
+      if (!spec || !spec.panels) return;
+      const panels = Array.isArray(spec.panels)
+        ? spec.panels
+        : Object.keys(spec.panels).map(function (k) { return spec.panels[k]; });
+      panels.forEach(function (p) {
+        const cfg = p && p.config;
+        if (!cfg || !cfg.graphType) return;
+        if (!('background' in cfg)) cfg.background = '#1f1e1d';
+        // The cxdark theme hardcodes the meter card near-black; blend it with the card.
+        if (cfg.graphType === 'Boxplot') {
+          if (!('boxplotBorderColor' in cfg)) cfg.boxplotBorderColor = 'rgb(255,255,255)';
+          if (!('boxplotMedianColor' in cfg)) cfg.boxplotMedianColor = 'rgb(255,255,255)';
+        }
+        if (cfg.graphType === 'Meter') {
+          if (!('meterCardBackgroundColor' in cfg)) cfg.meterCardBackgroundColor = '#1f1e1d';
+          if (!('meterCardBorderColor' in cfg)) cfg.meterCardBorderColor = '#1f1e1d';
+        }
+      });
+    }
+
+    /**
      * Render a dashboard spec into the container. Closes any previous instance
      * first (its live-source streams, if any) and empties the container so a
      * re-render does not stack two grids. The spec carries its data inline, so no
@@ -191,9 +274,12 @@
           showError('canvasxpress-dashboards bundle did not load.');
           return;
         }
+        applyColorScheme();
+        matchChartBackgroundsToHost(spec);
         handle = CanvasXpressDashboards.renderDashboard(spec, 'cx-dashboard');
         lastSpec = spec;
         setTimeout(matchChromeToDashboard, 50); setTimeout(matchChromeToDashboard, 800);
+        setTimeout(matchChromeToDashboard, 2500);
         lastWidth = window.innerWidth || document.documentElement.clientWidth || 0;
         clearError();
         initResizeHandling();
@@ -258,6 +344,18 @@
       if (!m) return null;
       const p = m[1].split(',').map(function (t) { return parseFloat(t); });
       return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+    }
+
+    /**
+     * Toggle body.cx-dark from the host's reported scheme (ui/initialize), else the OS
+     * setting. Called on EVERY path that shows chrome (render, drop zone, init, OS theme
+     * change) — it used to run only in the drop-zone flow, so a dashboard arriving via
+     * tool result kept the white chrome (toolbar + insights banner) on a dark host.
+     */
+    function applyColorScheme() {
+      const dark = hostColorScheme ? hostColorScheme === 'dark'
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.body.classList.toggle('cx-dark', !!dark);
     }
 
     function matchChromeToDashboard() {
@@ -697,9 +795,7 @@
     function showDropZone(payload) {
       clearError();
       // match the host's scheme: the dark/light hint it gave at ui/initialize, else the OS setting
-      const dark = hostColorScheme ? hostColorScheme === 'dark'
-        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      document.body.classList.toggle('cx-dark', !!dark);
+      applyColorScheme();
       const wait = document.getElementById('cx-wait'); if (wait) wait.remove();
       const zone = document.getElementById('cx-drop');
       zone.classList.add('on');
@@ -852,6 +948,13 @@
      * has received that notification, so without it nothing is ever rendered.
      */
     document.addEventListener('DOMContentLoaded', function () {
+      // Dark hosts must never flash white chrome: apply the OS scheme immediately
+      // (the host's own hint refines it when ui/initialize answers) and follow changes.
+      applyColorScheme();
+      if (window.matchMedia) {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        if (mq && mq.addEventListener) mq.addEventListener('change', applyColorScheme);
+      }
       sendRequest('ui/initialize', {
         // Only inline is declared: the dashboard is sized to the iframe width and
         // scrolls vertically; modal/fullscreen would need extra layout logic.
@@ -863,6 +966,7 @@
         // McpUiInitializeResult.hostContext.theme is the host's colour scheme when it reports one
         const ctx = (init && init.hostContext) || {};
         hostColorScheme = ctx.theme === 'dark' || ctx.theme === 'light' ? ctx.theme : null;
+        applyColorScheme();
         window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
         watchSize();
         const wait = document.getElementById('cx-wait');
