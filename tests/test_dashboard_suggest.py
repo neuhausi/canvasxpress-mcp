@@ -361,7 +361,10 @@ def test_result_does_not_invite_a_widget_redraw_but_explain_has_the_fallback():
     import cx_dashboard
     assert "render_inline" not in sg.suggest(dataset="penguins")
     topic = cx_dashboard.explain("inline_widget")["explanation"]
-    assert "/*SPEC_JSON*/" in topic and "canvasxpress@72.9.1" in topic and "FALLBACK ONLY" in topic
+    # The pinned engine version is bumped by every canvas-ai `--ship` (Release 6c),
+    # so assert against the constant, never a literal version.
+    pinned = "canvasxpress@" + cx_dashboard.INLINE_ENGINE_VERSION
+    assert "/*SPEC_JSON*/" in topic and pinned in topic and "FALLBACK ONLY" in topic
 
 
 def test_no_scheme_box_auto_theme_and_builder_link(monkeypatch):
