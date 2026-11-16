@@ -162,8 +162,8 @@ def _intro_html(title: str, description: str) -> str:
 
 
 # Pinned builds for the inline-widget fallback (bump with each engine / dashboards release).
-INLINE_ENGINE_VERSION = "72.9.1"
-INLINE_DASHBOARDS_VERSION = "0.15.0"
+INLINE_ENGINE_VERSION = "74.3.0"
+INLINE_DASHBOARDS_VERSION = "0.15.1"
 
 _WIDGET_TEMPLATE = (
     '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/canvasxpress@%(engine)s/src/canvasXpress.css">\n'
