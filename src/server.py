@@ -136,6 +136,15 @@ STRICT_REST: bool = os.environ.get("CX_STRICT_REST", "").lower() in ("1", "true"
 #   CX_AUTH_EXEMPT_PATHS  comma-separated path prefixes served without a token
 #                         (default "/health")
 #   CX_RATE_LIMIT_PER_MIN per-token fixed-window request cap per 60s (0 = unlimited)
+#   CX_RATE_LIMIT_PER_IP_PER_MIN
+#                         per-IP fixed-window request cap per 60s (0 = unlimited).
+#                         Independent of auth, so it protects the OPEN instance
+#                         (:8100 — built-in LLM assist + the public Claude
+#                         connector) where there is no token to key on. The IP is
+#                         _client_ip(): first X-Forwarded-For hop behind the local
+#                         reverse proxy, socket peer for direct calls. Same exempt
+#                         prefixes as auth (CX_AUTH_EXEMPT_PATHS, default /health)
+#                         plus CORS preflight.
 # Cost controls (pause spend if it runs high):
 #   CX_DAILY_COST_LIMIT_USD  per-UTC-day LLM cost ceiling; generation is paused past
 #                            it until 00:00 UTC (0 = no ceiling)
@@ -187,6 +196,10 @@ try:
     RATE_LIMIT_PER_MIN: int = int(os.environ.get("CX_RATE_LIMIT_PER_MIN", "0"))
 except ValueError:
     RATE_LIMIT_PER_MIN = 0
+try:
+    RATE_LIMIT_PER_IP_PER_MIN: int = int(os.environ.get("CX_RATE_LIMIT_PER_IP_PER_MIN", "0"))
+except ValueError:
+    RATE_LIMIT_PER_IP_PER_MIN = 0
 
 
 def _auth_token_ok(candidate: str) -> bool:
@@ -2890,9 +2903,56 @@ class _BearerAuthMiddleware:
         await send({"type": "http.response.body", "body": body, "more_body": False})
 
 
+class _IpRateLimitMiddleware:
+    """ASGI middleware applying a fixed-window per-IP request cap
+    (``CX_RATE_LIMIT_PER_IP_PER_MIN``). Unlike the per-token limit in
+    ``_BearerAuthMiddleware`` it is independent of auth, so it protects the OPEN
+    instance (no token to key on) against a single caller hammering the costly
+    LLM routes. CORS preflight (``OPTIONS``) and the ``AUTH_EXEMPT_PATHS``
+    prefixes (default ``/health``) are never limited. Keyed on ``_client_ip()``
+    (first ``X-Forwarded-For`` hop behind the local reverse proxy)."""
+
+    def __init__(self, app):
+        self._app = app
+        # ip -> [window_minute, count]; pruned on window roll so the dict stays
+        # bounded however many distinct IPs show up.
+        self._hits: dict = {}
+        self._window: int = -1
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or RATE_LIMIT_PER_IP_PER_MIN <= 0:
+            await self._app(scope, receive, send)
+            return
+        method = scope.get("method", "")
+        path = scope.get("path", "") or ""
+        if method == "OPTIONS" or any(path.startswith(p) for p in AUTH_EXEMPT_PATHS):
+            await self._app(scope, receive, send)
+            return
+        ip = _client_ip(scope) or "unknown"
+        if self._rate_limited(ip):
+            await _BearerAuthMiddleware._send_json(
+                send, 429,
+                {"error": "rate_limited",
+                 "detail": f"Exceeded {RATE_LIMIT_PER_IP_PER_MIN} requests/min from this address."},
+                extra_headers=[(b"retry-after", b"60")],
+            )
+            return
+        await self._app(scope, receive, send)
+
+    def _rate_limited(self, ip: str) -> bool:
+        window = int(_dt.datetime.now(_dt.timezone.utc).timestamp()) // 60
+        if window != self._window:
+            self._window = window
+            self._hits = {}
+        count = self._hits.get(ip, 0) + 1
+        self._hits[ip] = count
+        return count > RATE_LIMIT_PER_IP_PER_MIN
+
+
 # Build the ASGI middleware list — passed to mcp.http_app()/mcp.run() below.
 # Order is outermost-first: CORS (so OPTIONS preflight is answered before auth) →
-# bearer auth (only when required) → tool injection. CORS_ORIGINS is read from .env.
+# per-IP rate limit (only when configured) → bearer auth (only when required) →
+# tool injection. CORS_ORIGINS is read from .env.
 _cors_middleware: list = ([] if STRICT_REST else [
     Middleware(
         CORSMiddleware,
@@ -2900,7 +2960,8 @@ _cors_middleware: list = ([] if STRICT_REST else [
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-API-Key", "X-Admin-Key", "Authorization"],
     ),
-]) + ([Middleware(_BearerAuthMiddleware)] if (AUTH_REQUIRED and OAUTH_PROVIDER is None) else []) + [
+]) + ([Middleware(_IpRateLimitMiddleware)] if RATE_LIMIT_PER_IP_PER_MIN > 0 else []
+) + ([Middleware(_BearerAuthMiddleware)] if (AUTH_REQUIRED and OAUTH_PROVIDER is None) else []) + [
     Middleware(_InjectToolMiddleware),
 ]
 

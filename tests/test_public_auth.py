@@ -143,3 +143,75 @@ def test_public_profile_without_token_fails_closed():
     )
     assert r.returncode != 0
     assert "fail-closed" in (r.stdout + r.stderr).lower()
+
+
+# --- per-IP rate limit (open instance) ---------------------------------------
+
+@pytest.fixture
+def ip_limit_2(monkeypatch):
+    monkeypatch.setattr(server, "RATE_LIMIT_PER_IP_PER_MIN", 2)
+    monkeypatch.setattr(server, "AUTH_EXEMPT_PATHS", ("/health",))
+    return server._IpRateLimitMiddleware(app=None)
+
+
+def _xff(ip):
+    return [("X-Forwarded-For", ip)]
+
+
+def test_ip_limit_within_cap_passes(ip_limit_2):
+    assert _drive(ip_limit_2, headers=_xff("203.0.113.5"))[0] == 200
+    assert _drive(ip_limit_2, headers=_xff("203.0.113.5"))[0] == 200
+
+
+def test_ip_limit_over_cap_429(ip_limit_2):
+    hdr = _xff("203.0.113.5")
+    _drive(ip_limit_2, headers=hdr)
+    _drive(ip_limit_2, headers=hdr)
+    status, reached = _drive(ip_limit_2, headers=hdr)  # 3rd in the same minute
+    assert status == 429 and not reached
+
+
+def test_ip_limit_ips_are_independent(ip_limit_2):
+    hdr_a = _xff("203.0.113.5")
+    _drive(ip_limit_2, headers=hdr_a)
+    _drive(ip_limit_2, headers=hdr_a)
+    assert _drive(ip_limit_2, headers=hdr_a)[0] == 429
+    assert _drive(ip_limit_2, headers=_xff("198.51.100.7"))[0] == 200  # other IP unaffected
+
+
+def test_ip_limit_uses_first_xff_hop(ip_limit_2):
+    # Proxy chains append; the caller is the FIRST hop (same rule as _client_ip).
+    hdr = [("X-Forwarded-For", "203.0.113.5, 10.0.0.1")]
+    _drive(ip_limit_2, headers=hdr)
+    _drive(ip_limit_2, headers=hdr)
+    assert _drive(ip_limit_2, headers=hdr)[0] == 429
+    assert _drive(ip_limit_2, headers=_xff("10.0.0.1"))[0] == 200
+
+
+def test_ip_limit_health_and_options_exempt(ip_limit_2):
+    hdr = _xff("203.0.113.5")
+    _drive(ip_limit_2, headers=hdr)
+    _drive(ip_limit_2, headers=hdr)
+    assert _drive(ip_limit_2, headers=hdr)[0] == 429
+    assert _drive(ip_limit_2, method="GET", path="/health", headers=hdr)[0] == 200
+    assert _drive(ip_limit_2, method="OPTIONS", headers=hdr)[0] == 200
+
+
+def test_ip_limit_off_is_passthrough(monkeypatch):
+    monkeypatch.setattr(server, "RATE_LIMIT_PER_IP_PER_MIN", 0)
+    mw = server._IpRateLimitMiddleware(app=None)
+    status, reached = _drive(mw, headers=[])
+    assert status == 200 and reached
+
+
+def test_ip_limit_window_rolls_and_prunes(ip_limit_2, monkeypatch):
+    hdr = _xff("203.0.113.5")
+    _drive(ip_limit_2, headers=hdr)
+    _drive(ip_limit_2, headers=hdr)
+    assert _drive(ip_limit_2, headers=hdr)[0] == 429
+    # Simulate the next minute: counts reset and the hits dict is pruned.
+    ip_limit_2._window -= 1
+    stale = dict(ip_limit_2._hits)
+    assert stale  # had entries before the roll
+    assert _drive(ip_limit_2, headers=hdr)[0] == 200
+    assert list(ip_limit_2._hits) == ["203.0.113.5"]

@@ -5,6 +5,14 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Per-IP rate limit for the open instance** (`CX_RATE_LIMIT_PER_IP_PER_MIN`, default off → `429` +
+  `Retry-After: 60` past the cap): a fixed-window per-minute request cap keyed on the caller's IP
+  (first `X-Forwarded-For` hop behind the local reverse proxy, same rule as the call log), independent
+  of auth — so it protects the open `:8100` endpoint (built-in LLM assist + the public Claude
+  connector), where there is no bearer token to key on, against a single address hammering the costly
+  LLM routes. CORS preflight and the `CX_AUTH_EXEMPT_PATHS` prefixes (default `/health`) are never
+  limited; the counter table is pruned every window roll so memory stays bounded. 7 new offline tests
+  (`tests/test_public_auth.py`).
 - **Public-deployment controls: bearer-token auth + cost kill-switch (for an internet-facing endpoint that
   ChatGPT Apps / Gemini Connected Apps can connect to).** `CX_PUBLIC=1` is a fail-closed public profile:
   bearer auth is required and the server refuses to start without a token, so a public endpoint can never
