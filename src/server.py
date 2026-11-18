@@ -1913,6 +1913,7 @@ def audit_calls_resource(limit: str = "50") -> str:
 
 
 @mcp.tool(
+    annotations={"title": "Validate Chart Config", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description="Lint a CanvasXpress figure against the published JSON Schema and the parameter "
                 "vocabulary. Returns schema_errors (hard, structural) and param_warnings (soft, "
                 "value-level) so a spec can be fixed before rendering."
@@ -1922,6 +1923,7 @@ def validate_canvasxpress_config(data: dict, config: dict) -> dict:
 
 
 @mcp.tool(
+    annotations={"title": "Render Chart to PNG", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description="Render a CanvasXpress figure server-side to a PNG (base64) using the real "
                 "engine in headless Chromium, so an agent can see the chart it generated without "
                 "a browser. Requires Playwright on the server."
@@ -2189,6 +2191,7 @@ _UPLOAD_PARTS: dict = {}                    # upload_id -> (expires_at, name, pa
 
 
 @mcp.tool(
+    annotations={"title": "Upload Data File", "readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
     description=(
         "Used by the dashboard view, not by you: it sends a file the user dropped onto the panel, in pieces, "
         "through the host. Returns {url} once the last piece has arrived; the view then calls "
@@ -2235,6 +2238,44 @@ def upload_canvasxpress_file(name: str, text: str, part: int = 0, parts: int = 1
     file_id = _hold_upload(held[1] or name, whole)
     return {"file_id": file_id, "url": _FILE_URL_BASE + file_id, "name": held[1] or name,
             "rows": len(table) - 1, "columns": len(table[0])}
+
+
+# ---------------------------------------------------------------------------
+# App-only tools: internal tools the model should never pick itself.
+#
+# Per the MCP Apps spec, a tool with _meta.ui.visibility == ["app"] is hidden
+# from the model but remains callable by the app's iframe through the host
+# bridge. FastMCP's own `app={"visibility": ["app"]}` kwarg would ALSO reject
+# plain tools/call for the tool (it only resolves app-only tools through its
+# `app___tool` namespacing, which MCP Apps hosts do not use) and that would
+# break the dashboard view's upload flow — so the visibility _meta is injected
+# into the tools/list response only, leaving the call path untouched.
+# ---------------------------------------------------------------------------
+
+from fastmcp.server.middleware import Middleware as _FMMiddleware  # noqa: E402
+
+_APP_ONLY_TOOLS = {"upload_canvasxpress_file"}
+
+
+class _AppOnlyVisibility(_FMMiddleware):
+    """Stamp _meta.ui.visibility=["app"] onto app-internal tools in tools/list."""
+
+    async def on_list_tools(self, context, call_next):
+        tools = await call_next(context)
+        out = []
+        for tool in tools:
+            if tool.name in _APP_ONLY_TOOLS:
+                tool = tool.model_copy(deep=True)
+                meta = dict(tool.meta or {})
+                ui = dict(meta.get("ui") or {})
+                ui["visibility"] = ["app"]
+                meta["ui"] = ui
+                tool.meta = meta
+            out.append(tool)
+        return out
+
+
+mcp.add_middleware(_AppOnlyVisibility())
 
 
 @mcp.custom_route("/mcp/file/{file_id}", methods=["GET"])
@@ -2310,9 +2351,34 @@ class _CallLog:
 
     _lock = _threading.Lock()
 
+    # Retention limit for the call log (the privacy policy's published number —
+    # keep the two in step): rows older than this are deleted automatically, at
+    # startup and then opportunistically at most once per sweep interval.
+    RETENTION_DAYS = int(os.getenv("CX_CALL_LOG_RETENTION_DAYS", "90"))
+    _SWEEP_EVERY_S = 6 * 3600
+
     def __init__(self, db_path: Path):
         self._path = str(db_path)
+        self._last_sweep = 0.0
         self._init_db()
+        self.purge_expired()
+
+    def purge_expired(self) -> int:
+        """Delete rows past RETENTION_DAYS (0 or negative disables). Returns rows deleted."""
+        import time as _time
+        from datetime import datetime, timedelta, timezone
+        if self.RETENTION_DAYS <= 0:
+            return 0
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=self.RETENTION_DAYS)).isoformat()
+        with self._lock:
+            con = self._connect()
+            cur = con.execute("DELETE FROM tool_calls WHERE ts < ?", (cutoff,))
+            con.commit()
+            con.close()
+        self._last_sweep = _time.monotonic()
+        if cur.rowcount:
+            log.info("call log: purged %d rows older than %d days", cur.rowcount, self.RETENTION_DAYS)
+        return cur.rowcount
 
     def _connect(self):
         con = _sqlite3.connect(self._path, check_same_thread=False)
@@ -2358,7 +2424,13 @@ class _CallLog:
         ip: str | None = None,
         api_key_id: str | None = None,
     ) -> None:
+        import time as _time
         from datetime import datetime, timezone
+        if self.RETENTION_DAYS > 0 and _time.monotonic() - self._last_sweep > self._SWEEP_EVERY_S:
+            try:
+                self.purge_expired()
+            except Exception:  # noqa: BLE001 - retention must never break logging
+                self._last_sweep = _time.monotonic()
         ts = datetime.now(timezone.utc).isoformat()
         req_str  = json.dumps(request)  if isinstance(request,  dict) else request
         resp_str = json.dumps(response) if isinstance(response, dict) else response
@@ -2887,6 +2959,7 @@ def _detect_unimplemented_graph(description: str) -> str | None:
 
 
 @mcp.tool(
+    annotations={"title": "Generate Chart Config", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Generate a CanvasXpress visualization config from a plain English description. "
         "Accepts headers, a CSV-style data array, and optional column_types metadata "
@@ -3137,6 +3210,7 @@ def generate_canvasxpress_config(
 
 
 @mcp.tool(
+    annotations={"title": "Modify Chart Config", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Modify an existing CanvasXpress config using a plain English instruction. "
         "Pass in your current config and describe what you want to change — add parameters, "
@@ -3278,6 +3352,7 @@ def modify_canvasxpress_config(
 
 
 @mcp.tool(
+    annotations={"title": "Generate Kaplan-Meier Config", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Generate, validate, and detect columns for Kaplan-Meier survival plot configs. "
         "Accepts any combination of: a plain English description, column headers or a full data "
@@ -3351,6 +3426,7 @@ def generate_km_config(
 
 
 @mcp.tool(
+    annotations={"title": "Search Chart Parameters", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Query the CanvasXpress parameter knowledge base. "
         "Fetch parameters, their valid values, and descriptions from the "
@@ -3390,6 +3466,7 @@ def query_canvasxpress_params(
     )
 
 @mcp.tool(
+    annotations={"title": "Get Axes Info", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Return axis assignment rules for a given CanvasXpress graph type. "
         "Explains which axis keys are valid (xAxis, yAxis, zAxis, xAxis2), "
@@ -3478,6 +3555,7 @@ def get_axes_info(graph_type: str) -> dict:
 
 
 @mcp.tool(
+    annotations={"title": "Select Chart Type", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Recommend the most appropriate CanvasXpress graphType given column names, "
         "column types, and an optional plain-English description of what you want to show. "
@@ -3674,7 +3752,10 @@ def _llm_select_chart(
         return None, f"LLM error: {exc}"
 
 
-@mcp.tool(description="List all supported CanvasXpress chart types with descriptions and categories.")
+@mcp.tool(
+    annotations={"title": "List Chart Types", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    description="List all supported CanvasXpress chart types with descriptions and categories.",
+)
 def list_chart_types() -> dict:
     """Returns chart types organized by category."""
     return {
@@ -3736,7 +3817,10 @@ def list_chart_types() -> dict:
     }
 
 
-@mcp.tool(description="Get an explanation of any CanvasXpress configuration property.")
+@mcp.tool(
+    annotations={"title": "Explain Config Property", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    description="Get an explanation of any CanvasXpress configuration property.",
+)
 def explain_config_property(property: str) -> str:
     """
     Args:
@@ -3814,6 +3898,7 @@ def explain_config_property(property: str) -> str:
 
 
 @mcp.tool(
+    annotations={"title": "CanvasXpress in R Guide", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Explain how to use CanvasXpress in R. "
         "Covers installation, basic usage, creating charts with canvasXpress(), "
@@ -4004,6 +4089,7 @@ def explain_canvasxpress_r(topic: str | None = None) -> dict:
 
 
 @mcp.tool(
+    annotations={"title": "ggplot Conversion Guide", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Explain how to use CanvasXpress with ggplot2 in R. "
         "canvasXpress() accepts a ggplot object directly and converts it to an interactive widget — "
@@ -4127,6 +4213,7 @@ def explain_canvasxpress_ggplot(topic: str | None = None) -> dict:
 # ---------------------------------------------------------------------------
 
 @mcp.tool(
+    annotations={"title": "Compose Dashboard", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Compose a multi-panel LINKED dashboard spec for the canvasxpress-dashboards "
         "npm package from a list of CanvasXpress charts. For a dashboard of ONE dataset, "
@@ -4167,6 +4254,7 @@ def compose_canvasxpress_dashboard(
 
 
 @mcp.tool(
+    annotations={"title": "Suggest Dashboard", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "One call for any dashboard request. GETTING THE DATA IN, one rule: pass dataset (penguins, iris, mtcars) "
         "or url (any link to a CSV/TSV file: one the user pasted, a GitHub, Dropbox, Google Drive/Sheets or S3 share "
@@ -4345,6 +4433,7 @@ def _hold_dashboard_result(result: dict) -> dict:
 
 
 @mcp.tool(
+    annotations={"title": "Get Dashboard Result", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Internal: one piece of a held dashboard result, by the result_id that suggest_canvasxpress_dashboard "
         "returned. The dashboard view calls this itself to draw the dashboard; a model never needs to."
@@ -4373,6 +4462,7 @@ def get_canvasxpress_dashboard_result(result_id: str, part: int = 0) -> dict:
 
 
 @mcp.tool(
+    annotations={"title": "Validate Dashboard Spec", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Validate a canvasxpress-dashboards spec (the JSON consumed by "
         "renderDashboard / the dashboards builder). Checks structure and every "
@@ -4396,6 +4486,7 @@ def validate_dashboard_spec(spec: dict) -> dict:
 
 
 @mcp.tool(
+    annotations={"title": "Publish Dashboard", "readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
     description=(
         "Publish a composed dashboard spec to a running canvasxpress-dashboards "
         "install so it opens in the no-code Builder (and, optionally, gets a share "
@@ -4425,6 +4516,7 @@ def publish_canvasxpress_dashboard(spec: dict, visibility: str = "private") -> d
 
 
 @mcp.tool(
+    annotations={"title": "Dashboards Guide", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Explain the canvasxpress-dashboards package: composing linked multi-chart "
         "dashboards from one JSON spec. Covers installation (npm / UMD / the "
@@ -4673,7 +4765,10 @@ def _build_minimal_config(
     return cfg
 
 
-@mcp.tool(description="Get the minimal required parameters for a specific CanvasXpress graph type.")
+@mcp.tool(
+    annotations={"title": "Get Minimal Parameters", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    description="Get the minimal required parameters for a specific CanvasXpress graph type.",
+)
 def get_minimal_parameters(graph_type: str) -> dict:
     """
     Args:
@@ -4790,6 +4885,7 @@ def _geocode_location(place: str) -> tuple[float, float] | None:
 
 
 @mcp.tool(
+    annotations={"title": "Create Map Config", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
     description=(
         "Generate a CanvasXpress map visualization config. "
         "CanvasXpress supports world maps, continent maps, country maps, U.S. state maps, "

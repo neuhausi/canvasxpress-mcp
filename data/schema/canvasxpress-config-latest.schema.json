@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "74.3",
+  "x-cx-version": "74.4",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -32607,23 +32607,6 @@
       "x-cx-false-disables": true,
       "x-cx-category": "Events",
       "x-cx-nl": "Set the toolbar size to {_integer_}"
-    },
-    "toolbarType": {
-      "type": [
-        "string",
-        "boolean"
-      ],
-      "description": "Toolbar type",
-      "default": "under",
-      "enum": [
-        "over",
-        "under",
-        "fixed",
-        false
-      ],
-      "x-cx-false-disables": true,
-      "x-cx-category": "Events",
-      "x-cx-nl": "Set the toolbar type to {_option_}"
     },
     "tooltipBackgroundColor": {
       "type": [
