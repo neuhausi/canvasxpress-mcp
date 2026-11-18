@@ -5,6 +5,13 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Claude plugin bundle** (`claude-plugin/`, v1.0.0) for the Claude Directory: the remote MCP
+  connector reference (`.mcp.json` → `https://www.canvasxpress.org/mcp`) plus a
+  `canvasxpress-charts` skill that teaches the intended tool flow (select → generate → modify →
+  validate → render; KM/map/dashboard tools; data-in-the-call rule). No scripts, hooks, or local
+  executables. A root `.claude-plugin/marketplace.json` makes
+  `/plugin install canvasxpress --marketplace neuhausi/canvasxpress-mcp` work directly from this
+  repo. `claude plugin validate` passes clean on both.
 - **Per-IP rate limit for the open instance** (`CX_RATE_LIMIT_PER_IP_PER_MIN`, default off → `429` +
   `Retry-After: 60` past the cap): a fixed-window per-minute request cap keyed on the caller's IP
   (first `X-Forwarded-For` hop behind the local reverse proxy, same rule as the call log), independent

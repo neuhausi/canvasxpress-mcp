@@ -1,0 +1,25 @@
+{
+  "name": "canvasxpress",
+  "displayName": "CanvasXpress",
+  "version": "1.0.0",
+  "description": "Interactive scientific charts and dashboards from plain English. Bundles the CanvasXpress remote MCP connector (60+ chart types: heatmaps, volcano/PCA plots, Kaplan-Meier survival curves, maps, networks, dashboards) with a skill that guides chart generation, validation, and rendering.",
+  "author": {
+    "name": "Isaac Neuhaus",
+    "url": "https://www.canvasxpress.org"
+  },
+  "homepage": "https://www.canvasxpress.org",
+  "repository": "https://github.com/neuhausi/canvasxpress-mcp",
+  "icon": ".claude-plugin/icon.png",
+  "privacyPolicyUrl": "https://www.canvasxpress.org/privacy.html",
+  "license": "MIT",
+  "keywords": [
+    "charts",
+    "visualization",
+    "dashboards",
+    "bioinformatics",
+    "heatmap",
+    "kaplan-meier",
+    "scientific-plots",
+    "canvasxpress"
+  ]
+}

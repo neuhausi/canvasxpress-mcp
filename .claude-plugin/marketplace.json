@@ -1,0 +1,15 @@
+{
+  "name": "canvasxpress-mcp",
+  "description": "CanvasXpress plugins for Claude: interactive scientific charts and dashboards from plain English.",
+  "owner": {
+    "name": "Isaac Neuhaus",
+    "url": "https://www.canvasxpress.org"
+  },
+  "plugins": [
+    {
+      "name": "canvasxpress",
+      "source": "./claude-plugin",
+      "description": "Interactive scientific charts and dashboards from plain English — the CanvasXpress remote MCP connector plus a chart-authoring skill."
+    }
+  ]
+}
