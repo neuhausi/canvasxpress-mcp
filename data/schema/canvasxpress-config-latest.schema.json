@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "74.4",
+  "x-cx-version": "74.5",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -9189,6 +9189,13 @@
         "Violin"
       ]
     },
+    "disableAnimations": {
+      "type": "boolean",
+      "description": "Master switch that suppresses all motion the way an operating-system prefers-reduced-motion setting does: HTML chrome transitions and keyframes, the canvas render tween, and timer-driven reveals all snap to their final state. Default false leaves every animation intact; set true for motion-free embeds",
+      "default": false,
+      "x-cx-category": "Animations and Visualization Transitions",
+      "x-cx-nl": "Set the disable animations to {_boolean_}"
+    },
     "disableBeacon": {
       "type": "boolean",
       "description": "Flag to disable beacon.",
@@ -10367,6 +10374,23 @@
         "Genome"
       ]
     },
+    "featurePriority": {
+      "type": [
+        "array",
+        "boolean",
+        "string",
+        "number"
+      ],
+      "description": "Array of values that claim the first rows when features are staggered, in the order given. Each value is matched against a feature id, name or label and against its type, geneType or biotype, so both named features and whole classes (for example protein_coding) can be promoted. Features that match nothing keep their position by coordinate, and the rows beyond subtracksMax are the ones dropped, so this decides what survives a crowded track",
+      "default": [],
+      "x-cx-false-disables": true,
+      "x-cx-scalar-autowrap": true,
+      "x-cx-category": "Genome Browser Features",
+      "x-cx-nl": "Set the feature priority to {_array_}",
+      "x-cx-graphtypes": [
+        "Genome"
+      ]
+    },
     "featureQualityHeight": {
       "type": [
         "integer",
@@ -11369,11 +11393,65 @@
         "integer",
         "boolean"
       ],
-      "description": "Number of ticks in the genome browser",
-      "default": 50,
+      "description": "Target number of ticks in the genome browser. The axis algorithm picks round positions near this count, and labels that would collide are dropped, so the drawn count is approximate",
+      "default": 10,
       "x-cx-false-disables": true,
       "x-cx-category": "Genome Browser",
       "x-cx-nl": "Set the genome ticks to {_integer_}",
+      "x-cx-graphtypes": [
+        "Genome"
+      ]
+    },
+    "genomeTicksPosition": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Where the genomic axis is drawn. bottom puts it under the whole chart; track puts it directly under the first dataframe track, so a regional plot reads its coordinates against the scatter rather than below every annotation track. The axis line itself is drawn when xAxisLineBottomShow is set, like any other graph type",
+      "default": "bottom",
+      "enum": [
+        "bottom",
+        "track",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Genome Browser",
+      "x-cx-nl": "Set the genome ticks position to {_option_}",
+      "x-cx-graphtypes": [
+        "Genome"
+      ]
+    },
+    "genomeTicksUnit": {
+      "type": [
+        "string",
+        "boolean"
+      ],
+      "description": "Unit the genome browser tick labels are expressed in. bp leaves coordinates as they are; kb and Mb divide by 1,000 and 1,000,000; auto picks Mb, kb or bp from the size of the window. Name the unit in the xAxisTitle",
+      "default": "bp",
+      "enum": [
+        "bp",
+        "kb",
+        "Mb",
+        "auto",
+        false
+      ],
+      "x-cx-false-disables": true,
+      "x-cx-category": "Genome Browser",
+      "x-cx-nl": "Set the genome ticks unit to {_option_}",
+      "x-cx-graphtypes": [
+        "Genome"
+      ]
+    },
+    "genomeTrackPadding": {
+      "type": [
+        "number",
+        "boolean"
+      ],
+      "description": "Fraction of its value range by which a genome track scale is extended BELOW its lowest value, so data points do not sit on the axis line (0.05 clears them by 5%). The scale already carries headroom above; the tick values are unchanged, and a track that pins setMinY is left alone. Per track with trackPadding",
+      "default": 0,
+      "x-cx-false-disables": true,
+      "x-cx-category": "Genome Browser",
+      "x-cx-nl": "Set the genome track padding to {_float_}",
       "x-cx-graphtypes": [
         "Genome"
       ]

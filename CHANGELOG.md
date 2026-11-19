@@ -5,6 +5,19 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **`create_locus_config` — regional association (LocusZoom) plots.** Builds the two-track
+  CanvasXpress Genome chart from GWAS summary statistics: the `-log10(p)` scatter over genomic
+  position coloured by LD r² with the lead SNP (binned to locuszoomr's five r² classes, in
+  `rgb()` because R's `green3`/`cyan2` are not CSS colours and render black on a canvas), the
+  lead SNP as a purple diamond drawn last so it sits on top, an optional recombination-rate line
+  on the track's right-hand axis, a dashed genome-wide significance line, and a transcript track
+  with exons, strand and priority row packing. Column names are inferred the way locuszoomr
+  infers them (`chr*`, `pos`, `p`/`^p?val`, `rsid`/`snp`, `r2`) or named explicitly. Returns
+  `{config, data}` — a Genome chart carries its payload as `data.tracks`, so both are needed.
+  `Genome` stays in `_UNIMPLEMENTED_GRAPHS` because the generic generator still cannot build
+  arbitrary genome tracks; its refusal now points at this tool. 8 offline tests
+  (`tests/test_locus_config.py`). Needs engine 74.5 for the axis lines, Mb/kb ticks,
+  `featurePriority` and track-scoped decorations it emits.
 - **Claude plugin bundle** (`claude-plugin/`, v1.0.0) for the Claude Directory: the remote MCP
   connector reference (`.mcp.json` → `https://www.canvasxpress.org/mcp`) plus a
   `canvasxpress-charts` skill that teaches the intended tool flow (select → generate → modify →

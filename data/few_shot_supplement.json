@@ -478,5 +478,92 @@
    "showLegend": true,
    "title": "SHAP summary"
   }
+ },
+ {
+  "data": "data",
+  "header": [
+   "chrom",
+   "pos",
+   "rsid",
+   "p",
+   "r2"
+  ],
+  "description": "Create a LocusZoom regional association plot of p over pos coloured by LD r2 with the lead SNP.",
+  "config": {
+   "graphType": "Genome",
+   "featureStaggered": true,
+   "genomeTicks": 8,
+   "genomeTicksUnit": "Mb",
+   "genomeTrackPadding": 0.04,
+   "xAxisTitle": "Chromosome 22 (Mb)",
+   "xAxisLineBottomShow": true,
+   "yAxisLineLeftShow": true,
+   "decorations": {
+    "line": [
+     {
+      "y": 7.30103,
+      "color": "rgb(169,169,169)",
+      "width": 1,
+      "type": "dashed"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "chrom",
+   "pos",
+   "rsid",
+   "p"
+  ],
+  "description": "Create a regional association plot of the GWAS signal around a gene with a transcript track and a genome-wide significance line.",
+  "config": {
+   "graphType": "Genome",
+   "featureStaggered": true,
+   "featurePriority": [
+    "protein_coding"
+   ],
+   "subtracksMaxDefault": 8,
+   "genomeTicks": 8,
+   "genomeTicksUnit": "kb",
+   "genomeTrackPadding": 0.04,
+   "xAxisLineBottomShow": true,
+   "yAxisLineLeftShow": true,
+   "decorations": {
+    "line": [
+     {
+      "y": 7.30103,
+      "color": "rgb(169,169,169)",
+      "width": 1,
+      "type": "dashed"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "chrom",
+   "pos",
+   "rsid",
+   "p",
+   "r2",
+   "recomb"
+  ],
+  "description": "Create a GWAS locus plot with the recombination rate on a right-hand axis and the genomic axis under the scatter.",
+  "config": {
+   "graphType": "Genome",
+   "featureStaggered": true,
+   "genomeTicks": 8,
+   "genomeTicksUnit": "Mb",
+   "genomeTicksPosition": "track",
+   "genomeTrackPadding": 0.04,
+   "xAxisLineBottomShow": true,
+   "yAxisLineLeftShow": true,
+   "yAxisLineRightShow": true
+  }
  }
 ]

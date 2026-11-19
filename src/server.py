@@ -3000,7 +3000,11 @@ def resolve_data_headers(
 # generating the closest supported type.
 _UNIMPLEMENTED_GRAPHS = {
     "Genome":      ["genome browser", "genome track", "genome-track", "genomic track",
-                    "ideogram", "coverage track", "genome viewer", "gene model track"],
+                    "ideogram", "coverage track", "genome viewer", "gene model track",
+                    # regional-association vocabulary: these ARE supported, by
+                    # create_locus_config, so the message below routes them there
+                    "locuszoom", "locus zoom", "regional association", "gwas locus",
+                    "locus plot", "fine-mapping plot", "association signal around"],
     "Fish":        ["fish plot", "fishplot", "clonal evolution", "tumor clone", "clone plot"],
     "OptionsWall": ["options wall", "optionswall", "option wall", "option chain wall"],
     "TreeBracket": ["tree bracket", "treebracket", "tournament bracket", "bracket diagram"],
@@ -3120,6 +3124,10 @@ def generate_canvasxpress_config(
     unimplemented = _detect_unimplemented_graph(description)
     if unimplemented:
         message = f"The '{unimplemented}' graph type is not implemented in this server."
+        if unimplemented == "Genome":
+            message += (" For a GWAS regional association (LocusZoom) plot \u2014 -log10(p) over "
+                        "position with LD colouring and a transcript track \u2014 use the "
+                        "create_locus_config tool instead.")
         log.info("Unimplemented graph type requested: %s", unimplemented)
         return {
             "config":         {},
@@ -5248,6 +5256,258 @@ def create_map_config(
     }
 
 
+
+_LOCUS_LD_COLORS = {
+    "0.8 - 1.0": "rgb(255,0,0)",
+    "0.6 - 0.8": "rgb(255,165,0)",
+    "0.4 - 0.6": "rgb(0,205,0)",
+    "0.2 - 0.4": "rgb(0,229,238)",
+    "0.0 - 0.2": "rgb(65,105,225)",
+    "NA":        "rgb(128,128,128)",
+}
+
+
+def _locus_bin(r2: float | None) -> str:
+    """locuszoomr's cut(ld, -1:6/5) bins, as the labels its legend prints."""
+    if r2 is None:
+        return "NA"
+    if r2 > 0.8:
+        return "0.8 - 1.0"
+    if r2 > 0.6:
+        return "0.6 - 0.8"
+    if r2 > 0.4:
+        return "0.4 - 0.6"
+    if r2 > 0.2:
+        return "0.2 - 0.4"
+    return "0.0 - 0.2"
+
+
+def _locus_column(headers: list[str], name: str | None, what: str) -> str | None:
+    """Resolve one column by name, or infer it the way locuszoomr infers it."""
+    if name:
+        return name if name in headers else None
+    import re as _re
+    patterns = {
+        "chrom": r"^chr",
+        "pos":   r"pos",
+        "p":     r"^p$|^p?val",
+        "labs":  r"^rs?id$|^snp$",
+        "ld":    r"^r2$|^ld$",
+    }
+    hits = [h for h in headers if _re.search(patterns[what], h, _re.I)]
+    return hits[0] if len(hits) == 1 else (hits[0] if hits else None)
+
+
+@mcp.tool(
+    annotations={"title": "Create Locus Config", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": False},
+    description=(
+        "Generate a CanvasXpress regional association (LocusZoom) plot config from GWAS "
+        "summary statistics. Produces a two-track Genome chart: the -log10(p) scatter over "
+        "genomic position, coloured by linkage disequilibrium (r2) with the lead SNP and "
+        "marked with a diamond, above a track of transcript models drawn with exons, strand "
+        "and priority row packing. Supply recombination rates to add the rate line on the "
+        "track's right-hand axis. A dashed line marks genome-wide significance. "
+        "Use this for 'locuszoom', 'regional association plot', 'GWAS locus', 'fine-mapping "
+        "plot' or 'plot the association signal around <gene>'. "
+        "Returns {config, data} ready to pass to new CanvasXpress(target, data, config)."
+    ),
+    meta=_META_FOR_CHART,
+)
+def create_locus_config(
+    data: list[list],
+    genes: list[dict] | None = None,
+    recomb: list[list] | None = None,
+    chrom: str | None = None,
+    pos: str | None = None,
+    p: str | None = None,
+    labs: str | None = None,
+    ld: str | None = None,
+    index_snp: str | None = None,
+    pcutoff: float = 5e-08,
+    highlight: list[str] | None = None,
+    unit: str = "auto",
+    frame: str = "L",
+    title: str | None = None,
+) -> dict:
+    """
+    Args:
+        data:      CSV-style array of arrays, first row = column headers, one row per SNP.
+                   Needs a position column and a p-value column; a chromosome column and an
+                   rsid column are used when present. Column names are inferred the way
+                   locuszoomr infers them unless named explicitly below.
+                   e.g. [["chrom","pos","rsid","p","r2"], ["chr22",21903736,"rs1",1e-21,0.95]]
+        genes:     Transcript models: [{"gene","start","end","strand","biotype","exons"}],
+                   where strand is "+"/"-" and exons is [[start,end], ...]. Without exons the
+                   whole gene body is drawn as one box.
+        recomb:    Recombination rate as [[pos, rate], ...] (an optional header row is dropped).
+        chrom,pos,p,labs,ld: explicit column names; inferred when omitted.
+        index_snp: id of the lead SNP; defaults to the smallest p-value.
+        pcutoff:   genome-wide significance threshold (default 5e-8).
+        highlight: gene names drawn in the highlight colour and given the first rows.
+        unit:      tick unit for the genomic axis: "auto", "Mb", "kb" or "bp".
+        frame:     axis lines: "L", "box" or "none".
+        title:     optional chart title.
+
+    Returns:
+        dict with:
+          config       (dict) - CanvasXpress config
+          data         (dict) - the {"tracks": [...]} payload
+          valid        (bool)
+          warnings     (list)
+          index_snp    (str)  - the lead SNP used
+          headers_used (list)
+    """
+    warnings: list[str] = []
+    if not data or len(data) < 2:
+        return {"config": {}, "data": {}, "valid": False,
+                "warnings": ["'data' needs a header row and at least one SNP row."],
+                "index_snp": None, "headers_used": []}
+
+    headers = [str(h) for h in data[0]]
+    rows = data[1:]
+    col = {h: i for i, h in enumerate(headers)}
+
+    posCol = _locus_column(headers, pos, "pos")
+    pCol   = _locus_column(headers, p,   "p")
+    if not posCol or not pCol:
+        return {"config": {}, "data": {}, "valid": False,
+                "warnings": ["Could not find a position and a p-value column; name them with 'pos' and 'p'."],
+                "index_snp": None, "headers_used": headers}
+    labCol = _locus_column(headers, labs,  "labs")
+    chrCol = _locus_column(headers, chrom, "chrom")
+    ldCol  = _locus_column(headers, ld,    "ld") if (ld or "r2" in [h.lower() for h in headers]) else None
+
+    import math as _math
+    positions: list[float] = []
+    logps: list[float] = []
+    ids: list[str] = []
+    r2bins: list[str] = []
+    for i, r in enumerate(rows):
+        try:
+            x = float(r[col[posCol]])
+            pv = float(r[col[pCol]])
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+        pv = max(pv, 5e-324)
+        positions.append(x)
+        logps.append(-_math.log10(pv))
+        ids.append(str(r[col[labCol]]) if labCol else f"snp{i + 1}")
+        if ldCol:
+            try:
+                r2bins.append(_locus_bin(float(r[col[ldCol]])))
+            except (TypeError, ValueError):
+                r2bins.append("NA")
+    if not positions:
+        return {"config": {}, "data": {}, "valid": False,
+                "warnings": ["No rows had a numeric position and p-value."],
+                "index_snp": None, "headers_used": headers}
+
+    if index_snp and index_snp in ids:
+        idx = ids.index(index_snp)
+    else:
+        if index_snp:
+            warnings.append(f"index_snp '{index_snp}' not found; using the smallest p-value.")
+        idx = max(range(len(logps)), key=lambda i: logps[i])
+
+    dataframe: dict = {"pos": positions, "logp": logps, "rsid": ids,
+                       "leadpos": [positions[idx]], "leadlogp": [logps[idx]]}
+    subplots: list[dict] = []
+
+    if recomb:
+        rrows = recomb[1:] if recomb and not isinstance(recomb[0][0], (int, float)) else recomb
+        rp, rr = [], []
+        for r in rrows:
+            try:
+                rp.append(float(r[0])); rr.append(float(r[1]))
+            except (TypeError, ValueError, IndexError):
+                continue
+        if rp:
+            dataframe["recpos"], dataframe["recrate"] = rp, rr
+            subplots.append({"type": "line", "xAxis": "recpos", "yAxis": "recrate",
+                             "side": "right", "fill": "rgb(0,0,255)",
+                             "title": "Recombination rate (%)",
+                             "setMinY": 0, "setMaxY": 100, "hideLegend": True})
+
+    scatter: dict = {"type": "scatter", "xAxis": "pos", "yAxis": "logp", "side": "left",
+                     "title": "-log10(P)", "shape": "circle"}
+    if ldCol and r2bins:
+        dataframe["r2bin"] = r2bins
+        scatter["colorBy"] = "r2bin"
+        scatter["meta"] = {"color": _LOCUS_LD_COLORS}
+    else:
+        cutoff = -_math.log10(pcutoff)
+        dataframe["sig"] = ["p < cutoff" if v >= cutoff else "Not significant" for v in logps]
+        scatter["colorBy"] = "sig"
+        scatter["meta"] = {"color": {"p < cutoff": "rgb(30,144,255)",
+                                     "Not significant": "rgb(128,128,128)"}}
+    subplots.append(scatter)
+    # the lead SNP as its own one-row series, listed last so it draws on top
+    subplots.append({"type": "scatter", "xAxis": "leadpos", "yAxis": "leadlogp",
+                     "side": "left", "shape": "diamond", "fill": "rgb(160,32,240)",
+                     "size": 14, "hideLegend": True})
+
+    tracks: list[dict] = [{"name": "GWAS", "type": "dataframe", "height": 200,
+                           "dataframe": dataframe,
+                           "data": [{"id": "locus", "offset": 0, "data": subplots}]}]
+
+    if genes:
+        features = []
+        for g in genes:
+            try:
+                start, end = float(g["start"]), float(g["end"])
+            except (KeyError, TypeError, ValueError):
+                warnings.append(f"Gene {g.get('gene', '?')} skipped: needs numeric start and end.")
+                continue
+            exons = g.get("exons") or [[start, end]]
+            hit = bool(highlight) and g.get("gene") in highlight
+            fill = "rgb(220,20,60)" if hit else "rgb(0,0,139)"
+            feature = {"id": str(g.get("gene", "")), "data": [[e[0], e[1]] for e in exons],
+                       "fill": fill, "outline": fill,
+                       "dir": "left" if str(g.get("strand", "+")) in ("-", "left") else "right"}
+            if g.get("biotype"):
+                feature["geneType"] = str(g["biotype"])
+            features.append(feature)
+        if features:
+            tracks.append({"name": "Genes", "type": "box", "height": 16,
+                           "connect": True, "data": features})
+
+    span = max(positions) - min(positions)
+    unitName = unit if unit in ("Mb", "kb", "bp") else ("Mb" if span >= 1e6 else "kb" if span >= 1e3 else "bp")
+    chrLabel = str(rows[0][col[chrCol]]) if chrCol else None
+    axisTitle = (f"Chromosome {chrLabel[3:] if chrLabel.lower().startswith('chr') else chrLabel} ({unitName})"
+                 if chrLabel else f"Position ({unitName})")
+
+    decorations: dict = {"line": [{"y": -_math.log10(pcutoff), "color": "rgb(169,169,169)",
+                                   "width": 1, "type": "dashed"}],
+                         "marker": [{"type": "text", "text": ids[idx], "x": positions[idx],
+                                     "y": logps[idx], "offsetX": 28, "offsetY": 24,
+                                     "color": "rgb(0,0,0)"}]}
+
+    config: dict = {
+        "graphType": "Genome",
+        "featureStaggered": True,
+        "featurePriority": list(highlight or []) + ["protein_coding"],
+        "subtracksMaxDefault": 8,
+        "genomeTicks": 8,
+        "genomeTicksUnit": unitName,
+        "genomeTrackPadding": 0.04,
+        "xAxisTitle": axisTitle,
+        "decorations": decorations,
+    }
+    if frame != "none":
+        config["xAxisLineBottomShow"] = True
+        config["yAxisLineLeftShow"] = True
+        if frame == "box":
+            config["xAxisLineTopShow"] = True
+            config["yAxisLineRightShow"] = True
+    if title:
+        config["title"] = title
+
+    return {"config": config, "data": {"tracks": tracks}, "valid": True,
+            "warnings": warnings, "index_snp": ids[idx], "headers_used": headers}
+
+
+
 # ---------------------------------------------------------------------------
 # HTML renderer — converts tool results to a display-ready HTML string
 # ---------------------------------------------------------------------------
@@ -5274,6 +5534,7 @@ _GT_EXAMPLE_SLUG: dict[str, str] = {
     # virtual types with hyphenated slug
     "KaplanMeier": "kaplan-meier",
     "Map": "map",
+    "Genome": "genome",
     # virtual types with no dedicated page — fall back to underlying native type
     "Alluvial": "sankey", "Bin": "scatter2d", "Binplot": "scatter2d",
     "Bump": "scatter2d", "CDF": "scatter2d", "Cleveland": "dotplot",
