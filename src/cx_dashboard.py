@@ -162,7 +162,7 @@ def _intro_html(title: str, description: str) -> str:
 
 
 # Pinned builds for the inline-widget fallback (bump with each engine / dashboards release).
-INLINE_ENGINE_VERSION = "74.6.0"
+INLINE_ENGINE_VERSION = "74.7.0"
 INLINE_DASHBOARDS_VERSION = "0.15.3"
 
 _WIDGET_TEMPLATE = (
