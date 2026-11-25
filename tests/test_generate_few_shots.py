@@ -72,12 +72,12 @@ def test_load_supplement_validates_records(tmp_path):
 def test_shipped_supplement_is_valid():
     path = os.path.join(ROOT, "data", "few_shot_supplement.json")
     records = generate_few_shots.load_supplement(path)
-    assert len(records) == 26
-    # 7 of them are the curated Network examples (the generator cannot phrase Network).
-    assert sum(1 for r in records if r["config"].get("graphType") == "Network") == 7
-    # 3 are the regional-association (LocusZoom) shapes; the generator cannot phrase a
+    assert len(records) == 38
+    # 9 of them are the curated Network examples (the generator cannot phrase Network).
+    assert sum(1 for r in records if r["config"].get("graphType") == "Network") == 9
+    # 5 are the regional-association (LocusZoom) shapes; the generator cannot phrase a
     # Genome chart either, and these route the vocabulary to create_locus_config.
-    assert sum(1 for r in records if r["config"].get("graphType") == "Genome") == 3
+    assert sum(1 for r in records if r["config"].get("graphType") == "Genome") == 5
     # 7 are the model-evaluation builders (ROC, PR, confusion, calibration,
     # learning curve, feature importance, SHAP).
     assert sum(1 for r in records if "evaluation" in r["description"].lower()
