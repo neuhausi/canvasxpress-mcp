@@ -43,6 +43,7 @@ from llm_providers import (complete as llm_complete, provider_info, PROVIDER, MO
 import cx_knowledge
 import cx_survival
 import cx_selector
+import cx_synonyms
 import cloud_meter
 import asyncio
 import cx_validate
@@ -1241,6 +1242,14 @@ def generate_config(
     except json.JSONDecodeError as e:
         log.warning("LLM returned non-JSON response (%s). raw=%s", e, raw[:200])
         return {}, []
+
+    # Intent-synonym layer (P2): rewrite foreign fit vocabulary (a bogus `fitType`
+    # key) onto real params AND seed the canonical config for a matched plain-English
+    # phrase ("manhattan plot" -> scatterType, "bell curve" -> Density, "loess fit" ->
+    # showLoessFit). Applied BEFORE the strip so the seeded intent survives it.
+    matched_synonym = cx_synonyms.apply(config, description)
+    if matched_synonym and DEBUG:
+        print(f"  Intent synonym matched: '{matched_synonym}' -> graphType={config.get('graphType')}", file=sys.stderr)
 
     # Strip any hallucinated parameter names not present in the known schema
     config, removed_keys = cx_knowledge.filter_unknown_params(config)
@@ -3260,16 +3269,27 @@ def generate_canvasxpress_config(
         if DEBUG:
             log.debug("No headers — column refs skipped; parameter values checked")
 
+    # Warn, never silently drop: any param the strip removed (and the synonym layer
+    # did not recover) is surfaced so an intent-bearing drop is visible to the caller.
+    _removed_warnings = [
+        f"Parameter '{p}' was not recognized and was removed from the config."
+        for p in (removed_params or [])
+    ]
+    # Observability: which plain-English synonym (if any) seeded this config.
+    _seed = cx_synonyms.seed_from_prompt(description)
+    _matched_synonym = _seed["phrase"] if _seed else None
+
     return {
         "config":         config,
         "data":           data,
         "valid":          validation["valid"],
-        "warnings":       validation["warnings"] + _geocode_warnings + data_warnings,
+        "warnings":       validation["warnings"] + _geocode_warnings + data_warnings + _removed_warnings,
         "invalid_refs":   validation["invalid_refs"],
         "invalid_values": validation.get("invalid_values", {}),
         "headers_used":   resolved_headers or [],
         "types_used":     column_types or {},
         "removed_params": removed_params,
+        "matched_synonym": _matched_synonym,
         # Token/cost accounting for THIS request, so a caller (e.g. the
         # dashboards bridge) can report what a dashboard actually cost.
         "usage":          end_request_usage(),
@@ -3855,6 +3875,10 @@ def list_chart_types() -> dict:
             "Radar": "Spider/radar chart",
             "WordCloud": "Text frequency visualization",
             "CDF": "Cumulative distribution function",
+            "StripPlot": "Jittered individual points per category",
+            "Slope": "Before/after slopegraph of change between two conditions",
+            "Pyramid": "Population/age pyramid — back-to-back bars split by group",
+            "Sparklines": "Small-multiples strips — one compact trend per series",
         },
         "multi_dimensional": {
             "Scatter2D": "2D scatter; PCA, UMAP, tSNE, MA, volcano-style",
@@ -3875,6 +3899,7 @@ def list_chart_types() -> dict:
             "Network": "Force-directed node-edge graph",
             "Tree": "Hierarchical tree",
             "Sunburst": "Radial hierarchy",
+            "TreeBracket": "Tournament-style bracket from a hierarchy",
         },
         "special": {
             "KaplanMeier": "Survival curves",
@@ -3882,6 +3907,18 @@ def list_chart_types() -> dict:
             "Gantt": "Project scheduling",
             "Tornado": "Sensitivity analysis",
             "TimeSeries": "Time series with irregular intervals",
+            "Fish": "Clonal evolution over time",
+            "Genome": "Genome browser with feature/signal tracks (LocusZoom)",
+            "Upset": "UpSet plot of set intersections",
+            "OptionsWall": "Candlesticks + options chain (IV/premium flanks)",
+        },
+        # Named scatterType variants of Scatter2D — chart types users ask for by
+        # name, selected via graphType:"Scatter2D" + scatterType (not distinct
+        # graphTypes). The intent-synonym map seeds these from plain English.
+        "scatter_variants": {
+            "Manhattan": "Genome-wide Manhattan plot — graphType Scatter2D + scatterType:'manhattan'",
+            "Miami": "Mirrored dual-Manhattan — graphType Scatter2D + scatterType:'miami'",
+            "Clustree": "Clustering-resolution tree — graphType Scatter2D + scatterType:'clustree'",
         },
     }
 

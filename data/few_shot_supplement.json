@@ -565,5 +565,181 @@
    "yAxisLineLeftShow": true,
    "yAxisLineRightShow": true
   }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Clone1",
+   "Clone2"
+  ],
+  "description": "Create a Fish plot of clonal evolution over time, one band per subclone showing prevalence across treatment timepoints.",
+  "config": {
+   "graphType": "Fish",
+   "title": "Clonal evolution over time"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "Clone1",
+   "Clone2"
+  ],
+  "description": "Fish plot of tumor subclone frequencies evolving from diagnosis through remission to relapse, with a legend.",
+  "config": {
+   "graphType": "Fish",
+   "title": "Subclone frequencies diagnosis to relapse",
+   "showLegend": true
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "signal"
+  ],
+  "description": "Create a Genome plot of gene feature tracks along a chromosome region with megabase ticks.",
+  "config": {
+   "graphType": "Genome",
+   "title": "Gene feature tracks",
+   "genomeTicksUnit": "Mb",
+   "genomeTicks": 8
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "signal"
+  ],
+  "description": "Genome browser view combining signal and feature tracks.",
+  "config": {
+   "graphType": "Genome",
+   "title": "Signal and feature tracks"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "group"
+  ],
+  "description": "Create a radial network graph of nodes connected by edges, coloring each node by its group, with a legend.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "radial",
+   "colorNodeBy": "group",
+   "showLegend": true
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "community"
+  ],
+  "description": "Force-directed protein-protein interaction network with nodes colored by detected community and a legend.",
+  "config": {
+   "graphType": "Network",
+   "networkLayoutType": "forceDirected",
+   "colorNodeBy": "community",
+   "showLegend": true
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "price"
+  ],
+  "description": "Options wall of the chain with call and put implied-volatility flanks on a shared price axis.",
+  "config": {
+   "graphType": "OptionsWall",
+   "title": "Options chain with IV flanks"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "premium"
+  ],
+  "description": "Create an Options Wall showing option premium by strike and expiry.",
+  "config": {
+   "graphType": "OptionsWall",
+   "title": "Premium by strike and expiry"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "cty",
+   "hwy",
+   "class"
+  ],
+  "description": "Create a Loess fit of cty and hwy color by class.",
+  "config": {
+   "graphType": "Scatter2D",
+   "xAxis": [
+    "cty"
+   ],
+   "yAxis": [
+    "hwy"
+   ],
+   "colorBy": "class",
+   "showLoessFit": "class"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "x",
+   "y",
+   "group"
+  ],
+  "description": "Scatter of X vs Y with a loess smoothing curve colored by group.",
+  "config": {
+   "graphType": "Scatter2D",
+   "xAxis": [
+    "x"
+   ],
+   "yAxis": [
+    "y"
+   ],
+   "colorBy": "group",
+   "showLoessFit": "group"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "x",
+   "y"
+  ],
+  "description": "Add a linear regression line to a scatter of X and Y.",
+  "config": {
+   "graphType": "Scatter2D",
+   "xAxis": [
+    "x"
+   ],
+   "yAxis": [
+    "y"
+   ],
+   "showRegressionFit": true,
+   "regressionType": "linear"
+  }
+ },
+ {
+  "data": "data",
+  "header": [
+   "x",
+   "y"
+  ],
+  "description": "Scatter of X vs Y with a polynomial regression fit.",
+  "config": {
+   "graphType": "Scatter2D",
+   "xAxis": [
+    "x"
+   ],
+   "yAxis": [
+    "y"
+   ],
+   "showRegressionFit": true,
+   "regressionType": "polynomial",
+   "regressionOrder": 2
+  }
  }
 ]

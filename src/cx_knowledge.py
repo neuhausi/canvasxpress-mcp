@@ -135,6 +135,11 @@ _BUNDLED_SCHEMA: dict[str, dict] = {
             "StackedPercent","StackedPercentLine","Streamgraph","Sunburst","TagCloud",
             "TimeSeries","Tornado","Tree","Treemap","Upset","Violin","Volcano",
             "Venn","Waterfall","WordCloud",
+            # Newly-landed engine graph types — valid in the engine before the
+            # version-pinned config schema catches up on the next --ship. Unioned
+            # into the resolved graphType set by load_schema() (see below).
+            "Fish","Genome","OptionsWall","TreeBracket",
+            "Sparklines","StripPlot","Slope","Pyramid",
         ],
     },
     # ── Section 1 · Data Manipulation ────────────────────────────────────────
@@ -791,6 +796,28 @@ def _overlay_graph_knowledge(base: dict[str, dict], overlay: dict[str, dict]) ->
             target["description"] = entry["description"]
 
 
+def _union_bundled_graph_types(schema: dict[str, dict]) -> None:
+    """Ensure every graphType name in the bundled list is accepted, in place.
+
+    graphType is the one enum where the bundled list ADDS to (rather than only
+    backfilling) the config-schema set: a newly-landed engine graph type is valid
+    in the engine before the version-pinned config schema is regenerated on the
+    next --ship, so without this union validate_param_values would wrongly reject
+    e.g. Sparklines/StripPlot/Slope/Pyramid. A harmless no-op once the schema
+    catches up. Also keeps _CONFIG_GRAPH_TYPES (used by canonical-name helpers) in
+    sync so the two never disagree.
+    """
+    entry = schema.get("graphType")
+    if not entry or not entry.get("valid_values"):
+        return
+    bundled = _BUNDLED_SCHEMA.get("graphType", {}).get("valid_values") or []
+    seen = set(entry["valid_values"])
+    additions = [t for t in bundled if t not in seen]
+    if additions:
+        entry["valid_values"] = entry["valid_values"] + additions
+        _CONFIG_GRAPH_TYPES.update(additions)
+
+
 def load_schema(force: bool = False) -> dict[str, dict]:
     """
     Return the parameter schema dict.  Uses the in-memory cache unless
@@ -815,6 +842,7 @@ def load_schema(force: bool = False) -> dict[str, dict]:
     if SKIP_FETCH:
         log.info("cx_knowledge: CX_SKIP_FETCH=1 — config schema + bundled only")
         _overlay_graph_knowledge(schema, _BUNDLED_SCHEMA)
+        _union_bundled_graph_types(schema)
         _cache.set(schema, "config+bundled (skip_fetch)" if have_config else "bundled (skip_fetch)")
         return schema
 
@@ -830,6 +858,7 @@ def load_schema(force: bool = False) -> dict[str, dict]:
 
     # Layer 3 — bundled backstop for anything still missing.
     _overlay_graph_knowledge(schema, _BUNDLED_SCHEMA)
+    _union_bundled_graph_types(schema)
 
     if have_config and files:
         source = "config+markdown"

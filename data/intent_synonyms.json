@@ -1,0 +1,14 @@
+[
+  {"phrases": ["bell curve", "bell-shaped curve", "normal curve"], "seed": {"graphType": "Density"}},
+  {"phrases": ["population pyramid", "age pyramid", "pyramid plot", "pyramid chart"], "seed": {"graphType": "Pyramid"}},
+  {"phrases": ["tornado plot", "tornado chart", "tornado diagram"], "seed": {"graphType": "Tornado"}},
+  {"phrases": ["manhattan plot", "gwas manhattan", "gwas plot"], "seed": {"graphType": "Scatter2D", "params": {"scatterType": "manhattan"}}},
+  {"phrases": ["miami plot"], "seed": {"graphType": "Scatter2D", "params": {"scatterType": "miami"}}},
+  {"phrases": ["clustree", "cluster tree", "clustering tree"], "seed": {"graphType": "Scatter2D", "params": {"scatterType": "clustree"}}},
+  {"phrases": ["loess fit", "loess smoothing", "loess smoothing curve", "lowess", "smoothing curve"], "seed": {"graphType": "Scatter2D", "params": {"showLoessFit": true}}},
+  {"phrases": ["linear regression", "regression line", "regression fit", "linear fit", "trend line", "line of best fit"], "seed": {"graphType": "Scatter2D", "params": {"showRegressionFit": true, "regressionType": "linear"}}},
+  {"phrases": ["logarithmic regression", "log regression", "log fit"], "seed": {"graphType": "Scatter2D", "params": {"showRegressionFit": true, "regressionType": "logarithmic"}}},
+  {"phrases": ["exponential regression", "exponential fit"], "seed": {"graphType": "Scatter2D", "params": {"showRegressionFit": true, "regressionType": "exponential"}}},
+  {"phrases": ["power regression", "power-law fit", "power law fit"], "seed": {"graphType": "Scatter2D", "params": {"showRegressionFit": true, "regressionType": "power"}}},
+  {"phrases": ["polynomial regression", "quadratic regression", "quadratic fit", "cubic fit", "cubic regression"], "seed": {"graphType": "Scatter2D", "params": {"showRegressionFit": true, "regressionType": "polynomial", "regressionOrder": 2}}}
+]
