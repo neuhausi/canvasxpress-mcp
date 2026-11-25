@@ -3279,9 +3279,20 @@ def generate_canvasxpress_config(
     _seed = cx_synonyms.seed_from_prompt(description)
     _matched_synonym = _seed["phrase"] if _seed else None
 
+    # ── Render-ready data for the inline chart App view ──────────────────────
+    # The view's renderChart expects data as [[headers],[row,...],...] (header row
+    # first, so the engine's arrayToCX can name columns). When the caller passed
+    # `headers` separately, `data` holds data rows only, so prepend the resolved
+    # header row. When `headers` was None, data[0] IS already the header row — pass
+    # it through unchanged. No data → unchanged (None), keeping the no-data path intact.
+    view_data = data
+    if data is not None and headers is not None and resolved_headers \
+            and isinstance(data, list) and all(isinstance(row, list) for row in data):
+        view_data = [list(resolved_headers)] + data
+
     return {
         "config":         config,
-        "data":           data,
+        "data":           view_data,
         "valid":          validation["valid"],
         "warnings":       validation["warnings"] + _geocode_warnings + data_warnings + _removed_warnings,
         "invalid_refs":   validation["invalid_refs"],

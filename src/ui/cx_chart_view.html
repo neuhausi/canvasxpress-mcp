@@ -10,7 +10,52 @@
     /* Pre-paint sizing only. CanvasXpress sets an inline width/height style on the
        canvas at construction, and inline styles win over this rule — so the real
        sizing is done in JS (sizeToViewport / applyViewportSize below). */
-    #cx-chart { display: block; width: 100vw; height: 100vh; }
+    /* Hidden until a chart is actually drawn (via the Visualize live button). */
+    #cx-chart { display: none; width: 100vw; height: 100vh; }
+    #cx-config {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      overflow: auto;
+      background: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+    }
+    #cx-config-json {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #1f2937;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 12px 14px;
+      white-space: pre;
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    #cx-visualize {
+      display: none;
+      font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #ffffff;
+      background: #2563eb;
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 16px;
+      cursor: pointer;
+    }
+    #cx-visualize:hover { background: #1d4ed8; }
+    #cx-config-note {
+      display: none;
+      font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #475569;
+    }
+    #cx-config-note code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #f1f5f9;
+      border-radius: 3px;
+      padding: 1px 5px;
+    }
     #cx-error {
       display: none;
       position: fixed;
@@ -36,6 +81,11 @@
 </head>
 <body>
   <div id="cx-error"></div>
+  <div id="cx-config">
+    <button id="cx-visualize" type="button">Visualize live</button>
+    <div id="cx-config-note"></div>
+    <pre id="cx-config-json"></pre>
+  </div>
   <canvas id="cx-chart"></canvas>
 
   <script>
@@ -236,6 +286,13 @@
         // dimensions, so the chart fills the host panel instead of falling back
         // to the library's small default. A width/height already present in the
         // tool's config is treated as deliberate and left alone.
+        // The canvas starts hidden (config panel is shown first); reveal it now
+        // that a chart is being drawn, and hide the config panel behind it.
+        const configPanel = document.getElementById('cx-config');
+        if (configPanel) configPanel.style.display = 'none';
+        const canvasEl = ensureCanvas();
+        canvasEl.style.display = 'block';
+
         const dims = sizeToViewport();
         const sizedConfig = Object.assign({}, config);
         if (sizedConfig.width == null) sizedConfig.width = dims.w;
@@ -256,6 +313,38 @@
       } catch (err) {
         showError(err.message || String(err));
       }
+    }
+
+    /**
+     * Show the generated config in the panel, with a data-gated "Visualize live"
+     * button. The chart is NOT drawn here: rendering is an explicit one-click
+     * action, and only offered when renderable data is present.
+     *
+     * @param {Object} config - the CanvasXpress config object to display.
+     * @param {Array|null} data - the flat [[headers],[row,...],...] array, or null.
+     */
+    function showConfig(config, data) {
+      const panel = document.getElementById('cx-config');
+      const json = document.getElementById('cx-config-json');
+      const button = document.getElementById('cx-visualize');
+      const note = document.getElementById('cx-config-note');
+
+      json.textContent = JSON.stringify(config, null, 2);
+
+      const hasData = data && Array.isArray(data) && data.length >= 2;
+      if (hasData) {
+        note.style.display = 'none';
+        button.style.display = 'inline-block';
+        button.onclick = function() { renderChart(config, data); };
+      } else {
+        button.style.display = 'none';
+        note.innerHTML = 'Pass <code>data</code> to this tool to visualize the chart live.';
+        note.style.display = 'block';
+      }
+
+      const canvasEl = document.getElementById('cx-chart');
+      if (canvasEl) canvasEl.style.display = 'none';
+      panel.style.display = 'block';
     }
 
     /**
@@ -299,14 +388,9 @@
           return;
         }
         const data = payload && payload.data ? payload.data : null;
-        if (!data) {
-          showError(
-            'No data found in tool result. MCP Apps inline rendering requires ' +
-            'the `data` argument to be populated when calling the tool.'
-          );
-          return;
-        }
-        renderChart(config, data);
+        // Show the generated config, and gate live rendering behind an explicit
+        // "Visualize live" button that only appears when data is available.
+        showConfig(config, data);
       } catch (err) {
         showError(err.message || String(err));
       }

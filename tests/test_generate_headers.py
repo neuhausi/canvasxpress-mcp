@@ -40,7 +40,9 @@ def test_headers_are_the_header_row_and_every_data_row_is_data(stub_llm):
     assert out["headers_used"] == HEADERS
     assert stub_llm["headers"] == HEADERS            # not ["Adelie", 39.1, 18.7]
     assert out["valid"] and out["warnings"] == []    # the config's columns all exist
-    assert out["data"] == ROWS                       # the first row is not consumed
+    # Returned data is render-ready for the inline chart view: the header row is
+    # prepended (headers were supplied separately), and no data row is consumed.
+    assert out["data"] == [HEADERS] + ROWS
 
 
 def test_without_headers_the_first_data_row_is_the_header_row(stub_llm):
