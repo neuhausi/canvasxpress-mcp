@@ -28,8 +28,13 @@ browser client only knows `llmServiceURL`, and a page can block outbound inferen
 3. A **tiered system prompt** is assembled from the canvasxpress-LLM knowledge base — only the content relevant to your request is included
 4. The configured LLM generates a validated CanvasXpress JSON config
 5. Hallucinated parameter names are **stripped** against the known schema
-6. If headers/data are provided, all column references are **validated** against them
-7. The config is returned ready to pass to `new CanvasXpress()`
+6. **Semantic-type presentation defaults** are merged in deterministically: each column's *meaning*
+   (e.g. a percentage-change colour column → diverging `colorSpectrum` centred on 0; a `Percentage`
+   value axis → `setMin:0`/`setMax:100`) fills only the config keys the LLM left unset — explicit
+   LLM choices are never overwritten, and every emitted key is a real engine param (so step 5 keeps
+   it). Types are supplied via `semantic_types` or auto-inferred from names + values
+7. If headers/data are provided, all column references are **validated** against them
+8. The config is returned ready to pass to `new CanvasXpress()`
 
 ---
 
@@ -494,7 +499,12 @@ Generate a new CanvasXpress config from a plain English description.
 | `headers` | string[] | ❌ | Column names from your dataset |
 | `data` | array[][] | ❌ | Full data array — first row = headers. Overrides `headers` |
 | `column_types` | object | ❌ | Map of column → type (`string`/`numeric`/`factor`/`date`) |
+| `semantic_types` | object | ❌ | Map of column → **semantic** type (what the field means) driving palette/baseline/scale defaults. Omit to auto-infer. Values: `PercentageChange` (alias `Delta`/`Change`), `Rank`, `Percentage` (alias `Proportion`), `Date` (alias `YearMonth`), `Count` (alias `Quantity`) |
 | `temperature` | float | ❌ | LLM creativity 0–1 (default 0.0) |
+
+Worked example: generating with `semantic_types={"pct_change": "PercentageChange"}` and a config
+that colours by `pct_change` yields a diverging `colorSpectrum` with `colorSpectrumZeroValue: 0`
+(blue-low → red-high, white at zero) — unless the LLM already set `colorSpectrum`, which is kept.
 
 **Response:**
 
@@ -506,6 +516,7 @@ Generate a new CanvasXpress config from a plain English description.
   "invalid_refs":   {},
   "headers_used":   ["Expression", "Treatment"],
   "types_used":     { "Expression": "numeric", "Treatment": "factor" },
+  "semantic_types_used": { "Expression": "Count" },
   "removed_params": [],
   "success":        true,
   "datetime":       "Fri, 10 Apr 2026 19:00:00 GMT",
@@ -718,6 +729,33 @@ which are forbidden, and which axis title parameter to use.
 | `valid_axes` | Axis keys that apply to this chart type |
 | `invalid_axes` | Axis keys that must NOT be used |
 | `axis_title_param` | Correct axis title parameter (`smpTitle` vs `xAxisTitle/yAxisTitle`) |
+
+---
+
+### `annotate_semantic_types`
+
+Suggest a **semantic type** for each column — what the field *means* — so presentation defaults
+(palette/baseline/scale) can be derived deterministically rather than guessed. Read-only: inspect
+or override the inferred types, then pass the result as `generate_canvasxpress_config`'s
+`semantic_types` argument.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `headers` | string[] | ✅ | Column names to annotate |
+| `data` | array[][] | ❌ | Row-oriented values enabling value-based inference (e.g. values straddling 0 → `PercentageChange`) |
+| `column_types` | object | ❌ | Coarse types (`string`/`numeric`/`factor`/`date`) |
+
+**Response:**
+
+```json
+{
+  "semantic_types":   { "pct_change": "PercentageChange", "rank": "Rank" },
+  "rationale":        { "pct_change": "name denotes a signed change (delta/pct_change/fold-change)",
+                        "rank": "name denotes an ordinal position (rank/order/position)" },
+  "fragment_preview": { "colorSpectrumZeroValue": 0, "colorScheme": "Viridis" },
+  "vocabulary":       ["Count", "Date", "Percentage", "PercentageChange", "Rank"]
+}
+```
 
 ---
 
@@ -1441,6 +1479,7 @@ python src/server.py
 | `CX_DEBUG` | `0` | Set to `1` for full debug trace |
 | `CX_SCHEMA_TTL` | `3600` | Schema cache TTL in seconds |
 | `CX_SKIP_FETCH` | `0` | Set to `1` to skip GitHub schema fetch |
+| `CX_ENGINE_BASE` | — | Base URL for the CanvasXpress **engine** (`canvasXpress.min.js` / `.css`) loaded by every HTML surface. Unset → the public CDN (output is unchanged). Set it to repoint them — e.g. a local dev server at `http://localhost:8123/dist` serving a working tree, so source edits need no rebuild. Engine-only: the dashboards UMD and the shareable `_usage_snippet` stay on the CDN. See the [CDN / local-engine note](#cdn-and-local-engine) |
 | `CX_KB_BASE_URL` | canvasxpress-LLM `main` on GitHub | Base URL for `SCHEMA.md` / `RULES.md` / `CONTEXT.md`. Point at a release tag or an internal mirror to pin the knowledge base |
 | `CX_STATE_DIR` | `data/` | Writable state directory: the call log (`call_log.db`) and the knowledge-base cache (`$CX_STATE_DIR/kb_cache`; the old `data/kb_cache` is still read as a fallback, and cache write failures are logged, not fatal). The code directory can then be read-only |
 | `CX_PUBLIC` | `0` | **Public profile.** Set to `1` for an internet-facing deployment: bearer-token auth is **required** and the server **refuses to start without a token** (fail-closed). Leave unset for local/tunnel installs — nothing changes |
@@ -1660,9 +1699,41 @@ asyncio.run(main())
 
 All existing REST endpoints (`/generate`, `/modify`, `/select`, `/km`, etc.) and any MCP clients that do not support MCP Apps are completely unaffected — the `_meta.ui.resourceUri` annotation is silently ignored by non-supporting hosts.
 
-### CDN versioning note
+### CDN and local engine
 
-The HTML view loads CanvasXpress from `https://www.canvasxpress.org/dist/canvasXpress.min.js`. No versioned CDN URL is offered by CanvasXpress upstream (verified 2026-05-28). Users who require reproducibility should self-host a pinned copy of `canvasXpress.min.js` and update the `<script src>` in `src/ui/cx_chart_view.html`.
+Every HTML surface — the web UI (`/`), the chart and dashboard MCP App views
+(`src/ui/*.html`), the headless PNG renderer (`cx_render.py`) and the inline
+dashboard widget (`cx_dashboard.py`) — loads the CanvasXpress **engine** from
+`https://www.canvasxpress.org/dist/canvasXpress.min.js`. No versioned CDN URL is
+offered by CanvasXpress upstream (verified 2026-05-28).
+
+**Repointing the engine (`CX_ENGINE_BASE`).** Set the env var to a base URL and
+all of those surfaces load the engine from there instead — for reproducibility
+(a self-hosted pinned copy) or for local development against an unbuilt working
+tree. The override is opt-in and engine-only:
+
+- **Unset (default, including production): output is byte-identical to before.**
+  `inject_engine()` is a no-op and the inline widget keeps its pinned jsdelivr
+  URLs. Prod never sets the var, so it is unaffected.
+- The dashboards UMD bundle and the copy-paste `_usage_snippet` (meant for the
+  user's *own* pages) always stay on the CDN — only the engine is overridable.
+- The resolver lives in [`src/cx_engine.py`](src/cx_engine.py).
+
+**Local dev loop (no rebuild).** The canvas-ai repo ships
+`tools/dev-engine-server.py`, which concatenates `build/js/*.js` in the canonical
+build order (read from `python/modules/config.py`’s `CX_JS_FILES`) and serves it
+as `canvasXpress.min.js` plus the CSS. Point the MCP at it:
+
+```bash
+# in the canvas-ai checkout — serves the live working tree, no build step
+python3 tools/dev-engine-server.py 8123
+
+# start the MCP against it (nothing in this repo needs editing)
+CX_ENGINE_BASE=http://localhost:8123/dist python src/server.py
+```
+
+Edit any `build/js/*.js`, reload the page, and the change is live. Unset the var
+to go back to the CDN.
 
 ## Development and releases
 

@@ -303,6 +303,7 @@ Generate a new CanvasXpress config from a plain English description.
 | `description` | ✅ | Plain English chart description. Alias: `prompt`, `q` |
 | `headers` | ❌ | Comma-separated column names: `Gene, Expression, Treatment` |
 | `column_types` | ❌ | Column types: `Gene=string, Expression=numeric, Treatment=factor` |
+| `semantic_types` | ❌ | Semantic types (field meaning → palette/baseline/scale defaults, merged only where the LLM left a key unset): `pct_change=PercentageChange, rank=Rank`. Omit to auto-infer. Vocabulary: `PercentageChange`/`Delta`, `Rank`, `Percentage`/`Proportion`, `Date`/`YearMonth`, `Count`/`Quantity` |
 | `data` | ❌ | JSON array of arrays (first row = headers): `[["Gene","Expr"],["BRCA1",1.2]]` |
 | `temperature` | ❌ | LLM creativity 0.0–1.0 (default 0.0 = deterministic) |
 | `callback` | ❌ | JSONP callback name (set automatically by CanvasXpress) |

@@ -5,6 +5,17 @@ All notable changes to canvasxpress-mcp. Releases are tagged `vX.Y.Z`; pin a tag
 ## [Unreleased]
 
 ### Added
+- **Semantic-type presentation defaults.** `generate_canvasxpress_config` now takes an optional
+  `semantic_types` map (column → what the field *means*) and, when omitted, auto-infers it from
+  column names + values. A deterministic MCP-layer step derives explicit CanvasXpress config from
+  each type — `PercentageChange`/`Delta` → diverging `colorSpectrum` + `colorSpectrumZeroValue:0`
+  on the colour channel; `Rank`/`Count` → sequential `Viridis` colour; `Percentage` →
+  `setMin:0`/`setMax:100` on the value axis; `Date`/`YearMonth` → `smpTimeScale`+`smpLabelTimeAuto`.
+  The fragment fills only keys the LLM left unset (never overwrites an explicit choice), and every
+  emitted key is a real engine param so the hallucinated-param strip keeps it. The response carries
+  `semantic_types_used`. New read-only `annotate_semantic_types` tool returns the suggested types,
+  a per-column rationale, a fragment preview, and the vocabulary — call it to inspect/override
+  before generating. New module `src/cx_semantics.py` (reuses the `cx_selector` name-regex layer).
 - **`create_locus_config` — regional association (LocusZoom) plots.** Builds the two-track
   CanvasXpress Genome chart from GWAS summary statistics: the `-log10(p)` scatter over genomic
   position coloured by LD r² with the lead SNP (binned to locuszoomr's five r² classes, in

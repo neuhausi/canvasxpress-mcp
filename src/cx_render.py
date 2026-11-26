@@ -13,6 +13,8 @@ crash. Deploy note: `pip install playwright && playwright install chromium`.
 import base64
 import json
 
+import cx_engine
+
 _HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://www.canvasxpress.org/dist/canvasXpress.css">
 <script src="https://www.canvasxpress.org/dist/canvasXpress.min.js"></script>
@@ -27,6 +29,10 @@ _HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8">
   // Fallback: mark done shortly after construction for charts without an afterRender hook.
   setTimeout(function () { window.__cxDone = true; }, 1200);
 </script></body></html>"""
+
+# Repoint to CX_ENGINE_BASE when set (no-op otherwise). Safe before the "%(..)s"
+# formatting below: a base URL carries no "%".
+_HARNESS_HTML = cx_engine.inject_engine(_HARNESS_HTML)
 
 
 def render_png(data: dict, config: dict, width: int = 800, height: int = 600,

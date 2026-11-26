@@ -3,7 +3,7 @@
   "$id": "https://canvasxpress.org/schema/canvasxpress-config-latest.schema.json",
   "title": "CanvasXpress configuration",
   "description": "Machine-generated schema for the CanvasXpress config object. Generated from CanvasXpress.doc (the engine's internal parameter registry) — do not hand-edit; re-run tools/schema/generate-config-schema.js.",
-  "x-cx-version": "74.8",
+  "x-cx-version": "74.9",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -539,6 +539,13 @@
       "x-cx-graphtypes": [
         "Network"
       ]
+    },
+    "autoDefaults": {
+      "type": "boolean",
+      "description": "Flag to apply data-driven presentation defaults automatically: a sign-aware colour spectrum (sequential ramp for a one-signed colorBy range, diverging when it spans zero), a proportional time scale for date sample axes of Line/Area plots, a nested size legend for numeric size channels, a continuous colour spectrum when a chart has more than 16 colour series, a Viridis sequential ramp for a rank colour series (see colorRankBy), an automatic switch of a Scatter2D with one categorical and one continuous axis to a jittered strip plot, the Kaplan-Meier p-value and at-risk table, and the Volcano fold-change / p-value cut-off lines. Each sub-default is applied only when the user did not set it explicitly, so explicit config always wins. Default off keeps existing charts byte-identical",
+      "default": false,
+      "x-cx-category": "General",
+      "x-cx-nl": "{Apply|Do Not Apply} data-driven presentation defaults"
     },
     "autoScaleFont": {
       "type": "boolean",
@@ -3627,6 +3634,13 @@
       "default": false,
       "x-cx-category": "Colors",
       "x-cx-nl": "{Automatically|Do Not Automatically} extend the colors palette with generated hues instead of wrapping (colors[i % colors"
+    },
+    "colorRankBy": {
+      "type": "boolean",
+      "description": "Flag to treat the colour series as an ordinal rank: under autoDefaults, when the user left colorScheme at its default, the chart is coloured with a Viridis sequential perceptual ramp (colorScheme ColorSpectrum, colorSpectrum Viridis) following the colour series order, instead of a qualitative palette. Use for ranked categories whose order carries meaning. Ignored unless autoDefaults is on",
+      "default": false,
+      "x-cx-category": "Colors",
+      "x-cx-nl": "{Treat|Do Not Treat} the colour series as an ordinal rank coloured with a Viridis sequential ramp"
     },
     "colorScheme": {
       "type": [
@@ -7814,7 +7828,7 @@
         "string",
         "number"
       ],
-      "description": "Enables visual annotations on your graph, with its structure depending on the graphType. For network graphs, it is an array of node property names; for one-dimensional graphs, it is an object with primary keys like line, range, point, text, marker, or error; and for scatter plots, it is an object with primary keys such as linear, exponential, logarithmic, power, polynomial, nonlinearfit, regression, normal, line, text, label, point, range, image, or polygon. In the latter two cases, the value for each primary key is an array of objects, where each object specifies the properties of a decoration, for example, for a one-dimensional line: {line: [{value: 5, color: \"#ff0000\", width: 2, label: \"Threshold\", align: \"right\"}]}, or for a scatter plot linear fit: {linear: [{x: 1, y: 2, x2: 3, y2: 4, color: \"#ff0000\", width: 2, label: \"Threshold\", align: \"right\"}]}",
+      "description": "Enables visual annotations on your graph, with its structure depending on the graphType. For network graphs, it is an array of node property names; for one-dimensional graphs, it is an object with primary keys like line, range, point, text, marker, or error; and for scatter plots, it is an object with primary keys such as linear, exponential, logarithmic, power, polynomial, nonlinearfit, regression, normal, line, text, label, point, range, segment, image, or polygon. In the latter two cases, the value for each primary key is an array of objects, where each object specifies the properties of a decoration, for example, for a one-dimensional line: {line: [{value: 5, color: \"#ff0000\", width: 2, label: \"Threshold\", align: \"right\"}]}, or for a scatter plot linear fit: {linear: [{x: 1, y: 2, x2: 3, y2: 4, color: \"#ff0000\", width: 2, label: \"Threshold\", align: \"right\"}]}, or for a two-point segment (a free-coordinate line from (x,y) to (x2,y2), optionally a capped error bar with an anchor point): {segment: [{x: 1, y: 2, x2: 1, y2: 4, cap: true, point: true, color: \"#ff0000\", width: 2}]}",
       "default": false,
       "x-cx-false-disables": true,
       "x-cx-scalar-autowrap": true,
@@ -22065,7 +22079,8 @@
         "exp2",
         "exp10",
         "sqrt",
-        "percentile"
+        "percentile",
+        "reverse"
       ],
       "x-cx-false-disables": true,
       "x-cx-category": "R-Axis",
@@ -44258,7 +44273,8 @@
         "exp2",
         "exp10",
         "sqrt",
-        "percentile"
+        "percentile",
+        "reverse"
       ],
       "x-cx-false-disables": true,
       "x-cx-category": "X-Axis",
@@ -47106,7 +47122,8 @@
         "exp2",
         "exp10",
         "sqrt",
-        "percentile"
+        "percentile",
+        "reverse"
       ],
       "x-cx-false-disables": true,
       "x-cx-category": "Y-Axis",
@@ -48163,7 +48180,8 @@
         "exp2",
         "exp10",
         "sqrt",
-        "percentile"
+        "percentile",
+        "reverse"
       ],
       "x-cx-false-disables": true,
       "x-cx-category": "Z-Axis",

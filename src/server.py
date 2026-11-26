@@ -43,10 +43,12 @@ from llm_providers import (complete as llm_complete, provider_info, PROVIDER, MO
 import cx_knowledge
 import cx_survival
 import cx_selector
+import cx_semantics
 import cx_synonyms
 import cloud_meter
 import asyncio
 import cx_validate
+import cx_engine
 import cx_render
 import cx_dashboard
 import cx_dashboard_publish
@@ -1759,7 +1761,8 @@ mcp = FastMCP(
 # Spec §Resource Discovery: tools reference UI resources via _meta.ui.resourceUri
 # ---------------------------------------------------------------------------
 
-_CX_APP_HTML = (Path(__file__).parent / "ui" / "cx_chart_view.html").read_text(encoding="utf-8")
+_CX_APP_HTML = cx_engine.inject_engine(
+    (Path(__file__).parent / "ui" / "cx_chart_view.html").read_text(encoding="utf-8"))
 
 _CX_APP_RESOURCE_URI = "ui://canvasxpress/chart"
 _CX_APP_MIME_TYPE = "text/html;profile=mcp-app"
@@ -1828,7 +1831,8 @@ def cx_chart_resource() -> ResourceResult:
 # renders one chart. Both the engine and the dashboards UMD are served from
 # https://www.canvasxpress.org, so the chart view's CSP meta (_CX_APP_RESOURCE_META,
 # resourceDomains = canvasxpress.org) covers this view too and is reused as-is.
-_CX_DASH_APP_HTML = (Path(__file__).parent / "ui" / "cx_dashboard_view.html").read_text(encoding="utf-8")
+_CX_DASH_APP_HTML = cx_engine.inject_engine(
+    (Path(__file__).parent / "ui" / "cx_dashboard_view.html").read_text(encoding="utf-8"))
 
 
 def _view_build_stamp(html: str) -> str:
@@ -3053,6 +3057,7 @@ def generate_canvasxpress_config(
     headers: list[str] | None = None,
     data: list[list] | None = None,
     column_types: dict[str, str] | None = None,
+    semantic_types: dict[str, str] | None = None,
     temperature: float = 0.0,
 ) -> dict:
     """
@@ -3084,6 +3089,17 @@ def generate_canvasxpress_config(
                       Valid types: "string", "numeric", "factor", "date".
                       e.g. {"Gene": "string", "Expression": "numeric", "Treatment": "factor"}
                       Guides axis assignment: numerics to yAxis, factors to groupingFactors.
+        semantic_types: Optional dict mapping column name to a *semantic* type describing
+                      what the field MEANS, which deterministically drives
+                      palette/baseline/scale defaults (merged only where you did not already
+                      set that config key). Omit to auto-infer from column names and values.
+                      Valid types: "PercentageChange" (alias "Delta"/"Change") → diverging
+                      colorSpectrum centred on 0 when used as the colour channel; "Rank" →
+                      sequential Viridis in rank order on the colour channel; "Percentage"
+                      (alias "Proportion") → setMin:0/setMax:100 on the value axis; "Date"
+                      (alias "YearMonth") → proportional time scale on the sample axis;
+                      "Count" (alias "Quantity") → sequential colour or a 0 baseline.
+                      e.g. {"pct_change": "PercentageChange", "rank": "Rank"}
         temperature: LLM creativity 0.0-1.0 (default 0.0 = deterministic).
 
     Returns:
@@ -3129,6 +3145,29 @@ def generate_canvasxpress_config(
         for col, typ in column_types.items():
             print(f"  {col:25s} → {typ}", file=sys.stderr)
 
+    # ── Semantic types: validate supplied values, else auto-infer ───────────
+    # Semantic types describe what each field MEANS and deterministically drive
+    # presentation defaults (palette/baseline/scale) at the MCP layer. Explicit
+    # values are validated against the vocabulary (unknowns dropped + logged, same
+    # pattern as column_types); when omitted, inferred from names + values.
+    if semantic_types:
+        bad_sem = {k: v for k, v in semantic_types.items()
+                   if cx_semantics.canonical_type(v) is None}
+        if bad_sem:
+            log.warning("Unknown semantic types ignored: %s. Valid: %s",
+                        bad_sem, sorted(cx_semantics.SEMANTIC_TYPES))
+            semantic_types = {k: v for k, v in semantic_types.items()
+                              if cx_semantics.canonical_type(v) is not None}
+    elif resolved_headers:
+        semantic_types = cx_semantics.infer_semantic_types(
+            resolved_headers, data, column_types)
+
+    if DEBUG and semantic_types:
+        bar = "─" * 64
+        print(f"\n{bar}\n  SEMANTIC TYPES\n{bar}", file=sys.stderr)
+        for col, typ in semantic_types.items():
+            print(f"  {col:25s} → {typ}", file=sys.stderr)
+
     # ── Intentionally-unimplemented graph types ─────────────────────────────
     unimplemented = _detect_unimplemented_graph(description)
     if unimplemented:
@@ -3146,6 +3185,7 @@ def generate_canvasxpress_config(
             "invalid_refs":   {},
             "headers_used":   resolved_headers or [],
             "types_used":     column_types or {},
+            "semantic_types_used": semantic_types or {},
             "removed_params": [],
         }
 
@@ -3170,6 +3210,7 @@ def generate_canvasxpress_config(
             "invalid_refs":   {},
             "headers_used":   resolved_headers or [],
             "types_used":     column_types or {},
+            "semantic_types_used": semantic_types or {},
             "removed_params": [],
         }
 
@@ -3238,6 +3279,20 @@ def generate_canvasxpress_config(
         config.setdefault("showLoessFit", True)
         log.info("Auto-corrected regressionType=loess → showLoessFit=true")
 
+    # ── Semantic-type presentation defaults (deterministic, respects explicit config) ──
+    # Derive palette/baseline/scale from each column's meaning and fill ONLY keys the
+    # LLM left unset — never overwrite an explicit choice. Inserted here so any column
+    # refs the fragment introduces are still covered by validate_config_headers below.
+    # Every emitted key is a real engine param in KNOWN_PARAMS, so the hallucinated-param
+    # strip leaves it intact.
+    if semantic_types and config:
+        fragment = cx_semantics.derive_config_fragment(
+            semantic_types, config, resolved_headers, data)
+        for key, value in fragment.items():
+            if key not in config:
+                config[key] = value
+                log.info("Semantic default applied: %s=%r", key, value)
+
     # ── Validate column references ───────────────────────────────────────────
     if resolved_headers and config:
         validation = validate_config_headers(config, resolved_headers)
@@ -3299,6 +3354,7 @@ def generate_canvasxpress_config(
         "invalid_values": validation.get("invalid_values", {}),
         "headers_used":   resolved_headers or [],
         "types_used":     column_types or {},
+        "semantic_types_used": semantic_types or {},
         "removed_params": removed_params,
         "matched_synonym": _matched_synonym,
         # Token/cost accounting for THIS request, so a caller (e.g. the
@@ -3649,6 +3705,62 @@ def get_axes_info(graph_type: str) -> dict:
         "axis_title_param": axis_title_param,
         "notes":            notes,
         "schema_snippet":   snippet or "(schema not loaded)",
+    }
+
+
+@mcp.tool(
+    annotations={"title": "Annotate Semantic Types", "readOnlyHint": True,
+                 "destructiveHint": False, "openWorldHint": False},
+    description=(
+        "Suggest a SEMANTIC type for each column — what the field MEANS — so presentation "
+        "defaults (palette/baseline/scale) can be derived deterministically rather than guessed. "
+        "Read-only: inspect or override the inferred types before calling "
+        "generate_canvasxpress_config (pass the result back as its semantic_types argument). "
+        "For each tagged column it returns the type, a one-line rationale (which signal fired), "
+        "and the CanvasXpress config fragment that type would contribute. "
+        "Vocabulary: PercentageChange/Delta, Rank, Percentage/Proportion, Date/YearMonth, "
+        "Count/Quantity. Supply column values in `data` for value-based inference; names alone "
+        "work too."
+    )
+)
+def annotate_semantic_types(
+    headers: list[str],
+    data: list[list] | None = None,
+    column_types: dict[str, str] | None = None,
+) -> dict:
+    """
+    Args:
+        headers:      Column names to annotate, e.g. ["gene", "pct_change", "rank"].
+        data:         Optional row-oriented 2-D array (header row tolerated) enabling
+                      value-based inference (e.g. values straddling 0 → PercentageChange).
+        column_types: Optional coarse types ({"string","numeric","factor","date"}).
+
+    Returns:
+        Dict with keys:
+          semantic_types   (dict) - {column: semantic_type} for each tagged column
+          rationale        (dict) - {column: why that type was chosen}
+          fragment_preview (dict) - the config keys these types would contribute
+          vocabulary       (list) - the supported semantic-type names
+    """
+    types = cx_semantics.infer_semantic_types(headers, data, column_types)
+    rationale = {
+        col: cx_semantics.rationale_for(col, stype, headers, data, column_types)
+        for col, stype in types.items()
+    }
+    # Preview each type's contribution on its NATURAL channel: colour-channel types
+    # (Delta/Rank/Count) probed as the colorBy column; axis types (Percentage/Date) probed
+    # with no aesthetic. Merged into one preview (first column wins on a shared global key).
+    fragment_preview: dict = {}
+    for col, stype in types.items():
+        canon = cx_semantics.canonical_type(stype)
+        probe = {"colorBy": col} if canon in ("PercentageChange", "Rank", "Count") else {}
+        for key, value in cx_semantics.derive_config_fragment({col: stype}, probe, headers, data).items():
+            fragment_preview.setdefault(key, value)
+    return {
+        "semantic_types":   types,
+        "rationale":        rationale,
+        "fragment_preview": fragment_preview,
+        "vocabulary":       sorted(cx_semantics.SEMANTIC_TYPES),
     }
 
 
@@ -6359,6 +6471,7 @@ _UI_HTML = r"""<!DOCTYPE html>
   <h3 id="result-title">Result</h3>
   <div class="meta" id="result-meta"></div>
   <pre id="result-pre"></pre>
+  <button id="cx-visualize" type="button" style="display:none;margin-top:8px">Visualize live</button>
 </div>
 <div id="preview">
   <h3>Live Preview <span class="preview-hint">powered by CanvasXpress</span></h3>
@@ -6496,6 +6609,7 @@ async function submit(){
   resultEl.style.display='block';
   preEl.textContent='Loading\u2026';
   metaEl.textContent='';
+  document.getElementById('cx-visualize').style.display='none';
   titleEl.textContent=TITLE_MAP[activeTab]||'Result';
   try {
     var resp=await fetch(url);
@@ -6535,6 +6649,13 @@ async function submit(){
       if(data.removed_params&&data.removed_params.length)
         metaEl.innerHTML+='<br><span class="badge warn">stripped: '+data.removed_params.join(', ')+'</span>';
       preEl.textContent=JSON.stringify(activeTab==='km'?data:cfg,null,2);
+      var vizBtn=document.getElementById('cx-visualize');
+      var rawData=data.data||null;
+      if(!rawData){var di=v(activeTab==='generate'?'g-data':activeTab==='modify'?'m-data':activeTab==='km'?'km-data':'map-data');if(di){try{rawData=JSON.parse(di);}catch(e){rawData=null;}}}
+      if(rawData&&Array.isArray(rawData)&&rawData.length>=2){
+        vizBtn.style.display='inline-block';
+        vizBtn.onclick=function(){renderPreview(cfg,rawData);};
+      } else { vizBtn.style.display='none'; document.getElementById('preview').style.display='none'; }
     } else if(activeTab==='params'){
       var count=data.param_count||(data.params?Object.keys(data.params).length:'?');
       metaEl.innerHTML=count+' parameters &nbsp; source: <b>'+(data.schema_source||'?')+'</b>';
@@ -7416,7 +7537,7 @@ async def rest_feedback_export(request: Request) -> Response:
 @mcp.custom_route("/ui", methods=["GET"])
 async def rest_ui(request: Request) -> HTMLResponse:
     """Serve the browser-based form UI at /ui."""
-    return HTMLResponse(_UI_HTML)
+    return HTMLResponse(cx_engine.inject_engine(_UI_HTML))
 
 
 @mcp.custom_route("/favicon.ico", methods=["GET"])
