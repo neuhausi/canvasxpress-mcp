@@ -18,6 +18,8 @@ import json
 import re
 from typing import Any, Optional
 
+import cx_engine
+
 import cx_dashboard_suggest
 import cx_datasets
 from cx_dashboard_validate import validate_spec, DASHBOARD_SCHEMA_VERSION
@@ -162,12 +164,23 @@ def _intro_html(title: str, description: str) -> str:
 
 
 # Pinned builds for the inline-widget fallback (bump with each engine / dashboards release).
-INLINE_ENGINE_VERSION = "74.8.0"
-INLINE_DASHBOARDS_VERSION = "0.15.4"
+INLINE_ENGINE_VERSION = "74.9.0"
+INLINE_DASHBOARDS_VERSION = "0.15.5"
+
+# Engine css/js for the inline widget: pinned jsdelivr by default, or CX_ENGINE_BASE
+# when set (the dashboards UMD always stays on jsdelivr — only the engine is overridable).
+if cx_engine.engine_base():
+    _WIDGET_ENGINE_CSS = cx_engine.engine_css_url()
+    _WIDGET_ENGINE_JS = cx_engine.engine_js_url(minified=False)
+else:
+    _WIDGET_ENGINE_CSS = ("https://cdn.jsdelivr.net/npm/canvasxpress@%s/src/canvasXpress.css"
+                          % INLINE_ENGINE_VERSION)
+    _WIDGET_ENGINE_JS = ("https://cdn.jsdelivr.net/npm/canvasxpress@%s/src/canvasXpress.js"
+                         % INLINE_ENGINE_VERSION)
 
 _WIDGET_TEMPLATE = (
-    '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/canvasxpress@%(engine)s/src/canvasXpress.css">\n'
-    '<script src="https://cdn.jsdelivr.net/npm/canvasxpress@%(engine)s/src/canvasXpress.js"></script>\n'
+    '<link rel="stylesheet" href="%(engcss)s">\n'
+    '<script src="%(engjs)s"></script>\n'
     '<script src="https://cdn.jsdelivr.net/npm/canvasxpress-dashboards@%(dash)s/dist/canvasxpress-dashboards.umd.js"></script>\n'
     '<div id="status" style="font:12px sans-serif;color:#b00"></div>\n'
     '<div id="dashboard" style="width:100%%;min-height:960px"></div>\n'
@@ -178,7 +191,7 @@ _WIDGET_TEMPLATE = (
     'window.addEventListener("error", function (ev) {\n'
     '  document.getElementById("status").textContent = "Load error: " + ev.message; });\n'
     '</script>'
-) % {"engine": INLINE_ENGINE_VERSION, "dash": INLINE_DASHBOARDS_VERSION}
+) % {"engcss": _WIDGET_ENGINE_CSS, "engjs": _WIDGET_ENGINE_JS, "dash": INLINE_DASHBOARDS_VERSION}
 
 
 def builder_base_url() -> str:
