@@ -164,8 +164,8 @@ def _intro_html(title: str, description: str) -> str:
 
 
 # Pinned builds for the inline-widget fallback (bump with each engine / dashboards release).
-INLINE_ENGINE_VERSION = "75.0.0"
-INLINE_DASHBOARDS_VERSION = "0.15.5"
+INLINE_ENGINE_VERSION = "75.1.0"
+INLINE_DASHBOARDS_VERSION = "0.15.6"
 
 # Engine css/js for the inline widget: pinned jsdelivr by default, or CX_ENGINE_BASE
 # when set (the dashboards UMD always stays on jsdelivr — only the engine is overridable).
